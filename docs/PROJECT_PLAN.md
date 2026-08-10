@@ -158,6 +158,7 @@ Yalnızca agent vakayı kapatabilir. Doktor cevabı tek başına vakayı kapatma
 - Tur ayrı bilgi/onboarding sayfaları açmaz; kullanıcının gerçek ana ekranı üzerinde ilgili kontrolü vurgulayan kısa tooltip ve spotlight katmanı kullanır.
 - Doctor için en fazla üç hedef gösterilir: vaka filtresi, Oldest/Newest sıralaması ve açılabilir vaka kartı. Agent için en fazla üç hedef gösterilir: vaka filtresi, **+ New** ve düzenlemek/güncellemek için açılabilir vaka kartı.
 - Her tooltip **Next**, **Skip** ve son adımda **Done** eylemlerini sunar. Görünmeyen veya boş liste nedeniyle bulunamayan hedef adımı engellemez; uygun bir sonraki görünür hedefe geçilir.
+- Tooltip kartı uygulama yüzeyinden ayrışmak için ters tema kontrastı kullanır: Dark Mode'da açık renk kart ve koyu metin, Light Mode'da koyu renk kart ve açık metin gösterilir.
 - Kullanıcı turu atlayabilir; atlama da tamamlanmış sayılır ve her girişte tekrar gösterilmez.
 - Turun tamamlanma durumu server adresi, kullanıcı kimliği, rol ve tur sürümüne göre cihazda tutulur. Başka server veya başka kullanıcı birbirinin durumunu paylaşmaz. Doctor ve Agent tooltip turunu Profile içindeki **Show guided tips again** seçeneğiyle yeniden açabilir.
 - Her kullanıcı uygulamadaki profil sayfasından görünen adını, e-posta adresini ve telefon numarasını güncelleyebilir. Kullanıcı adı ve rol server yönetiminde kalır.
