@@ -9,7 +9,7 @@ extension UserRole {
                     id: 0,
                     icon: "magnifyingglass",
                     title: "Find the next case",
-                    message: "Search by patient or reference, choose My Waiting or Unassigned, and switch between oldest and newest cases.",
+                    message: "Search by patient or reference, use All Cases or a focused queue, and switch between oldest and newest cases.",
                     tapHint: "Tap a case card to open the consultation."
                 ),
                 AppTourStep(

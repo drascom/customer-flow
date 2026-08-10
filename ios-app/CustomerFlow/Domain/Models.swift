@@ -24,6 +24,7 @@ enum ConsultationStatus: String, Codable, Sendable {
 }
 
 enum DoctorQueueFilter: String, CaseIterable, Identifiable {
+    case all
     case myWaiting
     case unassigned
     case answered
@@ -33,6 +34,7 @@ enum DoctorQueueFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .all: "All Cases"
         case .myWaiting: "My Waiting"
         case .unassigned: "Unassigned"
         case .answered: "Answered"

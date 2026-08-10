@@ -156,6 +156,7 @@ struct DoctorQueueView: View {
 
     private func matchesQueue(_ item: ConsultationCase) -> Bool {
         switch filter {
+        case .all: true
         case .myWaiting: item.status == .waiting && item.assignedDoctorID == state.currentDoctorID
         case .unassigned: item.status == .waiting && item.assignedDoctorID == nil
         case .answered: item.status == .answered && item.assignedDoctorID == state.currentDoctorID
@@ -166,6 +167,7 @@ struct DoctorQueueView: View {
     private func count(for filter: DoctorQueueFilter) -> Int {
         state.cases.filter { item in
             switch filter {
+            case .all: true
             case .myWaiting: item.status == .waiting && item.assignedDoctorID == state.currentDoctorID
             case .unassigned: item.status == .waiting && item.assignedDoctorID == nil
             case .answered: item.status == .answered && item.assignedDoctorID == state.currentDoctorID
