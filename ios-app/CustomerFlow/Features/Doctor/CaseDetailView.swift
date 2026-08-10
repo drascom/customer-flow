@@ -1,0 +1,199 @@
+import SwiftUI
+
+struct CaseDetailView: View {
+    @EnvironmentObject private var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    let caseID: UUID
+
+    @State private var photoIndex = 0
+    @State private var grafts = ""
+    @State private var price = ""
+    @State private var response = ""
+    @State private var isSending = false
+    @State private var showAnnotationPlaceholder = false
+
+    private var item: ConsultationCase? { state.cases.first { $0.id == caseID } }
+    private var responseStarted: Bool {
+        !grafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    private var responseReady: Bool {
+        !grafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                if let item {
+                    VStack(alignment: .leading, spacing: 18) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(item.patient.name).font(.title2.bold())
+                                    Text("\(item.reference) · Uploaded by \(item.agentName)")
+                                        .font(.caption)
+                                        .foregroundStyle(AppTheme.muted)
+                                }
+                                Spacer()
+                                StatusChip(status: item.status)
+                            }
+
+                            TabView(selection: $photoIndex) {
+                                ForEach(0..<item.photoCount, id: \.self) { index in
+                                    ClinicalPhotoPlaceholder(index: index).tag(index)
+                                }
+                            }
+                            .tabViewStyle(.page)
+                            .frame(height: 330)
+                            .clipShape(RoundedRectangle(cornerRadius: 18))
+
+                            Button("View & Annotate", systemImage: "pencil.and.outline") {
+                                showAnnotationPlaceholder = true
+                            }
+                            .buttonStyle(.bordered)
+
+                            detailSection("Agent note") {
+                                Text(item.agentNote).foregroundStyle(AppTheme.ink)
+                            }
+
+                            HStack(spacing: 10) {
+                                detailMetric("Graft number", item.agentGrafts)
+                                detailMetric("Price", "\(item.currency) \(item.agentPrice)")
+                            }
+
+                            detailSection("Case conversation") {
+                                VStack(spacing: 10) {
+                                    ForEach(item.messages) { message in MessageBubble(message: message) }
+                                }
+                            }
+
+                        if item.status == .waiting {
+                            responseComposer(item)
+                        } else {
+                            detailSection("Current state") {
+                                Text(item.status == .answered ? "Your response has been sent. The agent must confirm before this case closes." : "The agent confirmed and closed this case.")
+                                    .foregroundStyle(AppTheme.muted)
+                            }
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .background(AppTheme.background)
+            .navigationTitle("Case Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .alert("Annotation editor", isPresented: $showAnnotationPlaceholder) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The drawing/text editor is the next native feature slice; its storage contract is already represented in the API plan.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func responseComposer(_ item: ConsultationCase) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Doctor response").font(.headline)
+            HStack {
+                TextField("Approx. grafts", text: $grafts)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Recommended price", text: $price)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.roundedBorder)
+            }
+            TextField("Clinical assessment and recommendation", text: $response, axis: .vertical)
+                .lineLimit(4...8)
+                .textFieldStyle(.roundedBorder)
+
+            if item.assignedDoctorID == nil {
+                Label("Sending this response assigns the patient to you.", systemImage: "person.badge.plus")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.accent)
+            }
+            if responseStarted && !responseReady {
+                Label("Complete all three fields to send the recommendation.", systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.accent)
+            }
+
+            if isSending {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            } else if responseReady {
+                Button(item.assignedDoctorID == nil ? "Respond & Take Patient" : "Send Response") {
+                    Task {
+                        isSending = true
+                        let sent = await state.sendRecommendation(
+                            caseID: item.id,
+                            recommendation: DoctorRecommendation(approximateGrafts: grafts, recommendedPrice: price, text: response)
+                        )
+                        isSending = false
+                        if sent { dismiss() }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(16)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+    }
+
+    private func detailSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.caption.bold()).foregroundStyle(AppTheme.muted)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border))
+    }
+
+    private func detailMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(.caption2.bold()).foregroundStyle(AppTheme.muted)
+            Text(value).font(.headline)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(13)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border))
+    }
+}
+
+private struct MessageBubble: View {
+    let message: ConsultationMessage
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Text(message.role == .doctor ? "DR" : "AG")
+                .font(.caption2.bold())
+                .frame(width: 32, height: 32)
+                .background((message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.14), in: Circle())
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(message.author).font(.caption.bold())
+                    Spacer()
+                    Text(message.createdAt, style: .relative).font(.caption2).foregroundStyle(AppTheme.muted)
+                }
+                Text(message.text).font(.body)
+                if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
+                    HStack {
+                        Text("Approx. \(grafts) grafts")
+                        Text("Recommended \(price)")
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.brand)
+                }
+            }
+            .padding(11)
+            .background((message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+}

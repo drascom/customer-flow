@@ -1,0 +1,16 @@
+[Unit]
+Description=Customer Flow local API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/dr/customer-flow/api
+ExecStart=/usr/bin/python3 /home/dr/customer-flow/api/app.py --host 0.0.0.0 --port 8080 --db /home/dr/customer-flow/api/data/customer-flow.sqlite3 --media /home/dr/customer-flow/api/media
+Environment=CF_ADMIN_DIR=/home/dr/customer-flow/admin-panel
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=default.target

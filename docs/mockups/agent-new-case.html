@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Follica Care — New Case Mockup</title>
+  <style>
+    :root {
+      --ink: #183332;
+      --muted: #687b79;
+      --line: #dce6e4;
+      --surface: #ffffff;
+      --canvas: #f4f8f7;
+      --brand: #167c72;
+      --brand-dark: #0e5f58;
+      --brand-soft: #e6f4f1;
+      --danger: #a4453d;
+      --shadow: 0 16px 45px rgba(27, 55, 53, .10);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    button, input, textarea, select { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 3px solid rgba(22, 124, 114, .24);
+      outline-offset: 2px;
+    }
+
+    .topbar {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 0 max(24px, calc((100vw - 1180px) / 2));
+      background: rgba(255,255,255,.95);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(16px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 760; letter-spacing: -.02em; }
+    .brand-mark { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--brand); color: white; font-size: 20px; box-shadow: 0 7px 18px rgba(22,124,114,.25); }
+    .workspace-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+    .profile { display: flex; align-items: center; gap: 11px; }
+    .profile-copy { text-align: right; font-size: 13px; }
+    .profile-copy strong { display: block; }
+    .profile-copy span { color: var(--muted); }
+    .avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: #d8ece8; color: var(--brand-dark); font-weight: 800; }
+
+    main { width: min(1180px, calc(100% - 48px)); margin: 36px auto 72px; }
+    .page-head { margin-bottom: 24px; }
+    .page-title-block { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; }
+    .page-copy { min-width: 0; }
+    .page-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .title-line { display: block; }
+    .back-button { border: 0; background: transparent; padding: 0; color: var(--brand-dark); cursor: pointer; font-size: 13px; font-weight: 760; }
+    .mode-button { border: 1px solid #cddbd8; border-radius: 9px; padding: 7px 10px; background: white; color: #526765; cursor: pointer; font-size: 10px; font-weight: 760; }
+    .mode-button:hover { border-color: #a9c2be; color: var(--brand-dark); }
+    h1 { margin: 8px 0 0; font-size: clamp(28px, 4vw, 40px); line-height: 1.1; letter-spacing: -.04em; }
+    .subtitle { margin: 8px 0 0; max-width: 650px; color: var(--muted); }
+    .draft-status { display: inline-flex; align-items: center; align-self: center; gap: 8px; white-space: nowrap; color: var(--muted); font-size: 12px; }
+    .draft-dot { width: 8px; height: 8px; border-radius: 50%; background: #9aaba8; }
+
+    .form-shell { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(340px, .88fr); gap: 18px; align-items: start; }
+    .details-panel { grid-column: 1; grid-row: 1; }
+    .photos-panel { grid-column: 2; grid-row: 1; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 0 3px 14px rgba(32,59,57,.035); overflow: hidden; }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+    .panel-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .photo-count { min-width: 58px; padding: 7px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark); text-align: center; font-size: 11px; font-weight: 800; }
+    .tracking-reference { flex: 0 0 auto; text-align: right; white-space: nowrap; }
+    .tracking-reference span { display: inline; color: var(--muted); font-size: 10px; font-weight: 760; letter-spacing: .02em; }
+    .tracking-reference .tracking-label-short { display: none; }
+    .tracking-reference strong { display: inline; margin-left: 4px; color: var(--ink); font-size: 13px; letter-spacing: .04em; }
+    .details-head-tools { display: flex; align-items: center; gap: 10px; }
+    .details-toggle { display: none; align-items: center; gap: 6px; border: 1px solid #cddbd8; border-radius: 9px; padding: 7px 9px; background: white; color: #526765; cursor: pointer; font-size: 10px; font-weight: 760; }
+    .details-toggle-icon { display: inline-block; font-size: 14px; line-height: 1; transition: transform .18s ease; }
+    .details-toggle[aria-expanded="false"] .details-toggle-icon { transform: rotate(-90deg); }
+    .panel-body { padding: 22px; }
+
+    .drop-zone { padding: 26px 20px; border: 1.5px dashed #b9cfcb; border-radius: 15px; background: #f8fbfa; text-align: center; transition: .18s ease; }
+    .drop-zone.dragging { border-color: var(--brand); background: var(--brand-soft); }
+    .upload-icon { width: 44px; height: 44px; margin: 0 auto 10px; border-radius: 14px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-dark); font-size: 23px; font-weight: 700; }
+    .drop-zone strong { display: block; font-size: 15px; }
+    .drop-zone p { margin: 4px auto 13px; color: var(--muted); font-size: 12px; }
+    .choose-button { border: 0; border-radius: 11px; padding: 10px 15px; background: var(--brand); color: white; cursor: pointer; font-size: 13px; font-weight: 780; box-shadow: 0 7px 16px rgba(22,124,114,.18); }
+    .choose-button:hover { background: var(--brand-dark); }
+    .share-hint { display: flex; align-items: center; gap: 9px; margin: 12px 2px 0; color: var(--muted); font-size: 11px; }
+    .share-icon { flex: 0 0 25px; height: 25px; display: grid; place-items: center; border-radius: 8px; background: #edf3f2; color: var(--brand-dark); font-weight: 800; }
+
+    .photo-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+    .upload-photo { position: relative; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 13px; background: #d7b19b; box-shadow: inset 0 0 0 1px rgba(35,61,59,.12); }
+    .upload-photo::before { content: ""; position: absolute; inset: 0; opacity: .94; }
+    .upload-photo.p1::before { background: radial-gradient(ellipse at 50% 26%, #6a493d 0 8%, #322927 9% 18%, transparent 19%), radial-gradient(ellipse at 50% 18%, #937165 0 26%, #d3a58e 27% 57%, #b4816c 58%); }
+    .upload-photo.p2::before { background: linear-gradient(138deg, transparent 0 26%, rgba(57,38,33,.7) 27% 36%, transparent 37%), radial-gradient(ellipse at 50% 10%, #4c3531 0 16%, #8c6a5d 17% 29%, #d4aa91 30% 68%, #b68168 69%); }
+    .upload-photo.p3::before { background: repeating-radial-gradient(ellipse at 50% 35%, #362c29 0 4px, #725246 5px 9px, #c6947c 10px 16px); }
+    .upload-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .photo-number { position: absolute; left: 8px; top: 8px; min-width: 25px; height: 25px; display: grid; place-items: center; border-radius: 8px; background: rgba(19,36,35,.76); color: white; font-size: 10px; font-weight: 800; backdrop-filter: blur(5px); }
+    .photo-actions { position: absolute; right: 7px; top: 7px; display: flex; gap: 5px; }
+    .photo-action { width: 27px; height: 27px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(255,255,255,.92); color: var(--ink); cursor: pointer; box-shadow: 0 3px 10px rgba(19,36,35,.16); font-size: 13px; }
+    .photo-action.remove { color: var(--danger); }
+    .photo-label { position: absolute; left: 8px; right: 8px; bottom: 8px; overflow: hidden; padding: 6px 8px; border-radius: 8px; background: rgba(19,36,35,.76); color: white; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 700; backdrop-filter: blur(5px); }
+    .photo-empty { grid-column: 1 / -1; padding: 30px 15px; border-radius: 13px; background: #f5f8f7; color: var(--muted); text-align: center; font-size: 12px; }
+    .posted-comments { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .comments-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+    .comments-head h3 { margin: 0; font-size: 15px; }
+    .comments-count { padding: 5px 8px; border-radius: 999px; background: #edf2f1; color: var(--muted); font-size: 10px; font-weight: 780; }
+    .comment-thread { display: grid; gap: 9px; }
+    .posted-comment { display: flex; gap: 9px; }
+    .comment-avatar { flex: 0 0 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #e2efed; color: var(--brand-dark); font-size: 10px; font-weight: 850; }
+    .posted-comment.doctor .comment-avatar { background: #e9f2fb; color: #2367a7; }
+    .comment-body { min-width: 0; flex: 1; padding: 10px 12px; border-radius: 4px 12px 12px 12px; background: #f4f7f6; color: #405654; font-size: 13px; line-height: 1.45; }
+    .posted-comment.doctor .comment-body { background: #edf5fb; }
+    .comment-meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; color: var(--muted); font-size: 10px; }
+    .comment-meta strong { color: var(--ink); }
+    .comment-facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .comment-fact { padding: 4px 7px; border: 1px solid #d4e4f0; border-radius: 999px; background: rgba(255,255,255,.72); color: #356184; font-size: 10px; font-weight: 760; }
+
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .field { min-width: 0; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; color: #405654; font-size: 12px; font-weight: 760; }
+    .required { color: var(--danger); }
+    .field-note { color: #8b9b98; font-size: 9px; font-weight: 600; }
+    .input, .textarea, .select { width: 100%; min-width: 0; border: 1px solid #cddbd8; border-radius: 11px; background: #fbfcfc; color: var(--ink); padding: 11px 12px; }
+    .input::placeholder, .textarea::placeholder { color: #99a6a4; }
+    .input[readonly], .textarea[readonly] { border-color: #dfe7e5; background: #f1f5f4; color: #4e6461; cursor: default; }
+    .input[aria-invalid="true"], .textarea[aria-invalid="true"] { border-color: #c56b63; background: #fff9f8; }
+    .textarea { min-height: 145px; resize: vertical; }
+    .price-control { display: grid; grid-template-columns: 82px minmax(0, 1fr); }
+    .price-control .select { border-radius: 11px 0 0 11px; border-right: 0; }
+    .price-control .input { border-radius: 0 11px 11px 0; }
+    .locked-note { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 11px 12px; border-radius: 11px; background: #f3f7f6; color: var(--muted); font-size: 10px; }
+    .locked-note.form-note { grid-column: 1 / -1; margin-top: 0; }
+    .lock { color: var(--brand-dark); font-size: 14px; }
+
+    .form-error { min-height: 19px; margin: 12px 0 0; color: var(--danger); font-size: 11px; }
+    .required-info { margin: 12px 0 0; color: var(--muted); font-size: 10px; }
+    .match-check-note { display: block; margin-top: 6px; color: var(--muted); font-size: 9px; }
+    .match-check-note.confirmed { color: var(--brand-dark); font-weight: 700; }
+    .update-composer { margin-top: 16px; padding: 13px; border: 1px solid #dce8e6; border-radius: 13px; background: #f8fbfa; }
+    .update-composer[hidden] { display: none; }
+    .update-composer label { display: block; margin-bottom: 6px; color: #405654; font-size: 12px; font-weight: 780; }
+    .update-composer textarea { min-height: 82px; }
+    .update-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 9px; }
+    .auto-upload-note { color: var(--muted); font-size: 10px; }
+    .actions { position: sticky; bottom: 12px; z-index: 12; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 14px 16px; border: 1px solid #d7e4e1; border-radius: 15px; background: rgba(255,255,255,.96); box-shadow: 0 10px 32px rgba(26,53,51,.12); backdrop-filter: blur(12px); }
+    .action-copy { min-width: 0; }
+    .action-copy strong { display: block; color: var(--ink); font-size: 12px; }
+    .action-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .action-buttons { flex: 0 0 auto; display: flex; align-items: center; gap: 9px; }
+    .secondary-button { border: 1px solid #cddbd8; border-radius: 11px; padding: 10px 14px; background: white; cursor: pointer; color: #4f6663; font-size: 12px; font-weight: 760; }
+    .submit-button { border: 0; border-radius: 11px; padding: 11px 16px; background: var(--brand); color: white; cursor: pointer; font-size: 13px; font-weight: 800; box-shadow: 0 8px 18px rgba(22,124,114,.2); }
+    .submit-button:hover { background: var(--brand-dark); }
+    .submit-button:disabled { background: #dbe3e1; color: #7a8c89; cursor: not-allowed; box-shadow: none; }
+
+    .match-layer { position: fixed; inset: 0; z-index: 70; display: none; place-items: center; padding: 20px; background: rgba(17,35,34,.56); backdrop-filter: blur(6px); }
+    .match-layer.open { display: grid; }
+    .match-dialog { width: min(470px, 100%); overflow: hidden; border-radius: 22px; background: white; box-shadow: var(--shadow); }
+    .match-head { padding: 20px 22px 15px; border-bottom: 1px solid var(--line); }
+    .match-kicker { display: block; margin-bottom: 5px; color: var(--brand); font-size: 10px; font-weight: 820; letter-spacing: .08em; text-transform: uppercase; }
+    .match-head h2 { margin: 0; font-size: 20px; }
+    .match-head p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .match-body { padding: 18px 22px 22px; }
+    .possible-patient { display: flex; align-items: center; gap: 13px; padding: 13px; border: 1px solid #d9e6e3; border-radius: 14px; background: #f6faf9; }
+    .patient-photo { flex: 0 0 58px; height: 58px; overflow: hidden; border-radius: 15px; background: radial-gradient(circle at 50% 35%, #c9987f 0 18%, transparent 19%), radial-gradient(ellipse at 50% 92%, #d8ebe7 0 45%, transparent 46%), #dce7e5; box-shadow: inset 0 0 0 1px rgba(25,55,52,.08); }
+    .possible-patient-copy { min-width: 0; }
+    .possible-patient-copy strong { display: block; font-size: 15px; }
+    .possible-patient-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .existing-warning { margin: 13px 0 0; padding: 10px 11px; border-radius: 11px; background: #fff4df; color: #79500f; font-size: 11px; }
+    .match-question { margin: 15px 0 12px; color: #405654; font-size: 13px; font-weight: 730; }
+    .match-actions { display: grid; gap: 8px; }
+    .match-actions .submit-button, .match-actions .secondary-button { width: 100%; }
+    .text-button { border: 0; padding: 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: 11px; font-weight: 700; }
+    .match-step[hidden] { display: none; }
+    .different-confirmation { margin: 0 0 14px; color: #405654; font-size: 13px; line-height: 1.5; }
+
+    .success-layer { position: fixed; inset: 0; z-index: 60; display: none; place-items: center; padding: 20px; background: rgba(17,35,34,.52); backdrop-filter: blur(5px); }
+    .success-layer.open { display: grid; }
+    .success-box { width: min(430px, 100%); border-radius: 22px; padding: 28px; background: white; text-align: center; box-shadow: var(--shadow); }
+    .success-mark { width: 54px; height: 54px; margin: 0 auto 14px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-dark); font-size: 26px; font-weight: 850; }
+    .success-box h2 { margin: 0; font-size: 22px; }
+    .success-box p { margin: 8px 0 19px; color: var(--muted); font-size: 13px; }
+    .case-result { margin: 0 0 18px; padding: 11px; border-radius: 11px; background: #f4f8f7; color: var(--ink); font-size: 12px; }
+    .done-button { width: 100%; border: 0; border-radius: 11px; padding: 11px; background: var(--brand); color: white; cursor: pointer; font-weight: 780; }
+    .toast { position: fixed; right: 24px; bottom: 24px; z-index: 80; max-width: 340px; border-radius: 13px; padding: 12px 15px; background: #173b37; color: white; box-shadow: var(--shadow); font-size: 12px; opacity: 0; transform: translateY(12px); pointer-events: none; transition: .2s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 900px) {
+      .form-shell { grid-template-columns: 1fr; }
+      .details-panel { grid-column: 1; grid-row: 1; }
+      .photos-panel { grid-column: 1; grid-row: 2; }
+      .details-toggle.is-edit-mode { display: inline-flex; }
+      .details-content.collapsed { display: none; }
+    }
+    @media (max-width: 640px) {
+      .topbar { height: 64px; padding: 0 16px; }
+      .workspace-label, .profile-copy { display: none; }
+      main { width: min(100% - 28px, 1180px); margin-top: 26px; padding-bottom: 150px; }
+      .page-title-block { grid-template-columns: 1fr; gap: 10px; }
+      .draft-status { justify-self: end; }
+      .panel-head, .panel-body { padding-left: 16px; padding-right: 16px; }
+      .details-panel .panel-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+      .details-head-tools { min-width: 0; flex-direction: column; align-items: flex-end; gap: 8px; }
+      .tracking-reference .tracking-label-full { display: none; }
+      .tracking-reference .tracking-label-short { display: inline; }
+      .field-grid { grid-template-columns: 1fr; }
+      .field.full { grid-column: 1; }
+      .photo-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .actions { position: fixed; left: 14px; right: 14px; bottom: 8px; align-items: stretch; flex-direction: column; padding: 12px; }
+      .action-buttons { width: 100%; }
+      .action-buttons > button { flex: 1; }
+      .update-footer { align-items: stretch; flex-direction: column; }
+      .secondary-button, .submit-button { width: 100%; }
+      .toast { left: 14px; right: 14px; bottom: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">+</span><span>Follica Care</span><span class="workspace-label">Agent workspace</span></div>
+    <div class="profile"><div class="profile-copy"><strong>Selin Arslan</strong><span>Patient coordinator</span></div><div class="avatar" aria-hidden="true">SA</div></div>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <div class="page-title-block"><div class="page-copy"><div class="page-nav-row"><button class="back-button" type="button">← Back to my cases</button><button class="mode-button" id="modeToggle" type="button">View edit example</button></div><div class="title-line"><h1 id="pageTitle">Create a new case</h1></div><p class="subtitle" id="pageSubtitle">Add the patient photo set and the information the doctor needs for a clear clinical recommendation.</p></div><div class="draft-status"><span class="draft-dot"></span><span id="draftStatus">Draft · Not saved</span></div></div>
+    </div>
+
+    <form id="caseForm" novalidate>
+      <div class="form-shell">
+        <section class="panel photos-panel" aria-labelledby="photosTitle">
+          <div class="panel-head"><div><h2 id="photosTitle">Patient photos</h2><p>Add all views before submitting the case.</p></div><span class="photo-count" id="photoCount">3 photos</span></div>
+          <div class="panel-body">
+            <div class="drop-zone" id="dropZone">
+              <div class="upload-icon" aria-hidden="true">＋</div>
+              <strong>Drop multiple photos here</strong>
+              <p>JPEG, PNG or HEIC · up to 12 photos</p>
+              <button class="choose-button" id="choosePhotos" type="button">Choose photos</button>
+              <input id="photoInput" type="file" accept="image/jpeg,image/png,image/heic,image/heif" multiple hidden>
+            </div>
+            <div class="share-hint"><span class="share-icon" aria-hidden="true">↗</span><span>Photos shared from iOS Share Extension or Android Share Intent will appear here automatically.</span></div>
+            <div class="photo-list" id="photoList" aria-live="polite"></div>
+            <section class="posted-comments" id="postedComments" aria-labelledby="commentsTitle" hidden>
+              <div class="comments-head"><h3 id="commentsTitle">Posted comments</h3><span class="comments-count">3 comments</span></div>
+              <div class="comment-thread">
+                <article class="posted-comment"><div class="comment-avatar">SA</div><div class="comment-body"><div class="comment-meta"><strong>Selin Arslan</strong><span>Yesterday, 15:22</span></div>Initial photos and patient history uploaded. Please review the proposed frontal zone.</div></article>
+                <article class="posted-comment doctor"><div class="comment-avatar">DR</div><div class="comment-body"><div class="comment-meta"><strong>Dr. Emre Kaya</strong><span>Yesterday, 17:05</span></div>The donor area appears suitable, subject to an in-person density measurement.<div class="comment-facts"><span class="comment-fact">Approx. 2,400–2,700 grafts</span><span class="comment-fact">Recommended €2,600</span></div></div></article>
+                <article class="posted-comment"><div class="comment-avatar">SA</div><div class="comment-body"><div class="comment-meta"><strong>Selin Arslan</strong><span>Today, 08:40</span></div>Added a new top-view photo. Could the crown be included in the same session?</div></article>
+              </div>
+              <div class="update-composer" id="updateComposer" hidden><label for="agentUpdate">Add an update or question</label><textarea class="textarea" id="agentUpdate" maxlength="1000" placeholder="Write a follow-up for the assigned doctor…"></textarea><div class="update-footer"><span class="auto-upload-note">New photos upload immediately and do not require Save.</span><button class="secondary-button" id="sendUpdate" type="button">Send to doctor</button></div></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel details-panel" aria-labelledby="detailsTitle">
+          <div class="panel-head"><div><h2 id="detailsTitle">Case details</h2></div><div class="details-head-tools"><div class="tracking-reference" aria-label="System-generated case reference"><span class="tracking-label-full">Referans:</span><span class="tracking-label-short">Ref:</span><strong id="patientReference">HT-240826</strong></div><button class="details-toggle" id="detailsToggle" type="button" aria-expanded="true" aria-controls="detailsContent"><span class="details-toggle-label">Collapse</span><span class="details-toggle-icon" aria-hidden="true">⌄</span></button></div></div>
+          <div class="details-content" id="detailsContent">
+            <div class="panel-body">
+              <div class="field-grid">
+                <div class="field"><label for="patientName"><span>Patient name <span class="required">*</span></span></label><input class="input" id="patientName" type="text" placeholder="Enter the patient's full name" autocomplete="name"><small class="match-check-note" id="matchCheckNote">Existing patient records are checked before a new record is created.</small></div>
+                <div class="locked-note form-note"><span class="lock" aria-hidden="true">▣</span><span>Graft number and price are fixed by the agent when the case is submitted. The doctor will add separate approximate graft and recommended price values in their response.</span></div>
+                <div class="field"><label for="agentGrafts"><span>Graft number <span class="required">*</span></span></label><input class="input" id="agentGrafts" type="text" inputmode="numeric" value="3,200" placeholder="e.g. 3,200"></div>
+                <div class="field"><label for="agentPrice"><span>Price <span class="required">*</span></span></label><div class="price-control"><select class="select" id="currency" aria-label="Currency"><option>EUR</option><option>GBP</option><option>USD</option><option>TRY</option></select><input class="input" id="agentPrice" type="text" inputmode="decimal" value="2,850" placeholder="2,850"></div></div>
+                <div class="field full"><label for="agentNote"><span>Agent note <span class="required">*</span></span><span class="field-note"><span id="noteCount">0</span>/1000</span></label><textarea class="textarea" id="agentNote" maxlength="1000" placeholder="Summarise the patient's goal, hair-loss pattern, medical context and the specific question for the doctor."></textarea></div>
+              </div>
+              <p class="required-info">Required information is marked with an asterisk.</p>
+              <div class="form-error" id="formError" role="alert" aria-live="polite"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="actions"><div class="action-copy"><strong id="actionTitle">Complete the case</strong><span id="actionHint">Missing: patient name and agent note.</span></div><div class="action-buttons"><button class="secondary-button" id="saveDraft" type="button">Save draft</button><button class="submit-button" id="submitCase" type="submit" disabled>Not ready</button></div></div>
+    </form>
+  </main>
+
+  <div class="match-layer" id="matchLayer" role="dialog" aria-modal="true" aria-labelledby="matchTitle">
+    <div class="match-dialog">
+      <div class="match-head"><span class="match-kicker" id="matchStepLabel">Possible match · Step 1 of 2</span><h2 id="matchTitle">This patient may already exist</h2><p>Check the profile photo before creating another patient record.</p></div>
+      <div class="match-body">
+        <div class="match-step" id="matchStepOne">
+          <div class="possible-patient"><div class="patient-photo" role="img" aria-label="Existing patient profile photo"></div><div class="possible-patient-copy"><strong>Daniel Morris</strong><span>Patient ID PT-1042 · Assigned to Dr. Emre Kaya</span><span>Last updated 2 days ago</span></div></div>
+          <p class="existing-warning">This patient is already in the system and was added by another authorised agent.</p>
+          <p class="match-question">Does the profile photo belong to the patient you are registering?</p>
+          <div class="match-actions"><button class="submit-button" id="useExistingPatient" type="button">Yes — update this patient</button><button class="secondary-button" id="differentPatient" type="button">No — different patient</button><button class="text-button" id="cancelMatch" type="button">Go back and check the name</button></div>
+        </div>
+        <div class="match-step" id="matchStepTwo" hidden>
+          <p class="different-confirmation">You are creating a separate patient with the same name. Confirm that you checked the profile photo and that this is a different person. This decision will be recorded.</p>
+          <div class="match-actions"><button class="submit-button" id="confirmDifferentPatient" type="button">Confirm different patient</button><button class="secondary-button" id="backToMatch" type="button">Back to possible match</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="success-layer" id="successLayer" role="dialog" aria-modal="true" aria-labelledby="successTitle">
+    <div class="success-box"><div class="success-mark">✓</div><h2 id="successTitle">Case submitted</h2><p>The photo set and agent-fixed values are now waiting for the doctor's response.</p><div class="case-result"><strong id="resultReference">HT-240826</strong> · Waiting for Doctor</div><button class="done-button" id="doneButton" type="button">Back to my cases</button></div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const photos = [
+      { name: 'Front view', demoClass: 'p1' },
+      { name: 'Top view', demoClass: 'p2' },
+      { name: 'Donor area', demoClass: 'p3' }
+    ];
+    const maximumPhotos = 12;
+    let editMode = false;
+    let editReturnedToDoctor = false;
+    let duplicateDecision = '';
+    const photoList = document.getElementById('photoList');
+    const photoInput = document.getElementById('photoInput');
+    const dropZone = document.getElementById('dropZone');
+
+    function renderPhotos() {
+      document.getElementById('photoCount').textContent = `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`;
+      photoList.innerHTML = photos.length ? photos.map((photo, index) => `
+        <div class="upload-photo ${photo.demoClass || ''}" data-index="${index}">
+          ${photo.url ? `<img src="${photo.url}" alt="Uploaded patient photo ${index + 1}">` : ''}
+          <span class="photo-number">${index + 1}</span>
+          <span class="photo-actions">
+            <button class="photo-action move-left" type="button" aria-label="Move photo ${index + 1} left" ${index === 0 ? 'disabled' : ''}>←</button>
+            <button class="photo-action remove" type="button" aria-label="Remove photo ${index + 1}">×</button>
+          </span>
+          <span class="photo-label">${photo.name}</span>
+        </div>`).join('') : `<div class="photo-empty">No photos added yet. Add at least two patient views.</div>`;
+      photoList.querySelectorAll('.remove').forEach(button => button.addEventListener('click', () => {
+        const index = Number(button.closest('.upload-photo').dataset.index);
+        if (photos[index]?.url) URL.revokeObjectURL(photos[index].url);
+        photos.splice(index, 1);
+        renderPhotos();
+        if (editMode) markReturnedToDoctor('Photo change synced automatically.');
+      }));
+      photoList.querySelectorAll('.move-left').forEach(button => button.addEventListener('click', () => {
+        const index = Number(button.closest('.upload-photo').dataset.index);
+        if (index < 1) return;
+        [photos[index - 1], photos[index]] = [photos[index], photos[index - 1]];
+        renderPhotos();
+      }));
+      updateSubmitState();
+    }
+
+    function updateSubmitState() {
+      const submitButton = document.getElementById('submitCase');
+      if (editMode) {
+        submitButton.disabled = editReturnedToDoctor;
+        submitButton.textContent = editReturnedToDoctor ? 'Waiting for Doctor' : 'Confirm & Close';
+        document.getElementById('actionTitle').textContent = editReturnedToDoctor ? 'Update sent to doctor' : 'Doctor recommendation received';
+        document.getElementById('actionHint').textContent = editReturnedToDoctor ? 'This case will return here after the doctor responds.' : 'Save only graft and price changes, or confirm and close the case.';
+        return;
+      }
+      const fields = [
+        ['patientName', 'patient name'],
+        ['agentGrafts', 'graft number'],
+        ['agentPrice', 'price'],
+        ['agentNote', 'agent note']
+      ];
+      const missing = fields.filter(([id]) => !document.getElementById(id).value.trim()).map(([, label]) => label);
+      if (photos.length < 2) missing.push('at least 2 photos');
+      const ready = missing.length === 0;
+      submitButton.disabled = !ready;
+      submitButton.textContent = ready ? 'Ready to submit →' : 'Not ready';
+      document.getElementById('actionTitle').textContent = ready ? 'Ready for doctor review' : 'Complete the case';
+      document.getElementById('actionHint').textContent = ready ? 'All required information and photos are ready.' : `Missing: ${missing.join(', ')}.`;
+    }
+
+    function setDetailsExpanded(expanded) {
+      const toggle = document.getElementById('detailsToggle');
+      const content = document.getElementById('detailsContent');
+      toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      toggle.querySelector('.details-toggle-label').textContent = expanded ? 'Collapse' : 'Expand';
+      content.classList.toggle('collapsed', !expanded);
+    }
+
+    function setEditMode(enabled) {
+      editMode = enabled;
+      editReturnedToDoctor = false;
+      duplicateDecision = '';
+      document.getElementById('detailsToggle').classList.toggle('is-edit-mode', enabled);
+      setDetailsExpanded(!enabled);
+      document.getElementById('modeToggle').textContent = enabled ? 'Back to new case' : 'View edit example';
+      document.getElementById('pageTitle').textContent = enabled ? 'Edit case' : 'Create a new case';
+      document.getElementById('pageSubtitle').textContent = enabled ? 'Review the assigned doctor’s recommendation, update the fixed values or send new information.' : 'Add the patient photo set and the information the doctor needs for a clear clinical recommendation.';
+      document.getElementById('patientReference').textContent = enabled ? 'HT-240803' : 'HT-240826';
+      document.getElementById('patientName').value = enabled ? 'Daniel Morris' : '';
+      document.getElementById('agentGrafts').value = enabled ? '2,600' : '3,200';
+      document.getElementById('agentPrice').value = enabled ? '2,500' : '2,850';
+      document.getElementById('agentNote').value = enabled ? 'Receding hairline with good donor density. Please review the proposed frontal zone and the newly added crown photo.' : '';
+      document.getElementById('patientName').readOnly = enabled;
+      document.getElementById('agentNote').readOnly = enabled;
+      document.getElementById('noteCount').textContent = document.getElementById('agentNote').value.length;
+      document.getElementById('postedComments').hidden = !enabled;
+      document.getElementById('updateComposer').hidden = !enabled;
+      document.querySelector('.required-info').hidden = enabled;
+      document.getElementById('draftStatus').textContent = enabled ? 'Answered · Waiting for your confirmation' : 'Draft · Not saved';
+      document.querySelector('.draft-dot').style.background = enabled ? 'var(--blue, #3277b3)' : '#9aaba8';
+      document.getElementById('saveDraft').textContent = enabled ? 'Save graft & price' : 'Save draft';
+      updateSubmitState();
+    }
+
+    function possibleExistingPatient() {
+      return !editMode && document.getElementById('patientName').value.trim().toLocaleLowerCase() === 'daniel morris';
+    }
+
+    function showMatchStep(step) {
+      const second = step === 2;
+      document.getElementById('matchStepOne').hidden = second;
+      document.getElementById('matchStepTwo').hidden = !second;
+      document.getElementById('matchStepLabel').textContent = second ? 'Same-name patient · Step 2 of 2' : 'Possible match · Step 1 of 2';
+      document.getElementById('matchTitle').textContent = second ? 'Confirm a different patient' : 'This patient may already exist';
+    }
+
+    function openDuplicateWizard() {
+      showMatchStep(1);
+      document.getElementById('matchLayer').classList.add('open');
+      document.body.style.overflow = 'hidden';
+      document.getElementById('useExistingPatient').focus();
+    }
+
+    function closeDuplicateWizard() {
+      document.getElementById('matchLayer').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function markReturnedToDoctor(message) {
+      if (!editMode) return;
+      editReturnedToDoctor = true;
+      document.getElementById('draftStatus').textContent = 'Waiting for Doctor · Synced';
+      document.querySelector('.draft-dot').style.background = '#a86612';
+      updateSubmitState();
+      if (message) showToast(message);
+    }
+
+    function addFiles(fileList) {
+      const imageFiles = [...fileList].filter(file => file.type.startsWith('image/'));
+      const remaining = maximumPhotos - photos.length;
+      imageFiles.slice(0, remaining).forEach(file => photos.push({ name: file.name, url: URL.createObjectURL(file) }));
+      renderPhotos();
+      if (editMode && imageFiles.length) markReturnedToDoctor('New photos uploaded and sent to the doctor automatically.');
+      if (imageFiles.length > remaining) showToast(`Maximum ${maximumPhotos} photos. Extra files were not added.`);
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    document.getElementById('choosePhotos').addEventListener('click', () => photoInput.click());
+    document.getElementById('modeToggle').addEventListener('click', () => setEditMode(!editMode));
+    document.getElementById('detailsToggle').addEventListener('click', () => {
+      const toggle = document.getElementById('detailsToggle');
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      setDetailsExpanded(!expanded);
+    });
+    photoInput.addEventListener('change', event => { addFiles(event.target.files); photoInput.value = ''; });
+    ['dragenter', 'dragover'].forEach(type => dropZone.addEventListener(type, event => { event.preventDefault(); dropZone.classList.add('dragging'); }));
+    ['dragleave', 'drop'].forEach(type => dropZone.addEventListener(type, event => { event.preventDefault(); dropZone.classList.remove('dragging'); }));
+    dropZone.addEventListener('drop', event => addFiles(event.dataTransfer.files));
+
+    document.getElementById('agentNote').addEventListener('input', event => { document.getElementById('noteCount').textContent = event.target.value.length; });
+    ['patientName', 'agentGrafts', 'agentPrice', 'agentNote'].forEach(id => document.getElementById(id).addEventListener('input', updateSubmitState));
+    document.getElementById('patientName').addEventListener('input', () => {
+      duplicateDecision = '';
+      const note = document.getElementById('matchCheckNote');
+      note.textContent = 'Existing patient records are checked before a new record is created.';
+      note.classList.remove('confirmed');
+    });
+    document.getElementById('patientName').addEventListener('blur', () => { if (possibleExistingPatient() && !duplicateDecision) openDuplicateWizard(); });
+    document.getElementById('differentPatient').addEventListener('click', () => showMatchStep(2));
+    document.getElementById('backToMatch').addEventListener('click', () => showMatchStep(1));
+    document.getElementById('cancelMatch').addEventListener('click', () => { closeDuplicateWizard(); document.getElementById('patientName').focus(); });
+    document.getElementById('confirmDifferentPatient').addEventListener('click', () => {
+      duplicateDecision = 'different';
+      const note = document.getElementById('matchCheckNote');
+      note.textContent = 'Different patient confirmed — a new Patient ID will be created.';
+      note.classList.add('confirmed');
+      closeDuplicateWizard();
+      showToast('Same-name patient override recorded.');
+    });
+    document.getElementById('useExistingPatient').addEventListener('click', () => {
+      duplicateDecision = 'existing';
+      closeDuplicateWizard();
+      setEditMode(true);
+      showToast('Existing patient opened. New updates will go to the assigned doctor.');
+    });
+    document.getElementById('saveDraft').addEventListener('click', () => {
+      if (editMode) {
+        const grafts = document.getElementById('agentGrafts');
+        const price = document.getElementById('agentPrice');
+        if (!grafts.value.trim() || !price.value.trim()) { showToast('Enter both graft number and price before saving.'); (!grafts.value.trim() ? grafts : price).focus(); return; }
+        document.getElementById('draftStatus').textContent = editReturnedToDoctor ? 'Waiting for Doctor · Values saved' : 'Answered · Values saved';
+        showToast('Graft number and price saved. Photos and comments sync separately.');
+        return;
+      }
+      if (possibleExistingPatient() && duplicateDecision !== 'different') { openDuplicateWizard(); return; }
+      document.getElementById('draftStatus').textContent = editMode ? 'Saved · Updated just now' : 'Draft · Saved just now';
+      document.querySelector('.draft-dot').style.background = 'var(--brand)';
+      showToast(editMode ? 'Case changes saved in this demo session.' : 'Draft saved in this demo session.');
+    });
+
+    document.getElementById('sendUpdate').addEventListener('click', () => {
+      const input = document.getElementById('agentUpdate');
+      const text = input.value.trim();
+      if (!text) { input.focus(); showToast('Write an update or question first.'); return; }
+      document.querySelector('.comment-thread').insertAdjacentHTML('beforeend', `<article class="posted-comment"><div class="comment-avatar">SA</div><div class="comment-body"><div class="comment-meta"><strong>Selin Arslan</strong><span>Just now</span></div>${text.replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[character]))}</div></article>`);
+      input.value = '';
+      markReturnedToDoctor('Update sent to the assigned doctor.');
+    });
+
+    document.getElementById('caseForm').addEventListener('submit', event => {
+      event.preventDefault();
+      if (editMode) {
+        if (editReturnedToDoctor) return;
+        document.getElementById('resultReference').textContent = document.getElementById('patientReference').textContent.trim();
+        document.getElementById('successTitle').textContent = 'Case confirmed and closed';
+        document.querySelector('.success-box p').textContent = 'The assigned doctor’s recommendation has been confirmed by the agent.';
+        document.querySelector('.case-result').innerHTML = `<strong>${document.getElementById('patientReference').textContent.trim()}</strong> · Closed`;
+        document.getElementById('successLayer').classList.add('open');
+        document.body.style.overflow = 'hidden';
+        document.getElementById('doneButton').focus();
+        return;
+      }
+      const required = [document.getElementById('patientName'), document.getElementById('agentGrafts'), document.getElementById('agentPrice'), document.getElementById('agentNote')];
+      required.forEach(field => field.removeAttribute('aria-invalid'));
+      const missing = required.find(field => !field.value.trim());
+      if (photos.length < 2) { document.getElementById('formError').textContent = 'Add at least two patient photos before submitting.'; document.querySelector('.photos-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+      if (missing) { document.getElementById('formError').textContent = 'Complete all required fields before submitting.'; missing.setAttribute('aria-invalid', 'true'); missing.focus(); return; }
+      document.getElementById('formError').textContent = '';
+      document.getElementById('resultReference').textContent = document.getElementById('patientReference').textContent.trim();
+      document.querySelector('.case-result').innerHTML = `<strong id="resultReference">${document.getElementById('patientReference').textContent.trim()}</strong> · Waiting for Doctor`;
+      document.getElementById('successTitle').textContent = 'Case submitted';
+      document.querySelector('.success-box p').textContent = 'The photo set and agent-fixed values are now waiting for the doctor\'s response.';
+      document.getElementById('successLayer').classList.add('open');
+      document.body.style.overflow = 'hidden';
+      document.getElementById('doneButton').focus();
+    });
+    document.getElementById('doneButton').addEventListener('click', () => {
+      document.getElementById('successLayer').classList.remove('open');
+      document.body.style.overflow = '';
+      showToast(editMode ? 'Case confirmed and closed.' : 'Case added to Waiting for Doctor.');
+    });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && document.getElementById('matchLayer').classList.contains('open')) closeDuplicateWizard(); });
+    renderPhotos();
+  </script>
+</body>
+</html>

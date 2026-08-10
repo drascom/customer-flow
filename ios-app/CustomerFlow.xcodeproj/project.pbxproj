@@ -1,0 +1,355 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* CustomerFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* CustomerFlowApp.swift */; };
+		A10000000000000000000002 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* AppState.swift */; };
+		A10000000000000000000003 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* RootView.swift */; };
+		A10000000000000000000004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* Models.swift */; };
+		A10000000000000000000005 /* ServiceProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* ServiceProtocols.swift */; };
+		A10000000000000000000006 /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* MockServices.swift */; };
+		A10000000000000000000007 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* AppTheme.swift */; };
+		A10000000000000000000008 /* DoctorQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* DoctorQueueView.swift */; };
+		A10000000000000000000009 /* CaseDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* CaseDetailView.swift */; };
+		A1000000000000000000000A /* AgentCaseEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000A /* AgentCaseEditorView.swift */; };
+		A1000000000000000000000B /* PatientMatchSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* PatientMatchSheet.swift */; };
+		A1000000000000000000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* Assets.xcassets */; };
+		A1000000000000000000000D /* RemoteServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* RemoteServices.swift */; };
+		A1000000000000000000000E /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000F /* OnboardingView.swift */; };
+		A1000000000000000000000F /* AdminUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* AdminUser.swift */; };
+		A10000000000000000000010 /* AdminCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* AdminCase.swift */; };
+		A10000000000000000000011 /* AdminAgency.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* AdminAgency.swift */; };
+		A10000000000000000000012 /* AdminDashboardSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* AdminDashboardSection.swift */; };
+		A10000000000000000000013 /* AdminRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* AdminRepository.swift */; };
+		A10000000000000000000014 /* RemoteAdminRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* RemoteAdminRepository.swift */; };
+		A10000000000000000000015 /* AdminDashboardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* AdminDashboardModel.swift */; };
+		A10000000000000000000016 /* AdminCaseCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* AdminCaseCard.swift */; };
+		A10000000000000000000017 /* AdminUserCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* AdminUserCard.swift */; };
+		A10000000000000000000018 /* AdminCreateAgencySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* AdminCreateAgencySheet.swift */; };
+		A10000000000000000000019 /* AdminCreateUserSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* AdminCreateUserSheet.swift */; };
+		A1000000000000000000001A /* AdminDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001B /* AdminDashboardView.swift */; };
+		A1000000000000000000001B /* AppTourStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* AppTourStep.swift */; };
+		A1000000000000000000001C /* UserRole+AppTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* UserRole+AppTour.swift */; };
+		A1000000000000000000001D /* AppTourStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* AppTourStore.swift */; };
+		A1000000000000000000001E /* UserDefaultsAppTourStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* UserDefaultsAppTourStore.swift */; };
+		A1000000000000000000001F /* AppTourModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* AppTourModel.swift */; };
+		A10000000000000000000020 /* AppTourView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* AppTourView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B10000000000000000000001 /* CustomerFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerFlowApp.swift; sourceTree = "<group>"; };
+		B10000000000000000000002 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		B10000000000000000000003 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		B10000000000000000000004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		B10000000000000000000005 /* ServiceProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceProtocols.swift; sourceTree = "<group>"; };
+		B10000000000000000000006 /* MockServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockServices.swift; sourceTree = "<group>"; };
+		B10000000000000000000007 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		B10000000000000000000008 /* DoctorQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoctorQueueView.swift; sourceTree = "<group>"; };
+		B10000000000000000000009 /* CaseDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseDetailView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000A /* AgentCaseEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCaseEditorView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000B /* PatientMatchSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatientMatchSheet.swift; sourceTree = "<group>"; };
+		B1000000000000000000000C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B1000000000000000000000D /* CustomerFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CustomerFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000000000000000000000E /* RemoteServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteServices.swift; sourceTree = "<group>"; };
+		B1000000000000000000000F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		B10000000000000000000010 /* AdminUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminUser.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* AdminCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminCase.swift; sourceTree = "<group>"; };
+		B10000000000000000000012 /* AdminAgency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminAgency.swift; sourceTree = "<group>"; };
+		B10000000000000000000013 /* AdminDashboardSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminDashboardSection.swift; sourceTree = "<group>"; };
+		B10000000000000000000014 /* AdminRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminRepository.swift; sourceTree = "<group>"; };
+		B10000000000000000000015 /* RemoteAdminRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAdminRepository.swift; sourceTree = "<group>"; };
+		B10000000000000000000016 /* AdminDashboardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminDashboardModel.swift; sourceTree = "<group>"; };
+		B10000000000000000000017 /* AdminCaseCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminCaseCard.swift; sourceTree = "<group>"; };
+		B10000000000000000000018 /* AdminUserCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminUserCard.swift; sourceTree = "<group>"; };
+		B10000000000000000000019 /* AdminCreateAgencySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminCreateAgencySheet.swift; sourceTree = "<group>"; };
+		B1000000000000000000001A /* AdminCreateUserSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminCreateUserSheet.swift; sourceTree = "<group>"; };
+		B1000000000000000000001B /* AdminDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminDashboardView.swift; sourceTree = "<group>"; };
+		B1000000000000000000001C /* AppTourStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourStep.swift; sourceTree = "<group>"; };
+		B1000000000000000000001D /* UserRole+AppTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UserRole+AppTour.swift"; sourceTree = "<group>"; };
+		B1000000000000000000001E /* AppTourStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourStore.swift; sourceTree = "<group>"; };
+		B1000000000000000000001F /* UserDefaultsAppTourStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsAppTourStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000020 /* AppTourModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourModel.swift; sourceTree = "<group>"; };
+		B10000000000000000000021 /* AppTourView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C10000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D10000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000002 /* CustomerFlow */,
+				D1000000000000000000000B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D10000000000000000000002 /* CustomerFlow */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000003 /* App */,
+				D10000000000000000000004 /* Domain */,
+				D10000000000000000000005 /* Services */,
+				D10000000000000000000006 /* Shared */,
+				D10000000000000000000007 /* Features */,
+				D1000000000000000000000A /* Resources */,
+			);
+			path = CustomerFlow;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000001 /* CustomerFlowApp.swift */,
+				B10000000000000000000002 /* AppState.swift */,
+				B10000000000000000000003 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000004 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000004 /* Models.swift */,
+				D1000000000000000000000C /* Admin */,
+				D1000000000000000000000F /* AppTour */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000005 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000005 /* ServiceProtocols.swift */,
+				B10000000000000000000006 /* MockServices.swift */,
+				B1000000000000000000000E /* RemoteServices.swift */,
+				D1000000000000000000000D /* Admin */,
+				D10000000000000000000010 /* AppTour */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000006 /* Shared */ = {
+			isa = PBXGroup;
+			children = (B10000000000000000000007 /* AppTheme.swift */);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000007 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000F /* OnboardingView.swift */,
+				D10000000000000000000008 /* Doctor */,
+				D10000000000000000000009 /* Agent */,
+				D1000000000000000000000E /* Admin */,
+				D10000000000000000000011 /* AppTour */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000008 /* Doctor */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000008 /* DoctorQueueView.swift */,
+				B10000000000000000000009 /* CaseDetailView.swift */,
+			);
+			path = Doctor;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000009 /* Agent */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000A /* AgentCaseEditorView.swift */,
+				B1000000000000000000000B /* PatientMatchSheet.swift */,
+			);
+			path = Agent;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000A /* Resources */ = {
+			isa = PBXGroup;
+			children = (B1000000000000000000000C /* Assets.xcassets */);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000B /* Products */ = {
+			isa = PBXGroup;
+			children = (B1000000000000000000000D /* CustomerFlow.app */);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000C /* Admin */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000010 /* AdminUser.swift */,
+				B10000000000000000000011 /* AdminCase.swift */,
+				B10000000000000000000012 /* AdminAgency.swift */,
+				B10000000000000000000013 /* AdminDashboardSection.swift */,
+			);
+			path = Admin;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000D /* Admin */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000014 /* AdminRepository.swift */,
+				B10000000000000000000015 /* RemoteAdminRepository.swift */,
+			);
+			path = Admin;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000E /* Admin */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000016 /* AdminDashboardModel.swift */,
+				B10000000000000000000017 /* AdminCaseCard.swift */,
+				B10000000000000000000018 /* AdminUserCard.swift */,
+				B10000000000000000000019 /* AdminCreateAgencySheet.swift */,
+				B1000000000000000000001A /* AdminCreateUserSheet.swift */,
+				B1000000000000000000001B /* AdminDashboardView.swift */,
+			);
+			path = Admin;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000F /* AppTour */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000001C /* AppTourStep.swift */,
+				B1000000000000000000001D /* UserRole+AppTour.swift */,
+			);
+			path = AppTour;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000010 /* AppTour */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000001E /* AppTourStore.swift */,
+				B1000000000000000000001F /* UserDefaultsAppTourStore.swift */,
+			);
+			path = AppTour;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000011 /* AppTour */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000020 /* AppTourModel.swift */,
+				B10000000000000000000021 /* AppTourView.swift */,
+			);
+			path = AppTour;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E10000000000000000000001 /* CustomerFlow */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10000000000000000000002 /* Build configuration list for PBXNativeTarget "CustomerFlow" */;
+			buildPhases = (
+				C10000000000000000000002 /* Sources */,
+				C10000000000000000000001 /* Frameworks */,
+				C10000000000000000000003 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = CustomerFlow;
+			productName = CustomerFlow;
+			productReference = B1000000000000000000000D /* CustomerFlow.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E10000000000000000000002 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = { E10000000000000000000001 = { CreatedOnToolsVersion = 26.6; }; };
+			};
+			buildConfigurationList = F10000000000000000000001 /* Build configuration list for PBXProject "CustomerFlow" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = D10000000000000000000001;
+			productRefGroup = D1000000000000000000000B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (E10000000000000000000001 /* CustomerFlow */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C10000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A1000000000000000000000C /* Assets.xcassets in Resources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C10000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* CustomerFlowApp.swift in Sources */,
+				A10000000000000000000002 /* AppState.swift in Sources */,
+				A10000000000000000000003 /* RootView.swift in Sources */,
+				A10000000000000000000004 /* Models.swift in Sources */,
+				A10000000000000000000005 /* ServiceProtocols.swift in Sources */,
+				A10000000000000000000006 /* MockServices.swift in Sources */,
+				A10000000000000000000007 /* AppTheme.swift in Sources */,
+				A10000000000000000000008 /* DoctorQueueView.swift in Sources */,
+				A10000000000000000000009 /* CaseDetailView.swift in Sources */,
+				A1000000000000000000000A /* AgentCaseEditorView.swift in Sources */,
+				A1000000000000000000000B /* PatientMatchSheet.swift in Sources */,
+				A1000000000000000000000D /* RemoteServices.swift in Sources */,
+				A1000000000000000000000E /* OnboardingView.swift in Sources */,
+				A1000000000000000000000F /* AdminUser.swift in Sources */,
+				A10000000000000000000010 /* AdminCase.swift in Sources */,
+				A10000000000000000000011 /* AdminAgency.swift in Sources */,
+				A10000000000000000000012 /* AdminDashboardSection.swift in Sources */,
+				A10000000000000000000013 /* AdminRepository.swift in Sources */,
+				A10000000000000000000014 /* RemoteAdminRepository.swift in Sources */,
+				A10000000000000000000015 /* AdminDashboardModel.swift in Sources */,
+				A10000000000000000000016 /* AdminCaseCard.swift in Sources */,
+				A10000000000000000000017 /* AdminUserCard.swift in Sources */,
+				A10000000000000000000018 /* AdminCreateAgencySheet.swift in Sources */,
+				A10000000000000000000019 /* AdminCreateUserSheet.swift in Sources */,
+				A1000000000000000000001A /* AdminDashboardView.swift in Sources */,
+				A1000000000000000000001B /* AppTourStep.swift in Sources */,
+				A1000000000000000000001C /* UserRole+AppTour.swift in Sources */,
+				A1000000000000000000001D /* AppTourStore.swift in Sources */,
+				A1000000000000000000001E /* UserDefaultsAppTourStore.swift in Sources */,
+				A1000000000000000000001F /* AppTourModel.swift in Sources */,
+				A10000000000000000000020 /* AppTourView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		F10000000000000000000011 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_OPTIMIZATION_LEVEL = 0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		F10000000000000000000012 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; GCC_C_LANGUAGE_STANDARD = gnu17; MTL_ENABLE_DEBUG_INFO = NO; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; }; name = Release; };
+		F10000000000000000000021 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		F10000000000000000000022 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F10000000000000000000001 /* Build configuration list for PBXProject "CustomerFlow" */ = {isa = XCConfigurationList; buildConfigurations = (F10000000000000000000011 /* Debug */, F10000000000000000000012 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		F10000000000000000000002 /* Build configuration list for PBXNativeTarget "CustomerFlow" */ = {isa = XCConfigurationList; buildConfigurations = (F10000000000000000000021 /* Debug */, F10000000000000000000022 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = E10000000000000000000002 /* Project object */;
+}

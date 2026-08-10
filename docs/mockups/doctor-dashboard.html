@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Follica Care — Doctor Workspace Mockup</title>
+  <style>
+    :root {
+      --ink: #183332;
+      --muted: #687b79;
+      --line: #dce6e4;
+      --surface: #ffffff;
+      --canvas: #f4f8f7;
+      --brand: #167c72;
+      --brand-dark: #0e5f58;
+      --brand-soft: #e6f4f1;
+      --amber: #a85d0d;
+      --amber-soft: #fff2dd;
+      --blue: #2367a7;
+      --blue-soft: #e9f2fb;
+      --shadow: 0 16px 45px rgba(27, 55, 53, .10);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    button, textarea, input { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, textarea:focus-visible, input:focus-visible {
+      outline: 3px solid rgba(22, 124, 114, .25);
+      outline-offset: 2px;
+    }
+
+    .topbar {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 0 max(24px, calc((100vw - 1180px) / 2));
+      background: rgba(255, 255, 255, .94);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(16px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 760; letter-spacing: -.02em; }
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: var(--brand);
+      color: white;
+      font-size: 20px;
+      box-shadow: 0 7px 18px rgba(22, 124, 114, .25);
+    }
+    .workspace-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+    .profile { display: flex; align-items: center; gap: 11px; }
+    .profile-copy { text-align: right; font-size: 13px; }
+    .profile-copy strong { display: block; color: var(--ink); }
+    .profile-copy span { color: var(--muted); }
+    .avatar { width: 38px; height: 38px; border-radius: 50%; background: #d8ece8; display: grid; place-items: center; color: var(--brand-dark); font-weight: 800; }
+
+    main { width: min(1180px, calc(100% - 48px)); margin: 44px auto 72px; }
+    .heading-row { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 28px; }
+    .eyebrow { margin: 0 0 7px; color: var(--brand); font-weight: 800; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 40px); line-height: 1.12; letter-spacing: -.04em; }
+    .subtitle { margin: 8px 0 0; color: var(--muted); max-width: 620px; }
+    .queue-note { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 5px var(--brand-soft); }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .tabs { display: inline-flex; gap: 5px; padding: 5px; background: #e9efed; border-radius: 14px; }
+    .tab {
+      border: 0;
+      background: transparent;
+      border-radius: 10px;
+      padding: 10px 15px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      transition: .18s ease;
+      white-space: nowrap;
+    }
+    .tab:hover { color: var(--ink); }
+    .tab.active { background: white; color: var(--ink); box-shadow: 0 2px 8px rgba(34, 55, 54, .09); }
+    .count { display: inline-grid; place-items: center; min-width: 23px; height: 23px; padding: 0 7px; margin-left: 6px; border-radius: 999px; background: #dce7e5; font-size: 12px; }
+    .tab.active .count { background: var(--brand-soft); color: var(--brand-dark); }
+    .sort-button {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 11px 14px;
+      cursor: pointer;
+      font-weight: 720;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 2px 5px rgba(30, 58, 56, .04);
+    }
+    .sort-button:hover { border-color: #adc5c1; }
+    .sort-icon { color: var(--brand); font-size: 18px; line-height: 1; }
+
+    .queue-tools { position: sticky; top: 80px; z-index: 18; display: flex; align-items: center; gap: 12px; margin: -8px -8px 14px; padding: 8px; border-radius: 15px; background: rgba(244,248,247,.94); box-shadow: 0 8px 22px rgba(27,55,53,.06); backdrop-filter: blur(14px); }
+    .search-field { position: relative; flex: 1; min-width: 0; }
+    .search-icon { position: absolute; left: 16px; top: 50%; width: 14px; height: 14px; border: 2px solid #839592; border-radius: 50%; transform: translateY(-58%); pointer-events: none; }
+    .search-icon::after { content: ""; position: absolute; width: 6px; height: 2px; right: -5px; bottom: -3px; border-radius: 2px; background: #839592; transform: rotate(45deg); transform-origin: left center; }
+    .search-box {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid #cddbd8;
+      background: white;
+      border-radius: 12px;
+      padding: 12px 15px 12px 43px;
+      color: var(--ink);
+      box-shadow: 0 2px 5px rgba(30,58,56,.035);
+    }
+    .search-box::placeholder { color: #99a5b5; }
+    .search-box:focus { border-color: var(--brand); }
+
+    .case-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .case-card {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 50px 20px 20px;
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      align-items: start;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 3px 14px rgba(32, 59, 57, .035);
+      transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+    }
+    .case-card:hover { transform: translateY(-2px); border-color: #b9cfcb; box-shadow: 0 13px 30px rgba(31, 60, 58, .09); }
+    .case-card:focus-visible { outline-offset: 4px; }
+    .card-meta-top { position: absolute; top: 16px; left: 20px; right: 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-bottom: 10px; border-bottom: 1px solid #edf2f1; }
+    .case-id { color: var(--muted); font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+    .agent-name { display: block; margin: 0; font-size: 17px; font-weight: 780; letter-spacing: -.015em; }
+    .time { color: var(--muted); font-size: 13px; }
+    .photo-strip { display: flex; gap: 7px; }
+    .photo {
+      position: relative;
+      overflow: hidden;
+      flex: 0 0 48px;
+      height: 54px;
+      border-radius: 10px;
+      border: 2px solid white;
+      box-shadow: 0 0 0 1px #d8e3e1;
+      background-color: #d7b19b;
+    }
+    .photo::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: .92;
+    }
+    .p1::before { background: radial-gradient(ellipse at 50% 26%, #6a493d 0 8%, #322927 9% 18%, transparent 19%), radial-gradient(ellipse at 50% 18%, #937165 0 26%, #d3a58e 27% 57%, #b4816c 58%); }
+    .p2::before { background: linear-gradient(138deg, transparent 0 26%, rgba(57,38,33,.7) 27% 36%, transparent 37%), radial-gradient(ellipse at 50% 10%, #4c3531 0 16%, #8c6a5d 17% 29%, #d4aa91 30% 68%, #b68168 69%); }
+    .p3::before { background: repeating-radial-gradient(ellipse at 50% 35%, #362c29 0 2px, #725246 3px 5px, #c6947c 6px 10px); }
+    .p4::before { background: radial-gradient(ellipse at 55% 38%, #4a3730 0 14%, #94705f 15% 30%, #c99980 31% 62%, #9a6958 63%); }
+    .more-photos { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(22, 43, 42, .68); color: white; font-size: 11px; font-weight: 800; }
+    .card-carousel { position: relative; width: 100%; height: clamp(230px, 22vw, 300px); overflow: hidden; border-radius: 14px; background: #d7b19b; box-shadow: 0 0 0 1px #d3dfdd; touch-action: pan-y; cursor: grab; }
+    .card-carousel:active { cursor: grabbing; }
+    .card-photo { position: absolute; inset: 0; overflow: hidden; background-color: #d7b19b; }
+    .card-photo::before { content: ""; position: absolute; inset: 0; opacity: .94; }
+    .card-photo-nav { position: absolute; top: 50%; z-index: 2; width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgba(255,255,255,.90); color: var(--ink); cursor: pointer; font-size: 21px; line-height: 1; box-shadow: 0 3px 10px rgba(19,36,35,.18); transform: translateY(-50%); }
+    .card-photo-nav.previous { left: 9px; }
+    .card-photo-nav.next { right: 9px; }
+    .card-photo-nav:disabled { opacity: 0; pointer-events: none; }
+    .card-photo-count { position: absolute; right: 9px; bottom: 9px; z-index: 2; min-width: 42px; padding: 5px 8px; border-radius: 999px; background: rgba(19,36,35,.76); color: white; text-align: center; font-size: 11px; font-weight: 800; backdrop-filter: blur(5px); }
+    .uploader-filter { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; border: 0; background: transparent; padding: 3px 2px; color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; }
+    .uploader-filter strong { color: var(--ink); font-size: 11px; }
+    .uploader-filter:hover strong, .uploader-filter:focus-visible strong { color: var(--brand-dark); text-decoration: underline; }
+    .uploader-filter.active { color: var(--brand-dark); }
+    .uploader-filter.active strong { color: var(--brand-dark); }
+    .uploader-filter-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: -7px 0 14px; padding: 9px 11px 9px 13px; border: 1px solid #cfe1de; border-radius: 12px; background: var(--brand-soft); color: var(--brand-dark); font-size: 12px; }
+    .uploader-filter-bar[hidden] { display: none; }
+    .clear-uploader-filter { border: 0; border-radius: 8px; padding: 6px 8px; background: rgba(255,255,255,.76); color: var(--brand-dark); cursor: pointer; font-size: 11px; font-weight: 750; }
+    .note-preview { color: #526765; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .patient-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .patient-name { min-width: 0; overflow: hidden; color: var(--ink); font-size: 17px; font-weight: 800; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
+    .assignment-chip { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark); font-size: 9px; font-weight: 800; }
+    .assignment-chip.unassigned { background: #fff3dc; color: #8b590c; }
+    .agent-fixed-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .fixed-value { min-width: 0; padding: 10px 11px; border: 1px solid #e1e9e7; border-radius: 11px; background: #f6f9f8; }
+    .fixed-value span { display: block; color: var(--muted); font-size: 10px; font-weight: 760; letter-spacing: .04em; text-transform: uppercase; }
+    .fixed-value strong { display: block; margin-top: 2px; color: var(--ink); font-size: 14px; }
+    .fixed-value small { display: block; margin-top: 1px; color: #8a9997; font-size: 9px; }
+    .status-wrap { grid-column: 1; width: 100%; min-width: 0; justify-self: stretch; display: flex; align-items: center; padding-top: 14px; border-top: 1px solid #edf2f1; }
+    .status-line { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: nowrap; }
+    .status { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .status.waiting { color: var(--amber); background: var(--amber-soft); }
+    .status.answered { color: var(--blue); background: var(--blue-soft); }
+    .status.closed { color: #5e6e6c; background: #edf1f0; }
+    .open-hint { display: none; color: var(--brand); font-size: 12px; font-weight: 750; }
+    .empty { text-align: center; padding: 64px 20px; border: 1px dashed #c9d7d5; border-radius: var(--radius); color: var(--muted); background: rgba(255,255,255,.55); }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(17, 35, 34, .52);
+      backdrop-filter: blur(5px);
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: min(1080px, 100%);
+      max-height: calc(100vh - 56px);
+      overflow: auto;
+      background: var(--surface);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      animation: rise .2s ease-out;
+    }
+    @keyframes rise { from { transform: translateY(12px); opacity: 0; } }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 26px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: rgba(255,255,255,.96); backdrop-filter: blur(12px); z-index: 2; }
+    .modal-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 13px; }
+    .modal-heading h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+    .modal-assignment { width: 100%; color: var(--muted); font-size: 11px; }
+    .close-button { width: 38px; height: 38px; border: 1px solid var(--line); background: white; border-radius: 11px; cursor: pointer; font-size: 21px; line-height: 1; }
+    .close-button:hover { background: #f4f7f6; }
+    .modal-body { display: grid; grid-template-columns: 1.05fr .95fr; min-height: 570px; }
+    .visual-panel { padding: 26px; background: #eff4f3; border-right: 1px solid var(--line); }
+    .photo-stage { position: relative; touch-action: pan-y; }
+    .large-photo {
+      width: 100%;
+      height: 370px;
+      display: block;
+      border: 0;
+      padding: 0;
+      border-radius: 18px;
+      overflow: hidden;
+      position: relative;
+      background-color: #cda18a;
+      box-shadow: inset 0 0 0 1px rgba(32,52,50,.1);
+      cursor: zoom-in;
+    }
+    .large-photo::before, .viewer-photo::before { content: ""; position: absolute; inset: 0; }
+    .large-photo.p1::before, .viewer-photo.p1::before { background: radial-gradient(ellipse at 50% 30%, #60443b 0 8%, #302725 9% 21%, transparent 22%), radial-gradient(ellipse at 50% 16%, #8d6a5f 0 26%, #d5a88e 27% 58%, #b77f68 59%); }
+    .large-photo.p2::before, .viewer-photo.p2::before { background: linear-gradient(138deg, transparent 0 30%, rgba(57,38,33,.72) 31% 40%, transparent 41%), radial-gradient(ellipse at 50% 10%, #48342f 0 17%, #8c685a 18% 30%, #d8aa8f 31% 70%, #af765f 71%); }
+    .large-photo.p3::before, .viewer-photo.p3::before { background: repeating-radial-gradient(ellipse at 50% 35%, #362c29 0 6px, #725246 7px 14px, #c6947c 15px 25px); }
+    .large-photo.p4::before, .viewer-photo.p4::before { background: radial-gradient(ellipse at 55% 38%, #48342e 0 15%, #906957 16% 31%, #cc9d81 32% 64%, #9a6958 65%); }
+    .privacy-chip { position: absolute; left: 16px; bottom: 16px; padding: 7px 10px; border-radius: 9px; background: rgba(19,36,35,.78); color: white; font-size: 11px; font-weight: 700; backdrop-filter: blur(5px); }
+    .fullscreen-hint { position: absolute; right: 16px; bottom: 16px; padding: 7px 10px; border-radius: 9px; background: rgba(19,36,35,.78); color: white; font-size: 11px; font-weight: 700; backdrop-filter: blur(5px); }
+    .photo-nav { position: absolute; top: 50%; width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgba(255,255,255,.92); color: var(--ink); cursor: pointer; font-size: 25px; line-height: 1; box-shadow: 0 5px 16px rgba(17,35,34,.18); transform: translateY(-50%); z-index: 2; }
+    .photo-nav:hover { background: white; }
+    .photo-nav:disabled { opacity: 0; pointer-events: none; }
+    .photo-nav.previous { left: 13px; }
+    .photo-nav.next { right: 13px; }
+    .photo-counter { position: absolute; top: 14px; right: 14px; padding: 6px 9px; border-radius: 999px; background: rgba(19,36,35,.74); color: white; font-size: 11px; font-weight: 800; z-index: 2; backdrop-filter: blur(5px); }
+    .thumbs { display: flex; gap: 10px; margin-top: 14px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
+    .thumb { width: 64px; height: 68px; border-radius: 11px; border: 2px solid transparent; padding: 0; cursor: pointer; overflow: hidden; background: transparent; }
+    .thumb .photo { width: 100%; height: 100%; border: 0; box-shadow: none; border-radius: 9px; }
+    .thumb.active { border-color: var(--brand); }
+    .photo-meta { margin-top: 19px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 20px; }
+    .case-panel { padding: 26px; }
+    .section-label { margin: 0 0 9px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+    .agent-note { margin: 0; color: #3d5351; font-size: 14px; background: #f5f8f7; border: 1px solid #e3eae8; border-radius: 13px; padding: 14px; }
+    #detailAgentValues { margin-top: 10px; }
+    .thread { margin: 22px 0; padding-top: 20px; border-top: 1px solid var(--line); }
+    .message { display: flex; gap: 10px; margin-top: 13px; }
+    .message-avatar { flex: 0 0 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #e2efed; color: var(--brand-dark); font-size: 11px; font-weight: 850; }
+    .message.doctor .message-avatar { background: #e9f2fb; color: var(--blue); }
+    .message-bubble { min-width: 0; flex: 1; background: #f4f7f6; border-radius: 4px 13px 13px 13px; padding: 11px 13px; color: #405654; font-size: 15px; line-height: 1.45; }
+    .message.doctor .message-bubble { background: #edf5fb; }
+    .message-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+    .message-meta strong { color: var(--ink); }
+    .recommendation-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+    .recommendation-metric { padding: 8px 9px; border: 1px solid #d4e4f0; border-radius: 9px; background: rgba(255,255,255,.72); }
+    .recommendation-metric span { display: block; color: #698298; font-size: 10px; font-weight: 780; letter-spacing: .04em; text-transform: uppercase; }
+    .recommendation-metric strong { display: block; margin-top: 2px; color: #264f73; font-size: 13px; }
+    .response-box { border-top: 1px solid var(--line); padding-top: 20px; }
+    .recommendation-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+    .recommendation-field span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 10px; font-weight: 780; letter-spacing: .04em; text-transform: uppercase; }
+    .recommendation-input { width: 100%; min-width: 0; border: 1px solid #cddbd8; border-radius: 11px; padding: 10px 11px; color: var(--ink); background: #fbfcfc; }
+    .recommendation-input::placeholder { color: #98a5a3; }
+    textarea { width: 100%; min-height: 116px; resize: vertical; border: 1px solid #cddbd8; border-radius: 13px; padding: 13px 14px; color: var(--ink); background: #fbfcfc; }
+    textarea::placeholder { color: #91a09e; }
+    .response-footer { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .response-hint { color: var(--muted); font-size: 11px; max-width: 250px; }
+    .send-button { border: 0; border-radius: 11px; padding: 11px 17px; background: var(--brand); color: white; cursor: pointer; font-weight: 780; box-shadow: 0 8px 17px rgba(22,124,114,.2); }
+    .send-button:hover { background: var(--brand-dark); }
+    .send-button:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+    .read-only { background: #f2f6f5; color: var(--muted); padding: 13px; border-radius: 12px; font-size: 13px; }
+    .mobile-respond { display: none; }
+    .photo-viewer { position: fixed; inset: 0; z-index: 100; display: none; background: rgba(10, 25, 24, .97); color: white; }
+    .photo-viewer.open { display: grid; place-items: center; }
+    .viewer-stage { position: relative; width: 100%; height: 100%; display: grid; place-items: center; padding: 64px 76px; touch-action: pan-y; }
+    .viewer-photo { position: relative; width: min(100%, 1100px); height: 100%; max-height: calc(100vh - 128px); overflow: hidden; border-radius: 16px; background-color: #cda18a; box-shadow: 0 18px 70px rgba(0,0,0,.35); }
+    .viewer-close { position: absolute; top: 20px; right: 22px; z-index: 3; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.25); border-radius: 50%; background: rgba(255,255,255,.11); color: white; cursor: pointer; font-size: 25px; line-height: 1; }
+    .viewer-counter { position: absolute; top: 25px; left: 50%; transform: translateX(-50%); z-index: 3; color: rgba(255,255,255,.82); font-size: 13px; font-weight: 750; }
+    .photo-viewer .photo-nav { background: rgba(255,255,255,.13); color: white; border: 1px solid rgba(255,255,255,.18); box-shadow: none; }
+    .photo-viewer .photo-nav.previous { left: 22px; }
+    .photo-viewer .photo-nav.next { right: 22px; }
+    .drawing-toolbar { position: absolute; left: 50%; bottom: 20px; z-index: 5; display: flex; align-items: center; gap: 7px; padding: 7px; border-radius: 14px; background: rgba(255,255,255,.94); color: var(--ink); box-shadow: 0 12px 34px rgba(0,0,0,.25); transform: translateX(-50%); }
+    .tool-button { height: 34px; border: 0; border-radius: 9px; padding: 0 10px; background: transparent; cursor: pointer; color: #405452; font-size: 12px; font-weight: 780; white-space: nowrap; }
+    .tool-button:hover { background: #edf3f2; }
+    .tool-button.active, .tool-button[aria-pressed="true"] { background: var(--brand-soft); color: var(--brand-dark); }
+    .tool-button.danger { color: #a33f38; }
+    .tool-button.done { display: none; background: var(--brand); color: white; }
+    .drawing-toolbar.drawing .tool-button.done { display: block; }
+    .tool-divider { width: 1px; height: 22px; background: var(--line); }
+    .annotation-canvas { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; pointer-events: none; }
+    .photo-viewer.drawing .annotation-canvas { pointer-events: auto; cursor: crosshair; }
+    .photo-viewer.text-mode .annotation-canvas { cursor: text; }
+    .photo-viewer.drawing .viewer-photo { box-shadow: 0 0 0 3px var(--brand), 0 18px 70px rgba(0,0,0,.35); }
+    .text-entry { position: absolute; z-index: 4; display: flex; gap: 5px; width: min(300px, calc(100% - 24px)); padding: 6px; border-radius: 11px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,.25); transform: translate(-8px, -50%); }
+    .text-entry[hidden] { display: none; }
+    .text-entry input { flex: 1; min-width: 0; border: 1px solid #cddbd8; border-radius: 7px; padding: 7px 9px; color: var(--ink); }
+    .text-entry button { border: 0; border-radius: 7px; padding: 0 9px; background: var(--brand); color: white; cursor: pointer; font-weight: 750; }
+    .text-entry button:last-child { background: #edf2f1; color: var(--muted); font-size: 18px; }
+    .toast { position: fixed; right: 24px; bottom: 24px; z-index: 80; max-width: 380px; border-radius: 13px; padding: 13px 16px; background: #173b37; color: white; box-shadow: var(--shadow); font-size: 13px; opacity: 0; transform: translateY(12px); pointer-events: none; transition: .2s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 860px) {
+      .case-list { grid-template-columns: 1fr; gap: 13px; }
+      .case-card { grid-template-columns: 1fr; gap: 16px; }
+      .card-carousel, .note-preview, .status-wrap { grid-column: 1; grid-row: auto; }
+      .card-carousel { width: 100%; height: clamp(220px, 52vw, 340px); }
+      .status-wrap { justify-self: stretch; text-align: left; }
+      .modal-body { grid-template-columns: 1fr; }
+      .visual-panel { border-right: 0; border-bottom: 1px solid var(--line); }
+      .large-photo { height: 330px; }
+    }
+    @media (max-width: 640px) {
+      .topbar { height: 64px; padding: 0 16px; }
+      .workspace-label, .profile-copy { display: none; }
+      main { width: min(100% - 28px, 1180px); margin-top: 28px; }
+      .heading-row { display: block; margin-bottom: 22px; }
+      .queue-note { margin-top: 16px; }
+      .controls { align-items: stretch; flex-direction: column; gap: 10px; }
+      .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+      .tab { flex: 1; padding: 10px 6px; font-size: 12px; }
+      .count { display: inline-grid; min-width: 20px; height: 20px; margin-left: 2px; padding: 0 5px; }
+      .queue-tools { align-items: stretch; gap: 8px; }
+      .queue-tools { top: 70px; }
+      .queue-tools .sort-button { flex: 0 0 auto; }
+      .case-card { padding: 50px 16px 16px; grid-template-columns: 1fr; }
+      .card-meta-top { left: 16px; right: 16px; }
+      .status-wrap { grid-column: 1; grid-row: auto; justify-self: stretch; text-align: left; }
+      .card-carousel, .note-preview { grid-column: 1; grid-row: auto; }
+      .card-carousel { height: 220px; }
+      .open-hint { display: none; }
+      .modal-backdrop { padding: 0; align-items: flex-end; }
+      .modal { width: 100%; max-height: 94vh; border-radius: 22px 22px 0 0; }
+      .modal-header, .visual-panel, .case-panel { padding: 18px; }
+      .large-photo { height: 260px; }
+      .photo-nav { width: 34px; height: 34px; }
+      .photo-meta { display: block; }
+      .photo-meta span { display: block; margin-top: 4px; }
+      .response-footer { align-items: stretch; flex-direction: column; }
+      .send-button { width: 100%; }
+      .mobile-respond { position: fixed; left: 18px; right: 18px; bottom: 14px; z-index: 58; display: flex; align-items: center; justify-content: center; min-height: 46px; border: 0; border-radius: 13px; background: var(--brand); color: white; box-shadow: 0 10px 28px rgba(22,124,114,.3); font-size: 14px; font-weight: 820; }
+      .mobile-respond[hidden] { display: none; }
+      .viewer-stage { padding: 64px 0 52px; }
+      .viewer-photo { width: 100%; max-height: calc(100vh - 116px); border-radius: 0; }
+      .photo-viewer .photo-nav { top: auto; bottom: 14px; transform: none; }
+      .drawing-toolbar { left: 12px; right: 12px; bottom: 12px; transform: none; overflow-x: auto; justify-content: flex-start; }
+      .photo-viewer .photo-nav.previous { left: 12px; bottom: 66px; }
+      .photo-viewer .photo-nav.next { right: 12px; bottom: 66px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">+</span><span>Follica Care</span><span class="workspace-label">Doctor workspace</span></div>
+    <div class="profile"><div class="profile-copy"><strong>Dr. Emre Kaya</strong><span>Hair transplant specialist</span></div><div class="avatar" aria-hidden="true">EK</div></div>
+  </header>
+
+  <main>
+    <div class="heading-row">
+      <div><p class="eyebrow">Clinical consultation queue</p><h1>Good morning, Dr. Kaya.</h1><p class="subtitle">Review incoming cases, examine patient photos and return clear clinical guidance to the agent.</p></div>
+      <div class="queue-note"><span class="pulse"></span><span id="queueNote">3 cases waiting for review</span></div>
+    </div>
+
+    <section aria-label="Case queue">
+      <div class="queue-tools">
+        <div class="search-field"><span class="search-icon" aria-hidden="true"></span><input class="search-box" id="searchInput" type="search" placeholder="Search patient, reference, agent or note…" aria-label="Search cases"></div>
+        <button class="sort-button" id="sortButton" type="button" aria-label="Change case order"><span class="sort-icon" aria-hidden="true">↕</span><span id="sortLabel">Oldest First</span></button>
+      </div>
+      <div class="controls">
+        <div class="tabs" role="tablist" aria-label="Filter cases">
+          <button class="tab active" type="button" data-filter="my-waiting" role="tab" aria-selected="true">My Waiting <span class="count" id="myWaitingCount">2</span></button>
+          <button class="tab" type="button" data-filter="unassigned" role="tab" aria-selected="false">Unassigned <span class="count" id="unassignedCount">1</span></button>
+          <button class="tab" type="button" data-filter="answered" role="tab" aria-selected="false">Answered <span class="count" id="answeredCount">2</span></button>
+          <button class="tab" type="button" data-filter="closed" role="tab" aria-selected="false">Closed <span class="count" id="closedCount">1</span></button>
+        </div>
+      </div>
+      <div class="uploader-filter-bar" id="uploaderFilterBar" hidden><span>Posts by <strong id="uploaderFilterName"></strong></span><button class="clear-uploader-filter" id="clearUploaderFilter" type="button">× Clear filter</button></div>
+      <div class="case-list" id="caseList"></div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="modalBackdrop" role="presentation">
+    <section class="modal" id="caseModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header"><div class="modal-heading"><h2 id="modalTitle">Case details</h2><span class="status waiting" id="modalStatus">Waiting for Doctor</span><span class="modal-assignment" id="modalAssignment"></span></div><button class="close-button" id="closeModal" type="button" aria-label="Close case details">×</button></header>
+      <div class="modal-body">
+        <div class="visual-panel">
+          <div class="photo-stage" id="photoStage">
+            <button class="large-photo p1" id="largePhoto" type="button" aria-label="Open selected patient photo to view and annotate"><span class="privacy-chip">Clinical image · Demo data</span><span class="fullscreen-hint">✎ View &amp; annotate</span></button>
+            <button class="photo-nav previous" id="previousPhoto" type="button" aria-label="Previous photo">‹</button>
+            <button class="photo-nav next" id="nextPhoto" type="button" aria-label="Next photo">›</button>
+            <span class="photo-counter" id="photoCounter">1 / 4</span>
+          </div>
+          <div class="thumbs" id="photoThumbs" aria-label="Other case photos"></div>
+          <div class="photo-meta"><strong>Patient photo set</strong><span id="photoMeta">Uploaded today · 4 images</span></div>
+        </div>
+        <div class="case-panel">
+          <p class="section-label">Agent note</p><p class="agent-note" id="fullNote"></p>
+          <div class="agent-fixed-values" id="detailAgentValues" aria-label="Values fixed by the agent">
+            <div class="fixed-value"><span>Graft number</span><strong id="detailAgentGrafts"></strong><small>Fixed by agent</small></div>
+            <div class="fixed-value"><span>Price</span><strong id="detailAgentPrice"></strong><small>Fixed by agent</small></div>
+          </div>
+          <div class="thread"><p class="section-label">Case conversation</p><div id="messages"></div></div>
+          <div class="response-box" id="responseBox"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <button class="mobile-respond" id="mobileRespond" type="button" hidden>Respond ↓</button>
+  <div class="photo-viewer" id="photoViewer" role="dialog" aria-modal="true" aria-label="Full-screen photo viewer" aria-hidden="true">
+    <button class="viewer-close" id="closePhotoViewer" type="button" aria-label="Close full-screen photo viewer">×</button>
+    <span class="viewer-counter" id="viewerCounter">1 / 4</span>
+    <div class="drawing-toolbar" id="drawingToolbar" aria-label="Photo annotation tools">
+      <button class="tool-button" id="toggleDrawing" type="button" aria-pressed="false">Draw</button>
+      <button class="tool-button" id="toggleText" type="button" aria-pressed="false">Text</button>
+      <span class="tool-divider"></span>
+      <button class="tool-button" id="undoDrawing" type="button">Undo</button>
+      <button class="tool-button danger" id="clearDrawing" type="button">Clear</button>
+      <button class="tool-button done" id="finishDrawing" type="button">Done</button>
+    </div>
+    <div class="viewer-stage" id="viewerStage">
+      <div class="viewer-photo p1" id="viewerPhoto" role="img" aria-label="Selected patient photo">
+        <canvas class="annotation-canvas" id="annotationCanvas" aria-label="Doctor photo annotations"></canvas>
+        <div class="text-entry" id="textEntry" hidden>
+          <input id="annotationText" type="text" maxlength="80" placeholder="Type a note…" aria-label="Annotation text">
+          <button id="addAnnotationText" type="button">Add</button>
+          <button id="cancelAnnotationText" type="button" aria-label="Cancel text annotation">×</button>
+        </div>
+      </div>
+      <button class="photo-nav previous" id="viewerPrevious" type="button" aria-label="Previous full-screen photo">‹</button>
+      <button class="photo-nav next" id="viewerNext" type="button" aria-label="Next full-screen photo">›</button>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const cases = [
+      { id: 'HT-240814', patient: 'Daniel Morris', agent: 'Selin Arslan', assignedDoctor: 'Dr. Emre Kaya', created: '2026-08-10T07:35:00', displayTime: 'Today, 07:35', status: 'waiting', photos: 4, agentGrafts: '3,200', agentPrice: '€2,850', note: '42-year-old male. Diffuse thinning across the frontal and mid-scalp area. Donor density appears moderate. Please assess approximate graft range and whether the crown should be planned for the same session.', messages: [{ role: 'agent', name: 'Selin Arslan', time: '07:35', text: 'Initial photos and patient history have been uploaded for review.' }] },
+      { id: 'HT-240817', patient: 'Liam Wilson', agent: 'Mert Demir', assignedDoctor: 'Dr. Emre Kaya', created: '2026-08-10T08:12:00', displayTime: 'Today, 08:12', status: 'waiting', photos: 3, agentGrafts: '2,400', agentPrice: '€2,350', note: '31-year-old male requesting a conservative frontal hairline. No previous surgery. Family history of progressive crown loss. Would you recommend medical stabilisation before scheduling?', messages: [{ role: 'agent', name: 'Mert Demir', time: '08:12', text: 'Patient prefers a natural, age-appropriate result. Medication history attached.' }] },
+      { id: 'HT-240821', patient: 'Ethan Cole', agent: 'Aylin Yılmaz', assignedDoctor: null, created: '2026-08-10T09:04:00', displayTime: 'Today, 09:04', status: 'waiting', photos: 4, agentGrafts: '1,800', agentPrice: '€2,100', note: 'Second opinion requested after a previous FUE procedure. The patient is concerned about patchy density on the right frontal side and wants to understand possible corrective options.', messages: [{ role: 'agent', name: 'Aylin Yılmaz', time: '09:04', text: 'Added current photos plus two images from before the first procedure.' }] },
+      { id: 'HT-240803', patient: 'Noah Bennett', agent: 'Selin Arslan', assignedDoctor: 'Dr. Emre Kaya', created: '2026-08-09T15:22:00', displayTime: 'Yesterday, 15:22', status: 'answered', photos: 3, agentGrafts: '2,600', agentPrice: '€2,500', note: 'Receding hairline with good donor density. Agent requested an initial graft estimate and design guidance.', messages: [{ role: 'agent', name: 'Selin Arslan', time: 'Yesterday', text: 'Please review the proposed frontal zone.' }, { role: 'doctor', name: 'Dr. Emre Kaya', time: 'Yesterday', text: 'The donor area appears suitable, subject to in-person density measurement.', grafts: '2,400–2,700', price: '€2,600' }] },
+      { id: 'HT-240799', patient: 'Oliver Grant', agent: 'Cem Öztürk', assignedDoctor: 'Dr. Emre Kaya', created: '2026-08-09T11:08:00', displayTime: 'Yesterday, 11:08', status: 'answered', photos: 4, agentGrafts: '3,000', agentPrice: '€2,800', note: 'Crown-focused case. Clinical recommendation has been sent and is waiting for the agent to confirm.', messages: [{ role: 'agent', name: 'Cem Öztürk', time: 'Yesterday', text: 'Can the crown be covered without reducing frontal density?' }, { role: 'doctor', name: 'Dr. Emre Kaya', time: 'Yesterday', text: 'I recommend a staged approach to preserve donor resources and achieve balanced coverage.', grafts: '2,800–3,200', price: '€3,000' }] },
+      { id: 'HT-240764', patient: 'George Hall', agent: 'Aylin Yılmaz', assignedDoctor: 'Dr. Emre Kaya', created: '2026-08-06T10:30:00', displayTime: '06 Aug, 10:30', status: 'closed', photos: 3, agentGrafts: '2,200', agentPrice: '€2,300', note: 'Frontal restoration consultation completed. Agent confirmed the recommendation and closed the case.', messages: [{ role: 'agent', name: 'Aylin Yılmaz', time: '06 Aug', text: 'Initial consultation request.' }, { role: 'doctor', name: 'Dr. Emre Kaya', time: '06 Aug', text: 'The case appears suitable for frontal restoration following routine clinical screening.', grafts: '2,100–2,300', price: '€2,400' }, { role: 'agent', name: 'Aylin Yılmaz', time: '06 Aug', text: 'Recommendation confirmed. Case closed.' }] }
+    ];
+
+    let activeFilter = 'my-waiting';
+    let oldestFirst = true;
+    let activeCaseId = null;
+    let searchTerm = '';
+    let uploaderFilter = '';
+    let activePhotoIndex = 0;
+    let drawingMode = false;
+    let annotationTool = 'draw';
+    let activeStroke = null;
+    let pendingTextPoint = null;
+    let suppressPhotoOpenUntil = 0;
+    const viewerContext = { role: 'doctor', name: 'Dr. Emre Kaya' };
+    const labels = { waiting: 'Waiting for Doctor', answered: 'Waiting for Agent Confirmation', closed: 'Closed' };
+    const list = document.getElementById('caseList');
+    const backdrop = document.getElementById('modalBackdrop');
+
+    function counts() {
+      const myWaiting = cases.filter(item => item.status === 'waiting' && item.assignedDoctor === viewerContext.name).length;
+      const unassigned = cases.filter(item => item.status === 'waiting' && !item.assignedDoctor).length;
+      document.getElementById('myWaitingCount').textContent = myWaiting;
+      document.getElementById('unassignedCount').textContent = unassigned;
+      document.getElementById('answeredCount').textContent = cases.filter(item => item.status === 'answered' && item.assignedDoctor === viewerContext.name).length;
+      document.getElementById('closedCount').textContent = cases.filter(item => item.status === 'closed' && item.assignedDoctor === viewerContext.name).length;
+      const available = myWaiting + unassigned;
+      document.getElementById('queueNote').textContent = available === 1 ? '1 case available for review' : `${available} cases available for review`;
+    }
+
+    function cardPhotoMarkup(item) {
+      const index = Math.max(0, Math.min(item.previewIndex || 0, item.photos - 1));
+      item.previewIndex = index;
+      return `<div class="card-carousel" data-case-id="${item.id}" aria-label="${item.photos} patient photos; swipe left or right to browse">
+        <span class="card-photo ${photoClass(index)}" role="img" aria-label="Patient photo ${index + 1} of ${item.photos}"></span>
+        <button class="card-photo-nav previous" type="button" aria-label="Previous photo" ${index === 0 ? 'disabled' : ''}>‹</button>
+        <button class="card-photo-nav next" type="button" aria-label="Next photo" ${index === item.photos - 1 ? 'disabled' : ''}>›</button>
+        <span class="card-photo-count">${index + 1} / ${item.photos}</span>
+      </div>`;
+    }
+
+    function uploaderMarkup(item) {
+      const privileged = viewerContext.role === 'doctor' || viewerContext.role === 'admin';
+      const ownUpload = viewerContext.role === 'agent' && viewerContext.name === item.agent;
+      if (!privileged && !ownUpload) return '';
+      const displayName = ownUpload ? 'You' : item.agent;
+      return `<button class="uploader-filter ${uploaderFilter === item.agent ? 'active' : ''}" type="button" data-uploader="${item.agent}" aria-label="Show all posts uploaded by ${displayName}" aria-pressed="${uploaderFilter === item.agent ? 'true' : 'false'}">by <strong>${displayName}</strong></button>`;
+    }
+
+    function updateCardPreview(carousel, direction) {
+      const item = cases.find(entry => entry.id === carousel.dataset.caseId);
+      if (!item) return;
+      item.previewIndex = Math.max(0, Math.min((item.previewIndex || 0) + direction, item.photos - 1));
+      const photo = carousel.querySelector('.card-photo');
+      photo.className = `card-photo ${photoClass(item.previewIndex)}`;
+      photo.setAttribute('aria-label', `Patient photo ${item.previewIndex + 1} of ${item.photos}`);
+      carousel.querySelector('.card-photo-count').textContent = `${item.previewIndex + 1} / ${item.photos}`;
+      carousel.querySelector('.card-photo-nav.previous').disabled = item.previewIndex === 0;
+      carousel.querySelector('.card-photo-nav.next').disabled = item.previewIndex === item.photos - 1;
+    }
+
+    function bindCardCarousel(carousel) {
+      const item = cases.find(entry => entry.id === carousel.dataset.caseId);
+      let startX = null;
+      carousel.querySelector('.card-photo-nav.previous').addEventListener('click', event => { event.stopPropagation(); updateCardPreview(carousel, -1); });
+      carousel.querySelector('.card-photo-nav.next').addEventListener('click', event => { event.stopPropagation(); updateCardPreview(carousel, 1); });
+      carousel.addEventListener('pointerdown', event => {
+        if (event.target.closest('.card-photo-nav')) return;
+        startX = event.clientX;
+      });
+      carousel.addEventListener('pointerup', event => {
+        if (startX === null) return;
+        const distance = event.clientX - startX;
+        startX = null;
+        if (Math.abs(distance) < 42) return;
+        item.previewSuppressUntil = Date.now() + 350;
+        updateCardPreview(carousel, distance < 0 ? 1 : -1);
+      });
+      carousel.addEventListener('pointercancel', () => { startX = null; });
+    }
+
+    function render() {
+      const filtered = cases.filter(item => {
+        if (activeFilter === 'my-waiting' && !(item.status === 'waiting' && item.assignedDoctor === viewerContext.name)) return false;
+        if (activeFilter === 'unassigned' && !(item.status === 'waiting' && !item.assignedDoctor)) return false;
+        if (activeFilter === 'answered' && !(item.status === 'answered' && item.assignedDoctor === viewerContext.name)) return false;
+        if (activeFilter === 'closed' && !(item.status === 'closed' && item.assignedDoctor === viewerContext.name)) return false;
+        if (uploaderFilter && item.agent !== uploaderFilter) return false;
+        const haystack = `${item.patient} ${item.id} ${item.agent} ${item.note}`.toLowerCase();
+        return haystack.includes(searchTerm);
+      }).sort((a, b) => oldestFirst ? new Date(a.created) - new Date(b.created) : new Date(b.created) - new Date(a.created));
+      list.innerHTML = filtered.length ? filtered.map(item => `
+        <article class="case-card ${item.status}" data-id="${item.id}" role="button" tabindex="0" aria-label="Open ${item.patient}, ${item.id}, ${labels[item.status]}">
+          <span class="card-meta-top"><span class="time">Uploaded ${item.displayTime}</span><span class="case-id">${item.id}</span></span>
+          ${cardPhotoMarkup(item)}
+          <span class="patient-row"><strong class="patient-name">${item.patient}</strong><span class="assignment-chip ${item.assignedDoctor ? '' : 'unassigned'}">${item.assignedDoctor ? 'Assigned to you' : 'Unassigned'}</span></span>
+          <span class="note-preview">${item.note}</span>
+          <span class="agent-fixed-values" aria-label="Values fixed by the agent">
+            <span class="fixed-value"><span>Graft number</span><strong>${item.agentGrafts}</strong><small>Fixed by agent</small></span>
+            <span class="fixed-value"><span>Price</span><strong>${item.agentPrice}</strong><small>Fixed by agent</small></span>
+          </span>
+          <span class="status-wrap"><span class="status-line"><span class="status ${item.status}">${labels[item.status]}</span>${uploaderMarkup(item)}</span><span class="open-hint">View case →</span></span>
+        </article>`).join('') : `<div class="empty">No cases in this view.</div>`;
+      list.querySelectorAll('.case-card').forEach(card => {
+        card.addEventListener('click', event => {
+          if (event.target.closest('.card-photo-nav, .uploader-filter')) return;
+          const item = cases.find(entry => entry.id === card.dataset.id);
+          if (Date.now() < (item.previewSuppressUntil || 0)) return;
+          openCase(card.dataset.id);
+        });
+        card.addEventListener('keydown', event => {
+          if (event.target.closest('.card-photo-nav, .uploader-filter')) return;
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCase(card.dataset.id); }
+        });
+        card.querySelectorAll('.uploader-filter').forEach(button => button.addEventListener('click', event => {
+          event.stopPropagation();
+          uploaderFilter = button.dataset.uploader;
+          activeFilter = 'all';
+          render();
+          showToast(`Showing all posts uploaded by ${uploaderFilter}.`);
+        }));
+        bindCardCarousel(card.querySelector('.card-carousel'));
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        const active = tab.dataset.filter === activeFilter;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      const uploaderBar = document.getElementById('uploaderFilterBar');
+      uploaderBar.hidden = !uploaderFilter;
+      document.getElementById('uploaderFilterName').textContent = uploaderFilter;
+      counts();
+    }
+
+    function activeCase() {
+      return cases.find(entry => entry.id === activeCaseId);
+    }
+
+    function photoClass(index) {
+      return `p${(index % 4) + 1}`;
+    }
+
+    function currentStrokes() {
+      const item = activeCase();
+      if (!item) return [];
+      if (!item.annotations) item.annotations = {};
+      if (!item.annotations[activePhotoIndex]) item.annotations[activePhotoIndex] = [];
+      return item.annotations[activePhotoIndex];
+    }
+
+    function updatePhoto(index) {
+      const item = activeCase();
+      if (!item) return;
+      activePhotoIndex = Math.max(0, Math.min(index, item.photos - 1));
+      const selectedClass = photoClass(activePhotoIndex);
+      const largePhoto = document.getElementById('largePhoto');
+      const viewerPhoto = document.getElementById('viewerPhoto');
+      largePhoto.className = `large-photo ${selectedClass}`;
+      largePhoto.setAttribute('aria-label', `Open patient photo ${activePhotoIndex + 1} of ${item.photos} full screen`);
+      viewerPhoto.className = `viewer-photo ${selectedClass}`;
+      document.getElementById('photoCounter').textContent = `${activePhotoIndex + 1} / ${item.photos}`;
+      document.getElementById('viewerCounter').textContent = `${activePhotoIndex + 1} / ${item.photos}`;
+      document.querySelectorAll('.thumb').forEach((thumb, i) => thumb.classList.toggle('active', i === activePhotoIndex));
+      ['previousPhoto', 'viewerPrevious'].forEach(id => document.getElementById(id).disabled = activePhotoIndex === 0);
+      ['nextPhoto', 'viewerNext'].forEach(id => document.getElementById(id).disabled = activePhotoIndex === item.photos - 1);
+      requestAnimationFrame(resizeAnnotationCanvas);
+    }
+
+    function movePhoto(direction) {
+      updatePhoto(activePhotoIndex + direction);
+    }
+
+    function openPhotoViewer() {
+      const viewer = document.getElementById('photoViewer');
+      viewer.classList.add('open');
+      viewer.setAttribute('aria-hidden', 'false');
+      setDrawingMode(false);
+      requestAnimationFrame(() => {
+        resizeAnnotationCanvas();
+        document.getElementById('closePhotoViewer').focus();
+      });
+    }
+
+    function closeViewer(restoreFocus = true) {
+      const viewer = document.getElementById('photoViewer');
+      if (!viewer.classList.contains('open')) return;
+      setDrawingMode(false);
+      viewer.classList.remove('open');
+      viewer.setAttribute('aria-hidden', 'true');
+      if (restoreFocus) document.getElementById('largePhoto').focus();
+    }
+
+    function resizeAnnotationCanvas() {
+      const viewer = document.getElementById('photoViewer');
+      if (!viewer.classList.contains('open')) return;
+      const canvas = document.getElementById('annotationCanvas');
+      const bounds = document.getElementById('viewerPhoto').getBoundingClientRect();
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(bounds.width * ratio));
+      canvas.height = Math.max(1, Math.round(bounds.height * ratio));
+      canvas.style.width = `${bounds.width}px`;
+      canvas.style.height = `${bounds.height}px`;
+      const context = canvas.getContext('2d');
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      drawAnnotations();
+    }
+
+    function drawAnnotations() {
+      const canvas = document.getElementById('annotationCanvas');
+      const context = canvas.getContext('2d');
+      const width = parseFloat(canvas.style.width) || canvas.width;
+      const height = parseFloat(canvas.style.height) || canvas.height;
+      context.clearRect(0, 0, width, height);
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      currentStrokes().forEach(annotation => {
+        if (annotation.type === 'text') {
+          context.save();
+          context.globalCompositeOperation = 'source-over';
+          context.font = '800 18px Inter, ui-sans-serif, sans-serif';
+          context.textBaseline = 'top';
+          context.lineWidth = 4;
+          context.strokeStyle = 'rgba(255,255,255,.9)';
+          context.fillStyle = '#e4342a';
+          const words = annotation.text.split(' ');
+          const lines = [];
+          let line = '';
+          words.forEach(word => {
+            const candidate = line ? `${line} ${word}` : word;
+            if (context.measureText(candidate).width > Math.min(320, width * .55) && line) { lines.push(line); line = word; } else line = candidate;
+          });
+          if (line) lines.push(line);
+          lines.forEach((textLine, lineIndex) => {
+            const x = annotation.x * width;
+            const y = annotation.y * height + lineIndex * 22;
+            context.strokeText(textLine, x, y);
+            context.fillText(textLine, x, y);
+          });
+          context.restore();
+          return;
+        }
+        if (!annotation.points.length) return;
+        context.save();
+        context.globalCompositeOperation = 'source-over';
+        context.strokeStyle = '#ff3b30';
+        context.lineWidth = 4;
+        context.beginPath();
+        annotation.points.forEach((point, index) => {
+          const x = point.x * width;
+          const y = point.y * height;
+          if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+        });
+        if (annotation.points.length === 1) context.lineTo(annotation.points[0].x * width + .1, annotation.points[0].y * height + .1);
+        context.stroke();
+        context.restore();
+      });
+      document.getElementById('undoDrawing').disabled = currentStrokes().length === 0;
+      document.getElementById('clearDrawing').disabled = currentStrokes().length === 0;
+    }
+
+    function setDrawingMode(enabled, tool = annotationTool) {
+      drawingMode = enabled;
+      annotationTool = tool;
+      const viewer = document.getElementById('photoViewer');
+      viewer.classList.toggle('drawing', enabled);
+      viewer.classList.toggle('text-mode', enabled && annotationTool === 'text');
+      document.getElementById('drawingToolbar').classList.toggle('drawing', enabled);
+      document.getElementById('toggleDrawing').setAttribute('aria-pressed', enabled && annotationTool === 'draw' ? 'true' : 'false');
+      document.getElementById('toggleText').setAttribute('aria-pressed', enabled && annotationTool === 'text' ? 'true' : 'false');
+      document.getElementById('toggleDrawing').classList.toggle('active', enabled && annotationTool === 'draw');
+      document.getElementById('toggleText').classList.toggle('active', enabled && annotationTool === 'text');
+      document.getElementById('textEntry').hidden = true;
+      activeStroke = null;
+      pendingTextPoint = null;
+    }
+
+    function openTextEntry(point) {
+      const entry = document.getElementById('textEntry');
+      const viewerPhoto = document.getElementById('viewerPhoto');
+      pendingTextPoint = point;
+      entry.style.left = `${Math.min(point.x * viewerPhoto.clientWidth, viewerPhoto.clientWidth - Math.min(300, viewerPhoto.clientWidth - 24))}px`;
+      entry.style.top = `${Math.max(32, point.y * viewerPhoto.clientHeight)}px`;
+      entry.hidden = false;
+      const input = document.getElementById('annotationText');
+      input.value = '';
+      input.focus();
+    }
+
+    function addTextAnnotation() {
+      const input = document.getElementById('annotationText');
+      const text = input.value.trim();
+      if (!text || !pendingTextPoint) { input.focus(); return; }
+      currentStrokes().push({ type: 'text', text, x: pendingTextPoint.x, y: pendingTextPoint.y });
+      document.getElementById('textEntry').hidden = true;
+      pendingTextPoint = null;
+      drawAnnotations();
+      showToast('Text annotation added to this photo.');
+    }
+
+    function canvasPoint(event) {
+      const bounds = document.getElementById('annotationCanvas').getBoundingClientRect();
+      return { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) };
+    }
+
+    function bindSwipe(element) {
+      let startX = null;
+      element.addEventListener('pointerdown', event => {
+        if (drawingMode || event.target.closest('.photo-nav')) return;
+        startX = event.clientX;
+      });
+      element.addEventListener('pointerup', event => {
+        if (startX === null || drawingMode) return;
+        const distance = event.clientX - startX;
+        startX = null;
+        if (Math.abs(distance) < 48) return;
+        suppressPhotoOpenUntil = Date.now() + 350;
+        movePhoto(distance < 0 ? 1 : -1);
+      });
+      element.addEventListener('pointercancel', () => { startX = null; });
+    }
+
+    function openCase(id) {
+      activeCaseId = id;
+      const item = cases.find(entry => entry.id === id);
+      document.getElementById('modalTitle').textContent = `${item.patient} · ${item.id}`;
+      document.getElementById('modalAssignment').textContent = item.assignedDoctor ? `Assigned to you · Uploaded by ${item.agent}` : `Unassigned patient · Uploaded by ${item.agent}`;
+      const status = document.getElementById('modalStatus');
+      status.className = `status ${item.status}`;
+      status.textContent = labels[item.status];
+      document.getElementById('fullNote').textContent = item.note;
+      document.getElementById('detailAgentGrafts').textContent = item.agentGrafts;
+      document.getElementById('detailAgentPrice').textContent = item.agentPrice;
+      document.getElementById('photoMeta').textContent = `${item.displayTime} · ${item.photos} images`;
+      document.getElementById('photoThumbs').innerHTML = Array.from({ length: item.photos }, (_, i) => `<button class="thumb ${i === 0 ? 'active' : ''}" type="button" data-index="${i}" aria-label="Open photo ${i + 1} full screen"><span class="photo ${photoClass(i)}"></span></button>`).join('');
+      document.querySelectorAll('.thumb').forEach(thumb => thumb.addEventListener('click', () => { updatePhoto(Number(thumb.dataset.index)); openPhotoViewer(); }));
+      updatePhoto(0);
+      document.getElementById('messages').innerHTML = item.messages.map(message => `<div class="message ${message.role === 'doctor' ? 'doctor' : ''}"><div class="message-avatar">${message.role === 'doctor' ? 'DR' : 'AG'}</div><div class="message-bubble"><div class="message-meta"><strong>${message.name}</strong><span>${message.time}</span></div>${message.text}${message.role === 'doctor' && message.grafts && message.price ? `<div class="recommendation-metrics"><div class="recommendation-metric"><span>Approx. graft number</span><strong>${message.grafts}</strong></div><div class="recommendation-metric"><span>Recommended price</span><strong>${message.price}</strong></div></div>` : ''}</div></div>`).join('');
+      document.getElementById('responseBox').innerHTML = item.status === 'waiting' ? `<p class="section-label">Doctor response</p><div class="recommendation-fields"><label class="recommendation-field"><span>Approx. graft number</span><input class="recommendation-input" id="doctorGrafts" type="text" inputmode="numeric" placeholder="e.g. 2,800–3,000" aria-label="Approximate graft number"></label><label class="recommendation-field"><span>Recommended price</span><input class="recommendation-input" id="doctorPrice" type="text" placeholder="e.g. €2,900" aria-label="Recommended price"></label></div><textarea id="doctorResponse" placeholder="Write your clinical assessment and recommendation…" aria-label="Doctor response"></textarea><div class="response-footer"><span class="response-hint">${item.assignedDoctor ? 'All three fields are saved together as your recommendation.' : 'Sending assigns this patient to you and saves all three fields together.'}</span><button class="send-button" id="sendResponse" type="button">${item.assignedDoctor ? 'Send response' : 'Respond & take patient'}</button></div>` : `<p class="section-label">Current state</p><div class="read-only">${item.status === 'answered' ? 'Your response has been sent. This case will close only after the agent confirms it.' : 'This case was confirmed and closed by the agent.'}</div>`;
+      if (item.status === 'waiting') document.getElementById('sendResponse').addEventListener('click', submitResponse);
+      document.getElementById('mobileRespond').hidden = item.status !== 'waiting';
+      backdrop.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      document.getElementById('closeModal').focus();
+    }
+
+    function closeCase() {
+      closeViewer(false);
+      backdrop.classList.remove('open');
+      document.body.style.overflow = '';
+      activeCaseId = null;
+      document.getElementById('mobileRespond').hidden = true;
+    }
+
+    function submitResponse() {
+      const responseInput = document.getElementById('doctorResponse');
+      const graftInput = document.getElementById('doctorGrafts');
+      const priceInput = document.getElementById('doctorPrice');
+      const text = responseInput.value.trim();
+      const grafts = graftInput.value.trim();
+      const price = priceInput.value.trim();
+      const missingInput = [graftInput, priceInput, responseInput].find(input => !input.value.trim());
+      if (missingInput) { missingInput.focus(); missingInput.setAttribute('aria-invalid', 'true'); return; }
+      const item = cases.find(entry => entry.id === activeCaseId);
+      const wasUnassigned = !item.assignedDoctor;
+      if (wasUnassigned) item.assignedDoctor = viewerContext.name;
+      item.messages.push({ role: 'doctor', name: 'Dr. Emre Kaya', time: 'Just now', text, grafts, price });
+      item.status = 'answered';
+      closeCase();
+      render();
+      showToast(wasUnassigned ? `${item.patient} was assigned to you and moved to Waiting for Agent Confirmation.` : `${item.id} moved to Waiting for Agent Confirmation.`);
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('show'), 3200);
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+      activeFilter = tab.dataset.filter;
+      render();
+    }));
+    document.getElementById('sortButton').addEventListener('click', () => { oldestFirst = !oldestFirst; document.getElementById('sortLabel').textContent = oldestFirst ? 'Oldest First' : 'Newest First'; render(); });
+    document.getElementById('searchInput').addEventListener('input', event => { searchTerm = event.target.value.trim().toLowerCase(); render(); });
+    document.getElementById('clearUploaderFilter').addEventListener('click', () => { uploaderFilter = ''; activeFilter = 'my-waiting'; render(); });
+    document.getElementById('mobileRespond').addEventListener('click', () => { document.getElementById('responseBox').scrollIntoView({ behavior: 'smooth', block: 'start' }); document.getElementById('mobileRespond').hidden = true; });
+    document.getElementById('closeModal').addEventListener('click', closeCase);
+    document.getElementById('largePhoto').addEventListener('click', () => { if (Date.now() >= suppressPhotoOpenUntil) openPhotoViewer(); });
+    document.getElementById('previousPhoto').addEventListener('click', event => { event.stopPropagation(); movePhoto(-1); });
+    document.getElementById('nextPhoto').addEventListener('click', event => { event.stopPropagation(); movePhoto(1); });
+    document.getElementById('viewerPrevious').addEventListener('click', () => movePhoto(-1));
+    document.getElementById('viewerNext').addEventListener('click', () => movePhoto(1));
+    document.getElementById('closePhotoViewer').addEventListener('click', () => closeViewer());
+    document.getElementById('toggleDrawing').addEventListener('click', () => setDrawingMode(!(drawingMode && annotationTool === 'draw'), 'draw'));
+    document.getElementById('toggleText').addEventListener('click', () => setDrawingMode(!(drawingMode && annotationTool === 'text'), 'text'));
+    document.getElementById('finishDrawing').addEventListener('click', () => { setDrawingMode(false); showToast('Photo annotations saved in this demo session.'); });
+    document.getElementById('undoDrawing').addEventListener('click', () => { currentStrokes().pop(); drawAnnotations(); });
+    document.getElementById('clearDrawing').addEventListener('click', () => { currentStrokes().length = 0; drawAnnotations(); showToast('Annotations cleared from this photo.'); });
+    document.getElementById('addAnnotationText').addEventListener('click', addTextAnnotation);
+    document.getElementById('cancelAnnotationText').addEventListener('click', () => { document.getElementById('textEntry').hidden = true; pendingTextPoint = null; });
+    document.getElementById('annotationText').addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); addTextAnnotation(); }
+      if (event.key === 'Escape') { event.stopPropagation(); document.getElementById('textEntry').hidden = true; pendingTextPoint = null; }
+    });
+
+    const annotationCanvas = document.getElementById('annotationCanvas');
+    annotationCanvas.addEventListener('pointerdown', event => {
+      if (!drawingMode) return;
+      const point = canvasPoint(event);
+      if (annotationTool === 'text') { openTextEntry(point); return; }
+      annotationCanvas.setPointerCapture(event.pointerId);
+      activeStroke = { type: 'stroke', points: [point] };
+      currentStrokes().push(activeStroke);
+      drawAnnotations();
+    });
+    annotationCanvas.addEventListener('pointermove', event => {
+      if (!activeStroke || annotationTool !== 'draw') return;
+      activeStroke.points.push(canvasPoint(event));
+      drawAnnotations();
+    });
+    const endStroke = event => {
+      if (!activeStroke) return;
+      if (annotationCanvas.hasPointerCapture(event.pointerId)) annotationCanvas.releasePointerCapture(event.pointerId);
+      activeStroke = null;
+      drawAnnotations();
+    };
+    annotationCanvas.addEventListener('pointerup', endStroke);
+    annotationCanvas.addEventListener('pointercancel', endStroke);
+    bindSwipe(document.getElementById('photoStage'));
+    bindSwipe(document.getElementById('viewerStage'));
+    window.addEventListener('resize', resizeAnnotationCanvas);
+    backdrop.addEventListener('click', event => { if (event.target === backdrop) closeCase(); });
+    document.addEventListener('keydown', event => {
+      const viewerOpen = document.getElementById('photoViewer').classList.contains('open');
+      if (event.key === 'Escape' && viewerOpen) { closeViewer(); return; }
+      if (event.key === 'Escape' && backdrop.classList.contains('open')) { closeCase(); return; }
+      if (!backdrop.classList.contains('open') || ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+      if (event.key === 'ArrowLeft') movePhoto(-1);
+      if (event.key === 'ArrowRight') movePhoto(1);
+    });
+    render();
+  </script>
+</body>
+</html>
