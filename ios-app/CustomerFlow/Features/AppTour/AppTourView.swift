@@ -2,123 +2,117 @@ import SwiftUI
 
 struct AppTourView: View {
     @Bindable var model: AppTourModel
+    let anchors: [AppTourTarget: Anchor<CGRect>]
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ZStack {
-            AppTheme.background.ignoresSafeArea()
+        if model.isPresented, let step = model.currentStep {
+            GeometryReader { proxy in
+                if let anchor = anchors[step.target] {
+                    let targetRect = proxy[anchor].insetBy(dx: -6, dy: -6)
 
-            VStack(spacing: 0) {
-                header
-                Spacer(minLength: 18)
-                stepContent
-                Spacer(minLength: 20)
-                footer
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-        }
-        .interactiveDismissDisabled()
-    }
+                    ZStack {
+                        AppTourSpotlightShape(cutout: targetRect, cornerRadius: 17)
+                            .fill(
+                                Color.black.opacity(colorScheme == .dark ? 0.7 : 0.58),
+                                style: FillStyle(eoFill: true)
+                            )
 
-    private var header: some View {
-        HStack(spacing: 10) {
-            Image("BrandMark")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 34, height: 34)
-                .clipShape(Circle())
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Customer Flow")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Text("\(model.role.title) quick tour")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.muted)
-            }
-            Spacer()
-            Button("Skip") {
-                Task { await model.finish() }
-            }
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(AppTheme.brand)
-        }
-    }
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                            .stroke(AppTheme.accent, lineWidth: 3)
+                            .frame(width: targetRect.width, height: targetRect.height)
+                            .position(x: targetRect.midX, y: targetRect.midY)
 
-    @ViewBuilder
-    private var stepContent: some View {
-        if let step = model.currentStep {
-            VStack(spacing: 22) {
-                Image(systemName: step.icon)
-                    .font(.system(size: 48, weight: .medium))
-                    .foregroundStyle(AppTheme.accentInk)
-                    .frame(width: 112, height: 112)
-                    .background(AppTheme.accent, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-                    .shadow(color: AppTheme.accent.opacity(0.2), radius: 22, y: 10)
-
-                VStack(spacing: 10) {
-                    Text(step.title)
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.ink)
-                        .multilineTextAlignment(.center)
-                    Text(step.message)
-                        .font(.system(size: 17))
-                        .foregroundStyle(AppTheme.muted)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                }
-
-                HStack(alignment: .top, spacing: 11) {
-                    Image(systemName: "hand.tap.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(AppTheme.brand)
-                    Text(step.tapHint)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AppTheme.ink)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(15)
-                .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(AppTheme.border, lineWidth: 1)
-                }
-            }
-            .transition(.opacity.combined(with: .move(edge: .trailing)))
-        }
-    }
-
-    private var footer: some View {
-        VStack(spacing: 18) {
-            HStack(spacing: 7) {
-                ForEach(model.steps) { step in
-                    Capsule()
-                        .fill(step.id == model.currentStep?.id ? AppTheme.brand : AppTheme.muted.opacity(0.25))
-                        .frame(width: step.id == model.currentStep?.id ? 24 : 7, height: 7)
-                }
-            }
-
-            HStack(spacing: 12) {
-                if model.currentStepIndex > 0 {
-                    Button("Back") {
-                        withAnimation(.easeInOut(duration: 0.2)) { model.goBack() }
+                        tooltip(step: step, targetRect: targetRect, availableSize: proxy.size)
                     }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-                }
-
-                Button(model.isLastStep ? "Start using the app" : "Next") {
-                    if model.isLastStep {
-                        Task { await model.goForward() }
-                    } else {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            model.currentStepIndex += 1
+                    .transition(.opacity)
+                    .accessibilityAddTraits(.isModal)
+                } else if step.target.isOptional {
+                    Color.clear
+                        .task(id: step.id) {
+                            await model.goForward()
                         }
+                }
+            }
+            .ignoresSafeArea()
+            .zIndex(100)
+        }
+    }
+
+    private func tooltip(step: AppTourStep, targetRect: CGRect, availableSize: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("\(visibleStepNumber(for: step)) of \(visibleSteps.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.muted)
+                Spacer()
+                Button("Skip") {
+                    Task { await model.finish() }
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.brandDark)
+            }
+
+            Text(step.title)
+                .font(.title3.bold())
+                .foregroundStyle(AppTheme.ink)
+
+            Text(step.message)
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(isLastVisibleStep(step) ? "Done" : "Next") {
+                Task {
+                    if isLastVisibleStep(step) {
+                        await model.finish()
+                    } else {
+                        await model.goForward()
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
             }
-            .controlSize(.large)
+            .font(.subheadline.bold())
+            .foregroundStyle(AppTheme.accentInk)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .background(AppTheme.accent, in: Capsule())
         }
+        .padding(16)
+        .frame(width: min(availableSize.width - 32, 380))
+        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AppTheme.border, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.22), radius: 22, y: 10)
+        .position(
+            x: availableSize.width / 2,
+            y: tooltipCenterY(targetRect: targetRect, availableHeight: availableSize.height)
+        )
+    }
+
+    private func tooltipCenterY(targetRect: CGRect, availableHeight: CGFloat) -> CGFloat {
+        let estimatedHalfHeight: CGFloat = 108
+        let spacing: CGFloat = 14
+
+        if targetRect.maxY + estimatedHalfHeight + spacing <= availableHeight {
+            return targetRect.maxY + estimatedHalfHeight + spacing
+        }
+
+        return max(estimatedHalfHeight + 8, targetRect.minY - estimatedHalfHeight - spacing)
+    }
+
+    private var visibleSteps: [AppTourStep] {
+        model.steps.filter { step in
+            !step.target.isOptional || anchors[step.target] != nil
+        }
+    }
+
+    private func visibleStepNumber(for step: AppTourStep) -> Int {
+        guard let index = visibleSteps.firstIndex(where: { $0.id == step.id }) else { return 1 }
+        return index + 1
+    }
+
+    private func isLastVisibleStep(_ step: AppTourStep) -> Bool {
+        visibleSteps.last?.id == step.id
     }
 }

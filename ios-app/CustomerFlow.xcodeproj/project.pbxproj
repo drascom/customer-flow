@@ -38,6 +38,10 @@
 		A1000000000000000000001E /* UserDefaultsAppTourStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* UserDefaultsAppTourStore.swift */; };
 		A1000000000000000000001F /* AppTourModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* AppTourModel.swift */; };
 		A10000000000000000000020 /* AppTourView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* AppTourView.swift */; };
+		A10000000000000000000021 /* AppTourTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* AppTourTarget.swift */; };
+		A10000000000000000000022 /* AppTourAnchorPreferenceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* AppTourAnchorPreferenceKey.swift */; };
+		A10000000000000000000023 /* AppTourSpotlightShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* AppTourSpotlightShape.swift */; };
+		A10000000000000000000024 /* View+AppTourAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* View+AppTourAnchor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -74,6 +78,10 @@
 		B1000000000000000000001F /* UserDefaultsAppTourStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsAppTourStore.swift; sourceTree = "<group>"; };
 		B10000000000000000000020 /* AppTourModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourModel.swift; sourceTree = "<group>"; };
 		B10000000000000000000021 /* AppTourView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourView.swift; sourceTree = "<group>"; };
+		B10000000000000000000022 /* AppTourTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourTarget.swift; sourceTree = "<group>"; };
+		B10000000000000000000023 /* AppTourAnchorPreferenceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourAnchorPreferenceKey.swift; sourceTree = "<group>"; };
+		B10000000000000000000024 /* AppTourSpotlightShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourSpotlightShape.swift; sourceTree = "<group>"; };
+		B10000000000000000000025 /* View+AppTourAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+AppTourAnchor.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -224,6 +232,7 @@
 			isa = PBXGroup;
 			children = (
 				B1000000000000000000001C /* AppTourStep.swift */,
+				B10000000000000000000022 /* AppTourTarget.swift */,
 				B1000000000000000000001D /* UserRole+AppTour.swift */,
 			);
 			path = AppTour;
@@ -242,7 +251,10 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000020 /* AppTourModel.swift */,
+				B10000000000000000000023 /* AppTourAnchorPreferenceKey.swift */,
+				B10000000000000000000024 /* AppTourSpotlightShape.swift */,
 				B10000000000000000000021 /* AppTourView.swift */,
+				B10000000000000000000025 /* View+AppTourAnchor.swift */,
 			);
 			path = AppTour;
 			sourceTree = "<group>";
@@ -334,6 +346,10 @@
 				A1000000000000000000001E /* UserDefaultsAppTourStore.swift in Sources */,
 				A1000000000000000000001F /* AppTourModel.swift in Sources */,
 				A10000000000000000000020 /* AppTourView.swift in Sources */,
+				A10000000000000000000021 /* AppTourTarget.swift in Sources */,
+				A10000000000000000000022 /* AppTourAnchorPreferenceKey.swift in Sources */,
+				A10000000000000000000023 /* AppTourSpotlightShape.swift in Sources */,
+				A10000000000000000000024 /* View+AppTourAnchor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

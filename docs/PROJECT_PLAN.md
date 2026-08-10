@@ -154,11 +154,12 @@ Yalnızca agent vakayı kapatabilir. Doktor cevabı tek başına vakayı kapatma
 - Uygulama ilk açılışta yalnızca **Server Address** ister ve `/api/v1/health` üzerinden sunucu erişimi, API sürümü ve temel yetenekleri doğrular.
 - Başarılı bağlantıdan sonra ayrı **Username / Password** ekranı açılır. Uygulamada kayıt olma, davet kabul etme veya herkese açık üyelik ekranı bulunmaz.
 - Kullanıcılar yalnızca server tarafında admin tarafından oluşturulur; rol ve yetkiler server tarafından belirlenir.
-- Doctor ve Agent kullanıcılarına ilgili server'daki ilk başarılı girişlerinden sonra rollerine özel kısa bir **Quick Tour** gösterilir. Admin ve Manager için bu tur açılmaz.
-- Doctor turu kuyruk arama/filtreleme ve sıralamayı, vaka kartını açmayı, fotoğraflar arasında gezinme–tam ekran–çizim/metin anotasyonunu, Doctor Response alanını ve hasta–doktor sahipliğini açıklar.
-- Agent turu kendi vaka listesini, **+ New** ile başlayan oluşturma sihirbazını, mükerrer hasta kontrolünü, doktor yanıtından sonra mesaj/fotoğraf eklemeyi ve **Confirm & Close** işlemini açıklar.
-- Tur dört kısa adımdan oluşur; her adım hangi kontrole dokunulacağını açıkça belirtir. Kullanıcı turu atlayabilir; atlama da tamamlanmış sayılır ve her girişte tekrar gösterilmez.
-- Turun tamamlanma durumu server adresi, kullanıcı kimliği, rol ve tur sürümüne göre cihazda tutulur. Başka server veya başka kullanıcı birbirinin durumunu paylaşmaz. Doctor ve Agent turu Profile içindeki **Show app tour again** seçeneğiyle yeniden açabilir.
+- Doctor ve Agent kullanıcılarına ilgili server'daki ilk başarılı girişlerinden sonra rollerine özel kısa bir **Guided Tips** turu gösterilir. Admin ve Manager için bu tur açılmaz.
+- Tur ayrı bilgi/onboarding sayfaları açmaz; kullanıcının gerçek ana ekranı üzerinde ilgili kontrolü vurgulayan kısa tooltip ve spotlight katmanı kullanır.
+- Doctor için en fazla üç hedef gösterilir: vaka filtresi, Oldest/Newest sıralaması ve açılabilir vaka kartı. Agent için en fazla üç hedef gösterilir: vaka filtresi, **+ New** ve düzenlemek/güncellemek için açılabilir vaka kartı.
+- Her tooltip **Next**, **Skip** ve son adımda **Done** eylemlerini sunar. Görünmeyen veya boş liste nedeniyle bulunamayan hedef adımı engellemez; uygun bir sonraki görünür hedefe geçilir.
+- Kullanıcı turu atlayabilir; atlama da tamamlanmış sayılır ve her girişte tekrar gösterilmez.
+- Turun tamamlanma durumu server adresi, kullanıcı kimliği, rol ve tur sürümüne göre cihazda tutulur. Başka server veya başka kullanıcı birbirinin durumunu paylaşmaz. Doctor ve Agent tooltip turunu Profile içindeki **Show guided tips again** seçeneğiyle yeniden açabilir.
 - Her kullanıcı uygulamadaki profil sayfasından görünen adını, e-posta adresini ve telefon numarasını güncelleyebilir. Kullanıcı adı ve rol server yönetiminde kalır.
 - Oturum açmış kullanıcı mevcut parolasını doğrulayarak yeni parola belirleyebilir; işlem diğer aktif oturumları kapatır.
 - **Forgot Password** akışında kullanıcı adı veya kayıtlı e-posta ile altı haneli, 10 dakika geçerli doğrulama kodu istenir. Kod doğrulanınca parola yenilenir ve tüm eski oturumlar iptal edilir. Hesap varlığı dışarıya açıklanmaz ve başarısız kod denemeleri sınırlandırılır.

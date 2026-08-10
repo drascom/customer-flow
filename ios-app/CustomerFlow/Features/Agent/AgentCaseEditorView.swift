@@ -21,6 +21,7 @@ private enum AgentCaseFilter: String, CaseIterable, Identifiable {
 
 struct AgentCasesView: View {
     @EnvironmentObject private var state: AppState
+    @Bindable var tourModel: AppTourModel
     @State private var filter: AgentCaseFilter = .all
     @State private var searchText = ""
 
@@ -64,17 +65,18 @@ struct AgentCasesView: View {
                                     .overlay(Capsule().stroke(AppTheme.border))
                             }
                             .buttonStyle(.plain)
+                            .appTourAnchor(.agentNewCase)
                         }
 
                         if myCases.isEmpty {
                             ContentUnavailableView("No cases", systemImage: "tray", description: Text("No cases match this view."))
                                 .frame(minHeight: 300)
                         } else {
-                            ForEach(myCases) { item in
+                            ForEach(Array(myCases.enumerated()), id: \.element.id) { index, item in
                                 NavigationLink {
                                     AgentCaseEditorView(caseID: item.id)
                                 } label: {
-                                    AgentCaseListCard(item: item)
+                                    AgentCaseListCard(item: item, tourTarget: index == 0 ? .agentCase : nil)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -89,6 +91,9 @@ struct AgentCasesView: View {
         }
         .background(AppTheme.background)
         .refreshable { await state.load() }
+        .overlayPreferenceValue(AppTourAnchorPreferenceKey.self) { anchors in
+            AppTourView(model: tourModel, anchors: anchors)
+        }
     }
 
     private var searchHeader: some View {
@@ -138,6 +143,7 @@ struct AgentCasesView: View {
             .background(AppTheme.accent, in: Capsule())
         }
         .buttonStyle(.plain)
+        .appTourAnchor(.agentFilter)
     }
 
     private func count(for filter: AgentCaseFilter) -> Int {
@@ -155,6 +161,7 @@ struct AgentCasesView: View {
 
 private struct AgentCaseListCard: View {
     let item: ConsultationCase
+    let tourTarget: AppTourTarget?
     @State private var photoIndex = 0
 
     var body: some View {
@@ -175,6 +182,7 @@ private struct AgentCaseListCard: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: 210)
             .clipShape(RoundedRectangle(cornerRadius: 15))
+            .appTourAnchor(tourTarget)
             .overlay(alignment: .bottomTrailing) {
                 Text("\(photoIndex + 1) / \(item.photoCount)")
                     .font(.caption2.bold())

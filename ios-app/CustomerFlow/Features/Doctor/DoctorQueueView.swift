@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DoctorQueueView: View {
     @EnvironmentObject private var state: AppState
+    @Bindable var tourModel: AppTourModel
     @State private var filter: DoctorQueueFilter = .myWaiting
     @State private var searchText = ""
     @State private var oldestFirst = true
@@ -51,6 +52,9 @@ struct DoctorQueueView: View {
                 .environmentObject(state)
         }
         .refreshable { await state.load() }
+        .overlayPreferenceValue(AppTourAnchorPreferenceKey.self) { anchors in
+            AppTourView(model: tourModel, anchors: anchors)
+        }
     }
 
     private var searchHeader: some View {
@@ -105,6 +109,7 @@ struct DoctorQueueView: View {
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
+            .appTourAnchor(.doctorFilter)
 
             Button {
                 oldestFirst.toggle()
@@ -119,14 +124,15 @@ struct DoctorQueueView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(oldestFirst ? "Oldest first" : "Newest first")
+            .appTourAnchor(.doctorSort)
         }
         .padding(.vertical, 7)
     }
 
     private var caseGrid: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 14)], spacing: 14) {
-            ForEach(filteredCases) { item in
-                CaseCardView(item: item) {
+            ForEach(Array(filteredCases.enumerated()), id: \.element.id) { index, item in
+                CaseCardView(item: item, tourTarget: index == 0 ? .doctorCase : nil) {
                     selectedCase = item
                 } onAgentFilter: {
                     uploaderFilter = item.agentName
@@ -179,6 +185,7 @@ struct DoctorQueueView: View {
 
 private struct CaseCardView: View {
     let item: ConsultationCase
+    let tourTarget: AppTourTarget?
     let onOpen: () -> Void
     let onAgentFilter: () -> Void
     @State private var photoIndex = 0
@@ -201,6 +208,7 @@ private struct CaseCardView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: 250)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            .appTourAnchor(tourTarget)
             .overlay(alignment: .bottomTrailing) {
                 Text("\(photoIndex + 1) / \(item.photoCount)")
                     .font(.caption2.bold())

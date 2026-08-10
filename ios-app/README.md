@@ -36,6 +36,6 @@ The app validates `/api/v1/health` automatically. Release builds require HTTPS.
 - **Agent:** case list, guided case creation, duplicate-patient confirmation, updates and Confirm & Close.
 - **Admin:** compact mobile case/user management, filters, agencies and doctor assignment.
 - **Manager:** read-only access to all users and cases, with doctor assignment as the only management action.
-- **Profile:** contact details, password change and role-specific quick tour.
+- **Profile:** contact details, password change and role-specific guided tooltips that point to real controls.
 
 Authentication and roles are controlled by the server. Session tokens are stored in iOS Keychain. Password recovery is delivered by the server through SMTP. Push notifications are designed to use APNs through a separate notification adapter.

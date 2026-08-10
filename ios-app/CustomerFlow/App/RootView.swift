@@ -12,9 +12,9 @@ struct RootView: View {
                     Group {
                         switch state.role {
                         case .doctor:
-                            DoctorQueueView()
+                            DoctorQueueView(tourModel: tourModel)
                         case .agent:
-                            AgentCasesView()
+                            AgentCasesView(tourModel: tourModel)
                         case .admin, .manager:
                             if let repository = state.adminRepository, let user = state.currentUser {
                                 AdminDashboardView(repository: repository, currentUserID: user.id, currentUserRole: user.role)
@@ -43,9 +43,6 @@ struct RootView: View {
                     role: user.role
                 )
             }
-        }
-        .fullScreenCover(isPresented: $tourModel.isPresented) {
-            AppTourView(model: tourModel)
         }
         .task(id: state.phase == .authenticated ? state.currentUser?.id : nil) {
             guard state.phase == .authenticated, let user = state.currentUser else { return }
@@ -188,7 +185,7 @@ struct ProfileView: View {
                             onShowTour()
                             dismiss()
                         } label: {
-                            Label("Show app tour again", systemImage: "questionmark.circle")
+                            Label("Show guided tips again", systemImage: "questionmark.circle")
                         }
                     }
                 }

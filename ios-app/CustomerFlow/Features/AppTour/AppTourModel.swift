@@ -5,7 +5,7 @@ import Observation
 @Observable
 final class AppTourModel {
     private let store: any AppTourStore
-    private let version = 1
+    private let version = 2
     private var userID = ""
     private var serverAddress = ""
 
@@ -41,10 +41,6 @@ final class AppTourModel {
     func showAgain(userID: String, serverAddress: String, role: UserRole) {
         guard role != .admin, role != .manager else { return }
         present(userID: userID, serverAddress: serverAddress, role: role)
-    }
-
-    func goBack() {
-        currentStepIndex = max(0, currentStepIndex - 1)
     }
 
     func goForward() async {

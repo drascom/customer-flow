@@ -7,62 +7,42 @@ extension UserRole {
             [
                 AppTourStep(
                     id: 0,
-                    icon: "magnifyingglass",
-                    title: "Find the next case",
-                    message: "Search by patient or reference, use All Cases or a focused queue, and switch between oldest and newest cases.",
-                    tapHint: "Tap a case card to open the consultation."
+                    target: .doctorFilter,
+                    title: "Choose your queue",
+                    message: "Use this filter to see all cases, your waiting cases, unassigned consultations, answered cases or closed cases."
                 ),
                 AppTourStep(
                     id: 1,
-                    icon: "photo.on.rectangle.angled",
-                    title: "Review every photo",
-                    message: "Swipe left or right inside the post. Tap the image for full screen, then use drawing or text to mark clinical areas.",
-                    tapHint: "Tap the large photo; use the side arrows or swipe."
+                    target: .doctorSort,
+                    title: "Set the order",
+                    message: "Switch between the oldest and newest consultations so the right case appears first."
                 ),
                 AppTourStep(
                     id: 2,
-                    icon: "square.and.pencil",
-                    title: "Send your recommendation",
-                    message: "The response area is already open at the bottom. Add your note, approximate graft number and recommended price.",
-                    tapHint: "Scroll to Doctor Response, then tap Send response."
-                ),
-                AppTourStep(
-                    id: 3,
-                    icon: "arrow.triangle.branch",
-                    title: "The patient stays with you",
-                    message: "Your first accepted response assigns the patient to you unless an admin assigned them earlier. New updates return to your waiting queue.",
-                    tapHint: "Use My Waiting for returning patient updates."
+                    target: .doctorCase,
+                    title: "Open a consultation",
+                    message: "Tap a case to review its photos and conversation. The Doctor Response area is ready at the bottom of the case."
                 ),
             ]
         case .agent:
             [
                 AppTourStep(
                     id: 0,
-                    icon: "tray.full",
-                    title: "Manage your cases",
-                    message: "Search and filter your own cases by status. Each card shows the latest state and opens the editable case screen.",
-                    tapHint: "Tap a case card to review or update it."
+                    target: .agentFilter,
+                    title: "Filter your cases",
+                    message: "Choose all cases, waiting for doctor, waiting for you or closed consultations."
                 ),
                 AppTourStep(
                     id: 1,
-                    icon: "plus.circle",
-                    title: "Create a consultation",
-                    message: "The guided flow checks the patient first, then asks for the note, estimated graft and price, and finally the photo set.",
-                    tapHint: "Tap + New beside the filter to start."
+                    target: .agentNewCase,
+                    title: "Create a case",
+                    message: "Tap New to check the patient and add the note, estimate, price and photos step by step."
                 ),
                 AppTourStep(
                     id: 2,
-                    icon: "bubble.left.and.bubble.right",
-                    title: "Continue the conversation",
-                    message: "Doctor recommendations appear below the photos. Adding a new message or photo automatically sends the case back to Waiting for Doctor.",
-                    tapHint: "Open the case and use Add update below the thread."
-                ),
-                AppTourStep(
-                    id: 3,
-                    icon: "checkmark.circle",
-                    title: "Close only when complete",
-                    message: "After the doctor answers, confirm that the consultation is complete. Only the agent can close the case.",
-                    tapHint: "Tap Confirm & Close after reviewing the response."
+                    target: .agentCase,
+                    title: "Continue a case",
+                    message: "Open an existing case to add an update, review the doctor's answer or confirm and close it when complete."
                 ),
             ]
         case .admin, .manager:
