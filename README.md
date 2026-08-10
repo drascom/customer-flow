@@ -15,6 +15,8 @@ The project is designed for organisations that need a private, role-based consul
 
 The iOS app is a client and **does not work without a running Customer Flow server**. On first launch, the user enters the server address and then signs in with an account created by an administrator. There is no public sign-up screen.
 
+The included automatic server installer targets a **Linux machine running systemd**. It registers the API as a system service, starts it immediately and enables automatic startup after reboot. Other operating systems can be used for development, but require manual startup.
+
 For production use, the server must be placed behind HTTPS and configured with secure passwords, protected storage, backups and SMTP for password recovery. Patient photos and the SQLite database are intentionally excluded from this repository.
 
 ## Quick start

@@ -27,4 +27,4 @@ The app validates `/api/v1/health` automatically. Release builds require HTTPS. 
 - **Admin:** compact mobile case/user management, filters, agencies and doctor assignment.
 - **Profile:** contact details, password change and role-specific quick tour.
 
-Authentication and roles are controlled by the server. Session tokens are stored in iOS Keychain. Password recovery is delivered by the server through SMTP; Firebase is not used. Push notifications are designed to use APNs through a separate notification adapter.
+Authentication and roles are controlled by the server. Session tokens are stored in iOS Keychain. Password recovery is delivered by the server through SMTP. Push notifications are designed to use APNs through a separate notification adapter.

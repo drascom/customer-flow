@@ -153,7 +153,7 @@ Yalnızca agent vakayı kapatabilir. Doktor cevabı tek başına vakayı kapatma
 - Her kullanıcı uygulamadaki profil sayfasından görünen adını, e-posta adresini ve telefon numarasını güncelleyebilir. Kullanıcı adı ve rol server yönetiminde kalır.
 - Oturum açmış kullanıcı mevcut parolasını doğrulayarak yeni parola belirleyebilir; işlem diğer aktif oturumları kapatır.
 - **Forgot Password** akışında kullanıcı adı veya kayıtlı e-posta ile altı haneli, 10 dakika geçerli doğrulama kodu istenir. Kod doğrulanınca parola yenilenir ve tüm eski oturumlar iptal edilir. Hesap varlığı dışarıya açıklanmaz ve başarısız kod denemeleri sınırlandırılır.
-- Reset kodu yalnızca kayıtlı e-posta adresine **SMTP** üzerinden gönderilir. Firebase/OTP kullanılmayacaktır.
+- Reset kodu yalnızca kayıtlı e-posta adresine **SMTP** üzerinden gönderilir.
 - Parola cihazda saklanmaz. Başarılı girişten sonra server'ın verdiği süreli oturum anahtarı iOS Keychain içinde tutulur; çıkışta silinir.
 - Kullanıcı çıkış yapabilir veya bağlı server'ı değiştirebilir. Server değiştirme işlemi mevcut oturumu kapatır ve bağlantı adımına döner.
 - Yerel geliştirme derlemesinde LAN üzerindeki HTTP server'a izin verilebilir; App Store/üretim derlemesinde HTTPS zorunludur.
@@ -165,7 +165,7 @@ Yalnızca agent vakayı kapatabilir. Doktor cevabı tek başına vakayı kapatma
 - Kimlik doğrulama, rol ve yetkiler, kalıcı hasta–doktor ataması, mükerrer hasta adayı arama/doğrulama, vaka durumları, atomik cevap geçişleri, mesajlar, medya, fotoğraf anotasyonları, audit trail, raporlama ve bildirimleri yönetir.
 - Hasta, vaka, yorum, doktor ataması, fiyat ve audit kayıtlarının ana veritabanı sunucuda çalışan **lokal SQLite** olacaktır.
 - SQLite erişimi yalnızca server katmanından yapılır; iOS/Android istemcileri veritabanına doğrudan bağlanmaz ve tüm işlemleri sürümlü HTTPS API üzerinden gerçekleştirir.
-- Kimlik doğrulama server üzerinde kullanıcı adı/parola ve süreli oturum anahtarıyla yapılır. Parola kurtarma SMTP e-postasıyla yürütülür; Firebase kullanılmaz. Push bildirimleri kimlik doğrulamadan bağımsız bir bildirim adaptörüyle, iOS tarafında APNs üzerinden ele alınır.
+- Kimlik doğrulama server üzerinde kullanıcı adı/parola ve süreli oturum anahtarıyla yapılır. Parola kurtarma SMTP e-postasıyla yürütülür. Push bildirimleri kimlik doğrulamadan bağımsız bir bildirim adaptörüyle, iOS tarafında APNs üzerinden ele alınır.
 - Klinik adı, logo, destek bilgileri, saat dilimi, özellik bayrakları, yasal metin bağlantıları ve benzeri kliniğe özel ayarlar sunucu tarafındaki ortam yapılandırmasında tutulur.
 - Parola, token imzalama anahtarı ve depolama anahtarı gibi sırlar yalnızca sunucunun environment/secret manager katmanında kalır; hiçbir zaman istemciye gönderilmez.
 - İstemcinin görmesi güvenli olan marka ve özellik bilgileri, sürümlenmiş bir public configuration/capabilities endpoint'i üzerinden sunulur.
