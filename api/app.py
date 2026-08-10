@@ -196,9 +196,12 @@ class Database:
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) "
                     "WHERE email IS NOT NULL AND email <> ''"
                 )
-            self.ensure_demo_agencies()
             if seed:
-                self.seed_demo()
+                with self.connect() as conn:
+                    has_users = conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+                if not has_users:
+                    self.ensure_demo_agencies()
+                    self.seed_demo()
 
     def ensure_demo_agencies(self) -> None:
         now = iso(utc_now())
