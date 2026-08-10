@@ -36,7 +36,10 @@ struct AdminCreateUserSheet: View {
                         Picker("Role", selection: $role) {
                             ForEach(UserRole.allCases) { role in Text(role.title).tag(role) }
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                     }
 
                     if role == .agent {

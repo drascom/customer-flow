@@ -3,27 +3,34 @@ import SwiftUI
 struct AdminUserCard: View {
     let user: AdminUser
     let currentUserID: String
+    let allowsManagement: Bool
     let isExpanded: Bool
     let onToggle: () -> Void
+    let onShowDetails: () -> Void
     let onSetActive: (Bool) -> Void
     let onDelete: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: onToggle) {
-                HStack(spacing: 11) {
-                    roleIcon
-                    VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 11) {
+                roleIcon
+                VStack(alignment: .leading, spacing: 4) {
+                    Button(action: onShowDetails) {
                         Text(user.displayName)
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(AppTheme.ink)
                             .lineLimit(1)
-                        Text("@\(user.username) · \(user.agencyName ?? user.role.title)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(AppTheme.muted)
-                            .lineLimit(1)
                     }
-                    Spacer(minLength: 4)
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Shows contact and account details")
+
+                    Text("@\(user.username) · \(user.agencyName ?? user.role.title)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppTheme.muted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Button(action: onToggle) {
                     VStack(alignment: .trailing, spacing: 5) {
                         Text(user.active ? "Active" : "Inactive")
                             .font(.system(size: 11, weight: .bold))
@@ -32,10 +39,11 @@ struct AdminUserCard: View {
                             .font(.caption)
                             .foregroundStyle(AppTheme.muted)
                     }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded ? "Hide user actions" : "Show user actions")
             }
-            .buttonStyle(.plain)
 
             if isExpanded {
                 Divider().padding(.vertical, 12)
@@ -54,7 +62,7 @@ struct AdminUserCard: View {
                         .foregroundStyle(AppTheme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 10)
-                } else {
+                } else if allowsManagement {
                     HStack(spacing: 10) {
                         Button(user.active ? "Deactivate" : "Reactivate") {
                             onSetActive(!user.active)
@@ -69,6 +77,12 @@ struct AdminUserCard: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.top, 10)
+                } else {
+                    Label("Read-only user access", systemImage: "eye")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 10)
                 }
             }
         }
@@ -93,6 +107,54 @@ struct AdminUserCard: View {
         case .doctor: "stethoscope"
         case .agent: "person.crop.rectangle.stack"
         case .admin: "gearshape.2"
+        case .manager: "eye"
         }
+    }
+}
+
+struct AdminUserDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let user: AdminUser
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Account") {
+                    LabeledContent("Username", value: "@\(user.username)")
+                    LabeledContent("Role", value: user.role.title)
+                    LabeledContent("Agency", value: user.agencyName ?? "Not assigned")
+                    LabeledContent("Status", value: user.active ? "Active" : "Inactive")
+                }
+
+                Section("Contact") {
+                    LabeledContent("Email", value: nonEmpty(user.email, fallback: "Not provided"))
+                    LabeledContent("Phone", value: nonEmpty(user.phone, fallback: "Not provided"))
+                }
+
+                Section("Activity") {
+                    LabeledContent("Workload", value: user.activitySummary)
+                    LabeledContent("Created", value: createdText)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.background.ignoresSafeArea())
+            .navigationTitle(user.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var createdText: String {
+        guard let date = ISO8601DateFormatter().date(from: user.createdAt) else { return user.createdAt }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func nonEmpty(_ value: String?, fallback: String) -> String {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return fallback }
+        return value
     }
 }

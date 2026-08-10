@@ -273,7 +273,7 @@ final class AppState: ObservableObject {
     private func activate(client: RemoteAPIClient, user: AuthenticatedUser) {
         repository = RemoteCaseRepository(client: client)
         patientMatcher = RemotePatientMatchingService(client: client)
-        adminRepository = user.role == .admin ? RemoteAdminRepository(client: client) : nil
+        adminRepository = user.role == .admin || user.role == .manager ? RemoteAdminRepository(client: client) : nil
         currentUser = user
     }
 

@@ -15,9 +15,9 @@ struct RootView: View {
                             DoctorQueueView()
                         case .agent:
                             AgentCasesView()
-                        case .admin:
+                        case .admin, .manager:
                             if let repository = state.adminRepository, let user = state.currentUser {
-                                AdminDashboardView(repository: repository, currentUserID: user.id)
+                                AdminDashboardView(repository: repository, currentUserID: user.id, currentUserRole: user.role)
                             } else {
                                 ProgressView()
                             }
@@ -84,7 +84,7 @@ struct RootView: View {
             Spacer(minLength: 8)
 
             Menu {
-                if state.role == .admin, let user = state.currentUser {
+                if (state.role == .admin || state.role == .manager), let user = state.currentUser {
                     Text(user.displayName)
                     Text(user.role.title)
                     Divider()
@@ -95,7 +95,7 @@ struct RootView: View {
                 Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
                     Task { await state.logout() }
                 }
-                if state.role == .admin {
+                if state.role == .admin || state.role == .manager {
                     Button("Change server", systemImage: "server.rack") {
                         Task { await state.changeServer() }
                     }
@@ -182,7 +182,7 @@ struct ProfileView: View {
                     Text("Use at least 10 characters. Changing your password signs out your other sessions.")
                 }
 
-                if state.role != .admin {
+                if state.role != .admin && state.role != .manager {
                     Section("Help") {
                         Button {
                             onShowTour()

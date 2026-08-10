@@ -1,6 +1,6 @@
 # Customer Flow
 
-Customer Flow is a self-hosted clinical consultation workflow for clinics, authorised agents and doctors. Agents create patient cases with notes, estimates and photos; doctors review the cases and send clinical recommendations; administrators manage users, agencies, assignments and reporting access.
+Customer Flow is a self-hosted clinical consultation workflow for clinics, authorised agents and doctors. Agents create patient cases with notes, estimates and photos; doctors review the cases and send clinical recommendations; administrators manage the system, while managers provide read-only operational oversight and can adjust doctor assignments.
 
 The project is designed for organisations that need a private, role-based consultation flow without using a public registration system.
 
@@ -8,7 +8,7 @@ The project is designed for organisations that need a private, role-based consul
 
 - [`api/`](api/) — Python API, authentication, SQLite storage and uploaded-media handling.
 - [`admin-panel/`](admin-panel/) — Responsive web administration interface served by the API.
-- [`ios-app/`](ios-app/) — Native SwiftUI app for Doctor, Agent and Admin users.
+- [`ios-app/`](ios-app/) — Native SwiftUI app for Doctor, Agent, Manager and Admin users.
 - [`docs/`](docs/) — Project plan and interface mockups.
 
 ## Important

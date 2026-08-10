@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Customer Flow Admin</title>
-  <link rel="stylesheet" href="/admin/admin.css?v=20260810-2216">
-  <script src="/admin/admin.js?v=20260810-2216" defer></script>
+  <link rel="stylesheet" href="/admin/admin.css?v=20260810-2305">
+  <script src="/admin/admin.js?v=20260810-2305" defer></script>
 </head>
 <body>
   <main id="loginView" class="login-shell">
     <section class="login-card">
       <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>C</b>ustomer <b>F</b>low</span></div>
       <div>
-        <h1>Admin sign in</h1>
-        <p>Manage authorised users and monitor consultation activity.</p>
+        <h1>Management sign in</h1>
+        <p>Monitor consultation activity and authorised users.</p>
       </div>
       <form id="loginForm" class="stack">
         <label>Username<input id="loginUsername" autocomplete="username" required></label>
@@ -74,7 +74,7 @@
       </section>
 
       <section id="usersView" class="panel" hidden>
-        <div class="panel-heading"><div><h2>Users</h2><p>Create accounts and control access without deleting audit history.</p></div></div>
+        <div class="panel-heading"><div><h2>Users</h2><p id="userPanelDescription">Create accounts and control access without deleting audit history.</p></div></div>
         <div class="filter-bar" aria-label="User filters">
           <div class="filter-groups user-filter-groups">
             <div class="filter-group filter-all-group"><span class="filter-label">View</span><button id="allUserFilters" class="filter-all active" type="button" aria-pressed="true">All</button></div>
@@ -99,13 +99,24 @@
       <div class="dialog-heading"><div><h2>Add user</h2><p>Create a server-authorised account.</p></div><button id="closeDialog" class="icon-button" type="button" aria-label="Close">×</button></div>
       <label>Display name<input id="newDisplayName" autocomplete="off" required></label>
       <label>Username<input id="newUsername" autocomplete="off" autocapitalize="none" required></label>
-      <label>Role<select id="newRole" required><option value="agent">Agent</option><option value="doctor">Doctor</option><option value="admin">Admin</option></select></label>
+      <label>Role<select id="newRole" required><option value="agent">Agent</option><option value="doctor">Doctor</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label>
       <label id="agencyField">Agency<select id="newAgency" required></select></label>
       <label id="newAgencyField" hidden>New agency name<input id="newAgencyName" autocomplete="organization"><small>The agency will be added before the user is created.</small></label>
       <label>Temporary password<input id="newPassword" type="password" minlength="10" autocomplete="new-password" required><small>At least 10 characters.</small></label>
       <p id="userFormError" class="form-error" role="alert"></p>
       <div class="dialog-actions"><button id="cancelUser" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create user</button></div>
     </form>
+  </dialog>
+
+  <dialog id="userDetailDialog">
+    <section class="dialog-card user-detail-card" aria-labelledby="userDetailTitle">
+      <div class="dialog-heading">
+        <div><h2 id="userDetailTitle">User details</h2><p>Contact and account information.</p></div>
+        <button id="closeUserDetail" class="icon-button" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="userDetailContent" class="user-detail-grid"></div>
+      <div class="dialog-actions"><button id="doneUserDetail" class="primary" type="button">Done</button></div>
+    </section>
   </dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>

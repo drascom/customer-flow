@@ -1,6 +1,6 @@
 # Customer Flow iOS
 
-Native SwiftUI client for Doctor, Agent and Admin users. The app connects to a self-hosted Customer Flow server and does not contain a public sign-up flow.
+Native SwiftUI client for Doctor, Agent, Manager and Admin users. The app connects to a self-hosted Customer Flow server and does not contain a public sign-up flow.
 
 ## App Store users
 
@@ -35,6 +35,7 @@ The app validates `/api/v1/health` automatically. Release builds require HTTPS.
 - **Doctor:** assigned/waiting queue, search and sorting, multi-photo review, annotation and clinical recommendation.
 - **Agent:** case list, guided case creation, duplicate-patient confirmation, updates and Confirm & Close.
 - **Admin:** compact mobile case/user management, filters, agencies and doctor assignment.
+- **Manager:** read-only access to all users and cases, with doctor assignment as the only management action.
 - **Profile:** contact details, password change and role-specific quick tour.
 
 Authentication and roles are controlled by the server. Session tokens are stored in iOS Keychain. Password recovery is delivered by the server through SMTP. Push notifications are designed to use APNs through a separate notification adapter.

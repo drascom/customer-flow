@@ -4,6 +4,7 @@ enum UserRole: String, CaseIterable, Identifiable, Codable, Sendable {
     case doctor
     case agent
     case admin
+    case manager
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }

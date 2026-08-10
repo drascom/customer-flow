@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin')),
+  role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','manager')),
   password_salt TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   agency_id TEXT REFERENCES agencies(id),
@@ -192,6 +192,7 @@ class Database:
                     conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
                 if "phone" not in columns:
                     conn.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+                self._migrate_user_role_constraint(conn)
                 conn.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) "
                     "WHERE email IS NOT NULL AND email <> ''"
@@ -202,6 +203,51 @@ class Database:
                 if not has_users:
                     self.ensure_demo_agencies()
                     self.seed_demo()
+
+    @staticmethod
+    def _migrate_user_role_constraint(conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
+        ).fetchone()
+        table_sql = row["sql"] if row else ""
+        if "'manager'" in (table_sql or ""):
+            return
+
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """CREATE TABLE users_new (
+                  id TEXT PRIMARY KEY,
+                  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                  display_name TEXT NOT NULL,
+                  role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','manager')),
+                  password_salt TEXT NOT NULL,
+                  password_hash TEXT NOT NULL,
+                  agency_id TEXT REFERENCES agencies(id),
+                  email TEXT,
+                  phone TEXT,
+                  active INTEGER NOT NULL DEFAULT 1,
+                  created_at TEXT NOT NULL
+                )"""
+            )
+            conn.execute(
+                "INSERT INTO users_new(id,username,display_name,role,password_salt,password_hash,agency_id,email,phone,active,created_at) "
+                "SELECT id,username,display_name,role,password_salt,password_hash,agency_id,email,phone,active,created_at FROM users"
+            )
+            conn.execute("DROP TABLE users")
+            conn.execute("ALTER TABLE users_new RENAME TO users")
+            conn.execute("COMMIT")
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+
+        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError("Database role migration produced foreign-key violations.")
 
     def ensure_demo_agencies(self) -> None:
         now = iso(utc_now())
@@ -226,6 +272,7 @@ class Database:
                 ("doctor-emre", "doctor", "Dr. Emre Kaya", "doctor", None, os.getenv("CF_DOCTOR_PASSWORD", "doctor123")),
                 ("agent-selin", "agent", "Selin Arslan", "agent", "agency-drascom", os.getenv("CF_AGENT_PASSWORD", "agent123")),
                 ("admin-local", "admin", "Local Admin", "admin", None, os.getenv("CF_ADMIN_PASSWORD", "admin123")),
+                ("manager-local", "manager", "Operations Manager", "manager", None, os.getenv("CF_MANAGER_PASSWORD", "manager123")),
                 ("agent-mert", "mert", "Mert Demir", "agent", "agency-north", secrets.token_urlsafe(24)),
                 ("agent-aylin", "aylin", "Aylin Yılmaz", "agent", "agency-anatolia", secrets.token_urlsafe(24)),
                 ("agent-cem", "cem", "Cem Öztürk", "agent", "agency-north", secrets.token_urlsafe(24)),
@@ -713,7 +760,7 @@ class Database:
             return file_path.read_bytes(), photo["content_type"]
 
     def admin_users(self, user: sqlite3.Row) -> list[dict]:
-        self._require_role(user, "admin")
+        self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT u.*, ag.name agency_name, "
@@ -737,7 +784,7 @@ class Database:
         display_name = str(payload.get("displayName", "")).strip()
         role = str(payload.get("role", "")).strip().lower()
         password = str(payload.get("password", ""))
-        if not username or not display_name or role not in {"doctor", "agent", "admin"}:
+        if not username or not display_name or role not in {"doctor", "agent", "admin", "manager"}:
             raise APIError(422, "invalid_user", "Username, display name and a valid role are required.")
         if len(password) < 10:
             raise APIError(422, "weak_password", "The temporary password must contain at least 10 characters.")
@@ -826,7 +873,7 @@ class Database:
                 raise
 
     def admin_agencies(self, user: sqlite3.Row) -> list[dict]:
-        self._require_role(user, "admin")
+        self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT ag.*, (SELECT COUNT(*) FROM users u WHERE u.agency_id=ag.id) user_count "
@@ -856,7 +903,7 @@ class Database:
                 raise
 
     def admin_cases(self, user: sqlite3.Row) -> list[dict]:
-        self._require_role(user, "admin")
+        self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_grafts,c.currency,c.agent_price,"
@@ -879,7 +926,7 @@ class Database:
             } for row in rows]
 
     def admin_assign_doctor(self, patient_id: str, payload: dict, user: sqlite3.Row) -> dict:
-        self._require_role(user, "admin")
+        self._require_any_role(user, "admin", "manager")
         doctor_id = payload.get("doctorID") or None
         reason = str(payload.get("reason", "")).strip()
         with self.connect() as conn:
@@ -917,6 +964,12 @@ class Database:
     def _require_role(user: sqlite3.Row, role: str) -> None:
         if user["role"] != role:
             raise APIError(403, "forbidden", f"This action requires the {role} role.")
+
+    @staticmethod
+    def _require_any_role(user: sqlite3.Row, *roles: str) -> None:
+        if user["role"] not in roles:
+            allowed = " or ".join(roles)
+            raise APIError(403, "forbidden", f"This action requires the {allowed} role.")
 
     @staticmethod
     def _assert_owner(case: sqlite3.Row, user: sqlite3.Row) -> None:
@@ -1012,6 +1065,7 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "GET" and path == f"{API_PREFIX}/auth/me":
                 return self._json(200, {"user": self.server.database._public_user(user)})
             if method == "POST" and path == f"{API_PREFIX}/auth/logout":
+                self._read_json()
                 self.server.database.logout(token)
                 return self._json(200, {"ok": True})
             if method == "GET" and path.startswith(f"{API_PREFIX}/photos/"):

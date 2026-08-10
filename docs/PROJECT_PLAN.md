@@ -6,7 +6,7 @@ Saç ekimi danışmanlık vakalarının agent ile doktor arasında düzenli, izl
 
 ## 2. Roller ve yetkiler
 
-Kullanıcı giriş yaptıktan sonra rolüne göre farklı bir çalışma alanına yönlendirilir: **Doctor → doktor vaka kuyruğu**, **Agent → agent vaka alanı**, **Admin → sistem yönetimi**. Roller aynı ana ekranı paylaşmaz.
+Kullanıcı giriş yaptıktan sonra rolüne göre farklı bir çalışma alanına yönlendirilir: **Doctor → doktor vaka kuyruğu**, **Agent → agent vaka alanı**, **Manager → operasyon takip alanı**, **Admin → sistem yönetimi**. Roller aynı ana ekranı paylaşmaz; Manager ve Admin aynı yönetim görünümünü farklı yetkilerle kullanır.
 
 ### Agent
 
@@ -32,16 +32,24 @@ Kullanıcı giriş yaptıktan sonra rolüne göre farklı bir çalışma alanın
 - Denetim ve raporlama amacıyla vakayı kimin yüklediğini görür; bu görünürlük cevap verme yetkisi sağlamaz.
 - Hastayı cevap gelmeden önce bir doktora atayabilir ve doktorun izinli/uygun olmadığı durumlarda gerekçesiyle birlikte yeniden atayabilir.
 
+### Manager
+
+- Tüm kullanıcıları ve tüm vaka/postları görebilir; operasyonel durum kontrolü yapar ve eksik kalan işleri takip eder.
+- Kullanıcı, ajans, vaka içeriği veya durumunu oluşturamaz, değiştiremez, pasifleştiremez ya da silemez.
+- Tek yazma yetkisi hastanın atanmış doktorunu değiştirmektir. Mevcut atama değiştiriliyor veya kaldırılıyorsa gerekçe zorunludur ve işlem audit trail'e yazılır.
+- Kullanıcı adına dokunarak veya tıklayarak telefon, e-posta, ajans, rol, erişim durumu ve aktivite özetini görebilir.
+
 ### Basit web Admin Paneli
 
-- Admin paneli aynı server üzerinde `/admin` adresinden açılır ve yalnızca **Admin** rolündeki server hesaplarını kabul eder.
-- Kullanıcı listesinde Doctor, Agent ve Admin hesapları; kullanıcı adı, görünen isim, rol, bağlı ajans, aktiflik ve ilişkili vaka/hasta sayıları gösterilir.
+- Admin paneli aynı server üzerinde `/admin` adresinden açılır ve **Admin** ile **Manager** rollerindeki server hesaplarını kabul eder.
+- Kullanıcı listesinde Doctor, Agent, Manager ve Admin hesapları; kullanıcı adı, görünen isim, rol, bağlı ajans, aktiflik ve ilişkili vaka/hasta sayıları gösterilir. İsme tıklandığında telefon ve e-posta dahil kullanıcı detayları pop-up içinde açılır.
 - Admin yeni kullanıcı oluştururken görünen isim, benzersiz kullanıcı adı, rol ve geçici parola belirler. Agent rolü için mevcut bir ajans seçmek zorunludur; gerekiyorsa aynı form içinde yeni ajans oluşturulabilir. Uygulamada veya panelde herkese açık üyelik bulunmaz.
 - **Deactivate** erişimi kapatır ve mevcut oturumları iptal eder; gerektiğinde **Reactivate** yapılabilir. Kalıcı **Delete** yalnızca önce pasifleştirilmiş ve hiçbir vaka, hasta, mesaj veya fotoğraf geçmişi olmayan kullanılmamış hesaplar için mümkündür. Klinik geçmişi bulunan hesaplar audit bütünlüğü için silinmez, pasif tutulur.
 - Hasta/vaka tablosunda hasta adı ve Patient ID, vaka referansı, durum, agent, atanmış doktor, fotoğraf ve mesaj sayıları, graft/fiyat değerleri ve yüklenme zamanı izlenir.
-- Hasta/vaka listesi durum, doktor ataması, ajans ve doktor çipleriyle; kullanıcı listesi rol, erişim durumu ve ajans çipleriyle hızlıca filtrelenebilir. Arama alanı aktif çiplerle birlikte çalışır ve filtreler tek eylemle temizlenebilir.
+- Hasta/vaka listesi durum, doktor ataması, ajans ve doktor seçimleriyle; kullanıcı listesi rol, erişim durumu ve ajans seçimleriyle hızlıca filtrelenebilir. Her bölümde tek bir **All** düğmesi tüm filtreleri temizler.
 - Admin tablodan hastaya aktif bir doktor atayabilir. Mevcut doktor değiştiriliyorsa gerekçe zorunludur; atama ve yeniden atama audit trail'e yazılır.
 - Panel responsive çalışır; mobilde genel sayfa taşmaz, geniş vaka tablosu kendi alanı içinde yatay kaydırılır.
+- Manager panelde aynı verileri görür; kullanıcı/ajans yönetim butonları ve diğer değişiklik eylemleri gösterilmez, yalnızca doktor atama seçimi kullanılabilir.
 
 ### Native mobil Admin alanı
 
@@ -53,6 +61,7 @@ Kullanıcı giriş yaptıktan sonra rolüne göre farklı bir çalışma alanın
 - Admin yeni kullanıcı ve yeni ajans oluşturabilir. Agent hesabı oluşturulurken aktif bir ajans seçmek zorunludur.
 - Mevcut doktor değiştiriliyor veya atama kaldırılıyorsa kısa bir gerekçe zorunludur. Kullanıcı pasifleştirme ve kalıcı silme işlemleri açık bir onay adımı ister.
 - Liste aşağı çekilerek yenilenebilir; tüm veriler uygulama içinde ayrıca kopyalanmadan server'dan alınır.
+- Manager aynı native yönetim alanını salt-okunur kullanıcı ve vaka erişimiyle kullanır; yeni kullanıcı/ajans, pasifleştirme ve silme kontrolleri gösterilmez. Doktor atama kontrolü açık kalır ve kullanıcı adına dokunulduğunda iletişim/hesap detayları sheet içinde gösterilir.
 
 ## 3. Vaka durum akışı
 
@@ -145,7 +154,7 @@ Yalnızca agent vakayı kapatabilir. Doktor cevabı tek başına vakayı kapatma
 - Uygulama ilk açılışta yalnızca **Server Address** ister ve `/api/v1/health` üzerinden sunucu erişimi, API sürümü ve temel yetenekleri doğrular.
 - Başarılı bağlantıdan sonra ayrı **Username / Password** ekranı açılır. Uygulamada kayıt olma, davet kabul etme veya herkese açık üyelik ekranı bulunmaz.
 - Kullanıcılar yalnızca server tarafında admin tarafından oluşturulur; rol ve yetkiler server tarafından belirlenir.
-- Doctor ve Agent kullanıcılarına ilgili server'daki ilk başarılı girişlerinden sonra rollerine özel kısa bir **Quick Tour** gösterilir. Admin için bu tur açılmaz.
+- Doctor ve Agent kullanıcılarına ilgili server'daki ilk başarılı girişlerinden sonra rollerine özel kısa bir **Quick Tour** gösterilir. Admin ve Manager için bu tur açılmaz.
 - Doctor turu kuyruk arama/filtreleme ve sıralamayı, vaka kartını açmayı, fotoğraflar arasında gezinme–tam ekran–çizim/metin anotasyonunu, Doctor Response alanını ve hasta–doktor sahipliğini açıklar.
 - Agent turu kendi vaka listesini, **+ New** ile başlayan oluşturma sihirbazını, mükerrer hasta kontrolünü, doktor yanıtından sonra mesaj/fotoğraf eklemeyi ve **Confirm & Close** işlemini açıklar.
 - Tur dört kısa adımdan oluşur; her adım hangi kontrole dokunulacağını açıkça belirtir. Kullanıcı turu atlayabilir; atlama da tamamlanmış sayılır ve her girişte tekrar gösterilmez.

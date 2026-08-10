@@ -113,6 +113,8 @@ tbody tr:hover { background: color-mix(in srgb, var(--surface-strong), transpare
 .identity { display: grid; gap: 2px; }
 .identity strong { font-size: 14px; }
 .identity small { color: var(--muted); }
+.user-detail-trigger { width: fit-content; max-width: 220px; padding: 0; color: var(--ink); border: 0; background: transparent; font-size: 14px; font-weight: 750; text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+.user-detail-trigger:hover, .user-detail-trigger:focus-visible { color: var(--teal); text-decoration-color: currentColor; }
 .status { display: inline-flex; padding: 5px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .status.waiting { color: #75460d; background: #ffe3b7; }
 .status.answered { color: #075d57; background: #cfebe7; }
@@ -135,6 +137,11 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .dialog-heading p { margin-top: 3px; font-size: 13px; }
 .dialog-actions { justify-content: flex-end; margin-top: 4px; }
 .icon-button { width: 34px; height: 34px; padding: 0; color: var(--muted); border: 1px solid var(--border); border-radius: 50%; background: var(--inset); font-size: 22px; }
+.user-detail-card { gap: 20px; }
+.user-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.user-detail-item { min-width: 0; display: grid; gap: 5px; padding: 12px; border: 1px solid var(--border); border-radius: 13px; background: var(--inset); }
+.user-detail-item span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .055em; text-transform: uppercase; }
+.user-detail-item strong { overflow-wrap: anywhere; font-size: 14px; }
 .toast { position: fixed; z-index: 50; right: 20px; bottom: 20px; max-width: 380px; padding: 12px 15px; color: var(--ink); border: 1px solid var(--border); border-radius: 12px; background: var(--surface-strong); box-shadow: var(--shadow); }
 
 @media (max-width: 800px) {
@@ -165,4 +172,5 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
   .panel-heading { align-items: stretch; flex-direction: column; }
   .panel-heading select { width: 100%; }
   .case-filter-groups { grid-template-columns: minmax(0, 1fr); }
+  .user-detail-grid { grid-template-columns: minmax(0, 1fr); }
 }

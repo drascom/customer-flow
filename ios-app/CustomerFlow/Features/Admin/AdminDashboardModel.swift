@@ -7,6 +7,7 @@ final class AdminDashboardModel {
     private let repository: any AdminRepository
 
     let currentUserID: String
+    let currentUserRole: UserRole
     var users: [AdminUser] = []
     var cases: [AdminCase] = []
     var agencies: [AdminAgency] = []
@@ -22,10 +23,13 @@ final class AdminDashboardModel {
     var isLoading = false
     var errorMessage: String?
 
-    init(repository: any AdminRepository, currentUserID: String) {
+    init(repository: any AdminRepository, currentUserID: String, currentUserRole: UserRole) {
         self.repository = repository
         self.currentUserID = currentUserID
+        self.currentUserRole = currentUserRole
     }
+
+    var canManageAccounts: Bool { currentUserRole == .admin }
 
     var activeDoctors: [AdminUser] {
         users
@@ -97,6 +101,10 @@ final class AdminDashboardModel {
     }
 
     func createUser(username: String, displayName: String, role: UserRole, password: String, agencyID: String?) async -> Bool {
+        guard canManageAccounts else {
+            errorMessage = "Manager accounts have read-only user access."
+            return false
+        }
         do {
             let user = try await repository.createUser(
                 username: username,
@@ -114,6 +122,10 @@ final class AdminDashboardModel {
     }
 
     func createAgency(name: String) async -> Bool {
+        guard canManageAccounts else {
+            errorMessage = "Manager accounts cannot create agencies."
+            return false
+        }
         do {
             agencies.append(try await repository.createAgency(name: name))
             agencies.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -125,6 +137,10 @@ final class AdminDashboardModel {
     }
 
     func setUserActive(_ user: AdminUser, active: Bool) async {
+        guard canManageAccounts else {
+            errorMessage = "Manager accounts cannot change user access."
+            return
+        }
         do {
             try await repository.setUserActive(id: user.id, active: active)
             guard let index = users.firstIndex(where: { $0.id == user.id }) else { return }
@@ -135,6 +151,10 @@ final class AdminDashboardModel {
     }
 
     func deleteUser(_ user: AdminUser) async {
+        guard canManageAccounts else {
+            errorMessage = "Manager accounts cannot delete users."
+            return
+        }
         do {
             try await repository.deleteUser(id: user.id)
             users.removeAll { $0.id == user.id }

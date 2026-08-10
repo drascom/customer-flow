@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -9,7 +10,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from app import create_server
+from app import Database, create_server, hash_password
 
 
 class APITestCase(unittest.TestCase):
@@ -92,7 +93,7 @@ class APITestCase(unittest.TestCase):
             self.assertEqual(200, response.status)
             self.assertEqual(root + "/admin", response.url)
             body = response.read()
-            self.assertIn(b"Admin sign in", body)
+            self.assertIn(b"Management sign in", body)
             self.assertIn(b"caseStatusChips", body)
             self.assertIn(b"caseAssignmentChips", body)
             self.assertIn(b"userRoleChips", body)
@@ -219,6 +220,83 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("doctor-emre", result["doctorID"])
         updated = self.request("GET", "/admin/cases", token=admin)["cases"]
         self.assertTrue(all(item["doctorID"] == "doctor-emre" for item in updated if item["patientID"] == target["patientID"]))
+
+    def test_manager_has_oversight_and_only_assignment_write_access(self):
+        manager = self.login("manager", "manager123")
+        self.assertGreater(len(self.request("GET", "/admin/users", token=manager)["users"]), 0)
+        self.assertGreater(len(self.request("GET", "/admin/agencies", token=manager)["agencies"]), 0)
+        cases = self.request("GET", "/admin/cases", token=manager)["cases"]
+        self.assertGreater(len(cases), 0)
+
+        target = cases[0]
+        doctor_id = None if target["doctorID"] else "doctor-emre"
+        assignment = self.request("PATCH", f"/admin/patients/{target['patientID']}", {
+            "doctorID": doctor_id, "reason": "Manager workload review"
+        }, token=manager)["assignment"]
+        self.assertEqual(doctor_id, assignment["doctorID"])
+
+        created = self.request("POST", "/admin/users", {
+            "username": "blocked-manager-create", "displayName": "Blocked User",
+            "role": "agent", "agencyID": "agency-drascom", "password": "Temporary!123"
+        }, token=manager, expected=403)
+        self.assertEqual("forbidden", created["error"]["code"])
+        self.request("POST", "/admin/agencies", {"name": "Blocked Agency"}, token=manager, expected=403)
+
+        other = next(user for user in self.request("GET", "/admin/users", token=manager)["users"] if user["id"] != "manager-local")
+        self.request("PATCH", f"/admin/users/{other['id']}", {"active": False}, token=manager, expected=403)
+        self.request("DELETE", f"/admin/users/{other['id']}", token=manager, expected=403)
+
+    def test_existing_user_table_migrates_manager_role_constraint(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database_path = root / "legacy.sqlite3"
+            salt, digest = hash_password("Temporary!123")
+            with sqlite3.connect(database_path) as connection:
+                connection.executescript("""
+                    CREATE TABLE agencies (
+                      id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                      active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE users (
+                      id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                      display_name TEXT NOT NULL,
+                      role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin')),
+                      password_salt TEXT NOT NULL, password_hash TEXT NOT NULL,
+                      agency_id TEXT REFERENCES agencies(id), email TEXT, phone TEXT,
+                      active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE sessions (
+                      token_hash TEXT PRIMARY KEY,
+                      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                      created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+                    );
+                """)
+                connection.execute(
+                    "INSERT INTO users VALUES (?,?,?,?,?,?,NULL,NULL,NULL,1,?)",
+                    ("legacy-admin", "legacy", "Legacy Admin", "admin", salt, digest, "2026-08-10T00:00:00Z"),
+                )
+                connection.execute(
+                    "INSERT INTO sessions VALUES (?,?,?,?)",
+                    ("legacy-session", "legacy-admin", "2026-08-10T00:00:00Z", "2026-08-11T00:00:00Z"),
+                )
+
+            Database(database_path, root / "media").initialize(seed=False)
+            with sqlite3.connect(database_path) as connection:
+                schema = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
+                ).fetchone()[0]
+                self.assertIn("'manager'", schema)
+                self.assertEqual("Legacy Admin", connection.execute(
+                    "SELECT display_name FROM users WHERE id='legacy-admin'"
+                ).fetchone()[0])
+                self.assertEqual("legacy-admin", connection.execute(
+                    "SELECT user_id FROM sessions WHERE token_hash='legacy-session'"
+                ).fetchone()[0])
+                connection.execute(
+                    "INSERT INTO users VALUES (?,?,?,?,?,?,NULL,NULL,NULL,1,?)",
+                    ("manager-test", "manager-test", "Manager Test", "manager", salt, digest, "2026-08-10T00:00:00Z"),
+                )
+                self.assertEqual([], connection.execute("PRAGMA foreign_key_check").fetchall())
 
 
 if __name__ == "__main__":

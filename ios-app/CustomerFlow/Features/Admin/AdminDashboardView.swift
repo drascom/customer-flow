@@ -5,6 +5,7 @@ struct AdminDashboardView: View {
     @State private var showsFilters = false
     @State private var showsNewUser = false
     @State private var showsNewAgency = false
+    @State private var selectedUser: AdminUser?
     @State private var expandedCaseID: String?
     @State private var expandedUserID: String?
     @State private var pendingUser: AdminUser?
@@ -16,8 +17,12 @@ struct AdminDashboardView: View {
     @State private var assignmentReason = ""
     @State private var showsAssignmentPrompt = false
 
-    init(repository: any AdminRepository, currentUserID: String) {
-        _model = State(initialValue: AdminDashboardModel(repository: repository, currentUserID: currentUserID))
+    init(repository: any AdminRepository, currentUserID: String, currentUserRole: UserRole) {
+        _model = State(initialValue: AdminDashboardModel(
+            repository: repository,
+            currentUserID: currentUserID,
+            currentUserRole: currentUserRole
+        ))
     }
 
     var body: some View {
@@ -50,6 +55,9 @@ struct AdminDashboardView: View {
         }
         .sheet(isPresented: $showsNewAgency) {
             AdminCreateAgencySheet { name in await model.createAgency(name: name) }
+        }
+        .sheet(item: $selectedUser) { user in
+            AdminUserDetailView(user: user)
         }
         .confirmationDialog(userActionTitle, isPresented: $showsUserConfirmation, titleVisibility: .visible) {
             if let user = pendingUser {
@@ -136,7 +144,7 @@ struct AdminDashboardView: View {
                 .buttonStyle(.bordered)
                 .tint(AppTheme.brand)
 
-                if model.selectedSection == .users {
+                if model.selectedSection == .users && model.canManageAccounts {
                     Menu {
                         Button("New user", systemImage: "person.badge.plus") { showsNewUser = true }
                         Button("New agency", systemImage: "building.2.crop.circle") { showsNewAgency = true }
@@ -216,6 +224,7 @@ struct AdminDashboardView: View {
                             chip("Agents", selected: model.userRole == "agent") { model.userRole = "agent" }
                             chip("Doctors", selected: model.userRole == "doctor") { model.userRole = "doctor" }
                             chip("Admins", selected: model.userRole == "admin") { model.userRole = "admin" }
+                            chip("Managers", selected: model.userRole == "manager") { model.userRole = "manager" }
                         }
                     }
                     HStack(spacing: 8) {
@@ -265,8 +274,10 @@ struct AdminDashboardView: View {
                 AdminUserCard(
                     user: user,
                     currentUserID: model.currentUserID,
+                    allowsManagement: model.canManageAccounts,
                     isExpanded: expandedUserID == user.id,
                     onToggle: { withAnimation { expandedUserID = expandedUserID == user.id ? nil : user.id } },
+                    onShowDetails: { selectedUser = user },
                     onSetActive: { requestUserAction(user, active: $0, delete: false) },
                     onDelete: { requestUserAction(user, active: false, delete: true) }
                 )
