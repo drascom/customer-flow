@@ -86,12 +86,6 @@ function renderCurrentView() {
   if (state.view === "cases") renderCases(); else renderUsers();
 }
 
-function setChipGroup(id, items, selected, filterKey) {
-  $(id).innerHTML = items.map(([value, label]) =>
-    `<button type="button" class="filter-chip ${value === selected ? "active" : ""}" data-filter-key="${escapeHTML(filterKey)}" data-filter-value="${escapeHTML(value)}" aria-pressed="${value === selected}">${escapeHTML(label)}</button>`
-  ).join("");
-}
-
 function setDropdownFilterGroup(id, items, selected, filterKey, label) {
   const choices = items.filter(([value]) => value);
   const placeholder = choices.length ? `Select ${label.toLocaleLowerCase()}` : `No ${label.toLocaleLowerCase()} options`;
@@ -100,11 +94,16 @@ function setDropdownFilterGroup(id, items, selected, filterKey, label) {
   ).join("");
 
   $(id).innerHTML = `
-    <button type="button" class="filter-all ${selected ? "" : "active"}" data-filter-key="${escapeHTML(filterKey)}" data-filter-value="" aria-pressed="${!selected}">All</button>
     <select class="filter-select ${selected ? "active" : ""}" data-filter-key="${escapeHTML(filterKey)}" aria-label="${escapeHTML(label)} filter" ${choices.length ? "" : "disabled"}>
-      <option value="" disabled ${selected ? "" : "selected"}>${escapeHTML(placeholder)}</option>
+      <option value="" ${selected ? "" : "selected"}>${escapeHTML(placeholder)}</option>
       ${options}
     </select>`;
+}
+
+function updateAllFilterButton(id, keys) {
+  const active = !keys.some((key) => state.filters[key]);
+  $(id).classList.toggle("active", active);
+  $(id).setAttribute("aria-pressed", String(active));
 }
 
 function renderFilterChips() {
@@ -115,22 +114,17 @@ function renderFilterChips() {
   setDropdownFilterGroup("caseAssignmentChips", [["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment", "Assignment");
   setDropdownFilterGroup("caseAgencyChips", agencies.map((agency) => [agency.name, agency.name]), state.filters.caseAgency, "caseAgency", "Agency");
   setDropdownFilterGroup("caseDoctorChips", doctors.map((doctor) => [doctor.id, doctor.displayName]), state.filters.caseDoctor, "caseDoctor", "Doctor");
-  setChipGroup("userRoleChips", [["", "All"], ["agent", "Agents"], ["doctor", "Doctors"], ["admin", "Admins"]], state.filters.userRole, "userRole");
-  setChipGroup("userStatusChips", [["", "All"], ["active", "Active"], ["inactive", "Inactive"]], state.filters.userStatus, "userStatus");
-  setChipGroup("userAgencyChips", [["", "All"], ...agencies.map((agency) => [agency.id, agency.name])], state.filters.userAgency, "userAgency");
+  setDropdownFilterGroup("userRoleChips", [["agent", "Agents"], ["doctor", "Doctors"], ["admin", "Admins"]], state.filters.userRole, "userRole", "Role");
+  setDropdownFilterGroup("userStatusChips", [["active", "Active"], ["inactive", "Inactive"]], state.filters.userStatus, "userStatus", "Access");
+  setDropdownFilterGroup("userAgencyChips", agencies.map((agency) => [agency.id, agency.name]), state.filters.userAgency, "userAgency", "Agency");
 
-  document.querySelectorAll("[data-filter-value]").forEach((button) => button.addEventListener("click", () => {
-    state.filters[button.dataset.filterKey] = button.dataset.filterValue;
-    renderFilterChips();
-    renderCurrentView();
-  }));
   document.querySelectorAll(".filter-select[data-filter-key]").forEach((select) => select.addEventListener("change", () => {
     state.filters[select.dataset.filterKey] = select.value;
     renderFilterChips();
     renderCurrentView();
   }));
-  $("clearCaseFilters").hidden = !["caseStatus", "caseAssignment", "caseAgency", "caseDoctor"].some((key) => state.filters[key]);
-  $("clearUserFilters").hidden = !["userRole", "userStatus", "userAgency"].some((key) => state.filters[key]);
+  updateAllFilterButton("allCaseFilters", ["caseStatus", "caseAssignment", "caseAgency", "caseDoctor"]);
+  updateAllFilterButton("allUserFilters", ["userRole", "userStatus", "userAgency"]);
 }
 
 function renderCases() {
@@ -345,12 +339,12 @@ $("loginForm").addEventListener("submit", async (event) => {
 $("logoutButton").addEventListener("click", () => signOut(true));
 document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
 $("searchInput").addEventListener("input", renderCurrentView);
-$("clearCaseFilters").addEventListener("click", () => {
+$("allCaseFilters").addEventListener("click", () => {
   Object.assign(state.filters, { caseStatus: "", caseAssignment: "", caseAgency: "", caseDoctor: "" });
   renderFilterChips();
   renderCases();
 });
-$("clearUserFilters").addEventListener("click", () => {
+$("allUserFilters").addEventListener("click", () => {
   Object.assign(state.filters, { userRole: "", userStatus: "", userAgency: "" });
   renderFilterChips();
   renderUsers();

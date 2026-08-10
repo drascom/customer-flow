@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Customer Flow Admin</title>
-  <link rel="stylesheet" href="/admin/admin.css">
-  <script src="/admin/admin.js" defer></script>
+  <link rel="stylesheet" href="/admin/admin.css?v=20260810-2216">
+  <script src="/admin/admin.js?v=20260810-2216" defer></script>
 </head>
 <body>
   <main id="loginView" class="login-shell">
@@ -57,12 +57,12 @@
         </div>
         <div class="filter-bar" aria-label="Case filters">
           <div class="filter-groups case-filter-groups">
+            <div class="filter-group filter-all-group"><span class="filter-label">View</span><button id="allCaseFilters" class="filter-all active" type="button" aria-pressed="true">All</button></div>
             <div class="filter-group"><span class="filter-label">Status</span><div id="caseStatusChips" class="filter-controls"></div></div>
             <div class="filter-group"><span class="filter-label">Assignment</span><div id="caseAssignmentChips" class="filter-controls"></div></div>
             <div class="filter-group"><span class="filter-label">Agency</span><div id="caseAgencyChips" class="filter-controls"></div></div>
             <div class="filter-group"><span class="filter-label">Doctor</span><div id="caseDoctorChips" class="filter-controls"></div></div>
           </div>
-          <button id="clearCaseFilters" class="clear-filters" type="button" hidden>Clear filters</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -76,12 +76,12 @@
       <section id="usersView" class="panel" hidden>
         <div class="panel-heading"><div><h2>Users</h2><p>Create accounts and control access without deleting audit history.</p></div></div>
         <div class="filter-bar" aria-label="User filters">
-          <div class="filter-groups">
-            <div class="filter-group"><span class="filter-label">Role</span><div id="userRoleChips" class="filter-chips"></div></div>
-            <div class="filter-group"><span class="filter-label">Access</span><div id="userStatusChips" class="filter-chips"></div></div>
-            <div class="filter-group"><span class="filter-label">Agency</span><div id="userAgencyChips" class="filter-chips"></div></div>
+          <div class="filter-groups user-filter-groups">
+            <div class="filter-group filter-all-group"><span class="filter-label">View</span><button id="allUserFilters" class="filter-all active" type="button" aria-pressed="true">All</button></div>
+            <div class="filter-group"><span class="filter-label">Role</span><div id="userRoleChips" class="filter-controls"></div></div>
+            <div class="filter-group"><span class="filter-label">Access</span><div id="userStatusChips" class="filter-controls"></div></div>
+            <div class="filter-group"><span class="filter-label">Agency</span><div id="userAgencyChips" class="filter-controls"></div></div>
           </div>
-          <button id="clearUserFilters" class="clear-filters" type="button" hidden>Clear filters</button>
         </div>
         <div class="table-wrap">
           <table>

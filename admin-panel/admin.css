@@ -91,11 +91,13 @@ input:focus, select:focus { border-color: var(--amber); box-shadow: 0 0 0 3px co
 .panel-heading select { min-width: 150px; min-height: 36px; }
 .filter-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--inset), transparent 54%); }
 .filter-groups { min-width: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; }
-.case-filter-groups { flex: 1 1 auto; display: grid; grid-template-columns: repeat(4, minmax(155px, 1fr)); gap: 12px; }
+.case-filter-groups { flex: 1 1 auto; display: grid; grid-template-columns: auto repeat(4, minmax(155px, 1fr)); gap: 12px; }
+.user-filter-groups { flex: 1 1 auto; display: grid; grid-template-columns: auto repeat(3, minmax(155px, 1fr)); gap: 12px; }
 .filter-group { min-width: 0; display: grid; gap: 6px; }
 .filter-label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .055em; text-transform: uppercase; }
 .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.filter-controls { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; }
+.filter-controls { min-width: 0; }
+.filter-all-group .filter-all { min-width: 54px; }
 .filter-chip, .filter-all, .clear-filters { min-height: 30px; padding: 5px 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; background: var(--surface-strong); font-size: 12px; font-weight: 750; white-space: nowrap; }
 .filter-chip:hover, .filter-all:hover, .clear-filters:hover { color: var(--ink); border-color: color-mix(in srgb, var(--amber), var(--border) 55%); }
 .filter-chip.active, .filter-all.active { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber), transparent 25%); background: var(--amber); }
@@ -147,7 +149,7 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
   .account span { display: none; }
   .filter-bar { align-items: stretch; flex-direction: column; padding-inline: 14px; }
   .filter-groups { display: grid; gap: 12px; }
-  .case-filter-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .case-filter-groups, .user-filter-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filter-group { overflow: hidden; }
   .filter-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 3px; scrollbar-width: none; }
   .filter-chips::-webkit-scrollbar { display: none; }
