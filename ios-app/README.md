@@ -2,13 +2,23 @@
 
 Native SwiftUI client for Doctor, Agent and Admin users. The app connects to a self-hosted Customer Flow server and does not contain a public sign-up flow.
 
+## App Store users
+
+The standard Customer Flow app will be distributed through the Apple App Store. Regular users do not need Xcode or this source repository: they install the app from the App Store, enter the address of their Customer Flow server and sign in with an account created by their administrator.
+
+The App Store app still requires a reachable Customer Flow server and cannot operate as a standalone database.
+
+## Developers
+
+The source code in this `ios-app` folder is provided for developers who want to inspect the implementation, open it in Xcode, make changes or build a customised version of the client.
+
 ## Requirements
 
 - macOS with Xcode
 - iOS 17 or newer
 - A running Customer Flow server reachable from the device or simulator
 
-## Simple setup
+## Open and develop with Xcode
 
 1. Start the server by following [`../api/README.md`](../api/README.md).
 2. Open `CustomerFlow.xcodeproj` in Xcode.
@@ -18,7 +28,7 @@ Native SwiftUI client for Doctor, Agent and Admin users. The app connects to a s
 6. On first launch, enter the server address, for example `https://flow.example.com`.
 7. Sign in with a username and password created by the server administrator.
 
-The app validates `/api/v1/health` automatically. Release builds require HTTPS. A server installation is mandatory; the iOS app cannot operate as a standalone database.
+The app validates `/api/v1/health` automatically. Release builds require HTTPS.
 
 ## Included workspaces
 
