@@ -84,7 +84,7 @@ struct RootView: View {
             Spacer(minLength: 8)
 
             Menu {
-                if state.role != .doctor, let user = state.currentUser {
+                if state.role == .admin, let user = state.currentUser {
                     Text(user.displayName)
                     Text(user.role.title)
                     Divider()
@@ -95,7 +95,7 @@ struct RootView: View {
                 Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
                     Task { await state.logout() }
                 }
-                if state.role != .doctor {
+                if state.role == .admin {
                     Button("Change server", systemImage: "server.rack") {
                         Task { await state.changeServer() }
                     }
