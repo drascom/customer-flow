@@ -102,3 +102,32 @@ struct ClinicalPhotoPlaceholder: View {
         .accessibilityLabel("Demo patient photo \(index + 1)")
     }
 }
+
+struct ClinicalPhotoView: View {
+    @EnvironmentObject private var state: AppState
+    let photoID: String?
+    let index: Int
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipped()
+                    .accessibilityLabel("Patient photo \(index + 1)")
+            } else {
+                ClinicalPhotoPlaceholder(index: index)
+                    .overlay {
+                        if photoID != nil { ProgressView().tint(.white) }
+                    }
+            }
+        }
+        .task(id: photoID) {
+            image = nil
+            guard let photoID, let data = await state.loadPhoto(id: photoID) else { return }
+            image = UIImage(data: data)
+        }
+    }
+}

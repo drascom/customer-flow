@@ -92,6 +92,12 @@ struct ConsultationCase: Identifiable, Hashable, Codable, Sendable {
     var currency: String
     var agentPrice: String
     var messages: [ConsultationMessage]
+    var photoIDs: [String]? = nil
+
+    func photoID(at index: Int) -> String? {
+        guard let photoIDs, photoIDs.indices.contains(index) else { return nil }
+        return photoIDs[index]
+    }
 }
 
 struct PatientMatchCandidate: Identifiable, Hashable, Codable, Sendable {

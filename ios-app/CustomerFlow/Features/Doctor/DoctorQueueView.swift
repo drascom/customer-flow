@@ -193,7 +193,7 @@ private struct CaseCardView: View {
 
             TabView(selection: $photoIndex) {
                 ForEach(0..<item.photoCount, id: \.self) { index in
-                    ClinicalPhotoPlaceholder(index: index).tag(index)
+                    ClinicalPhotoView(photoID: item.photoID(at: index), index: index).tag(index)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))

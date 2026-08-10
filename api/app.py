@@ -694,6 +694,21 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def get_photo(self, photo_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
+        with self.connect() as conn:
+            photo = conn.execute("SELECT * FROM photos WHERE id=?", (photo_id,)).fetchone()
+            if not photo:
+                raise APIError(404, "photo_not_found", "The photo could not be found.")
+            case = self._case_row(conn, photo["case_id"])
+            self._assert_case_visible(case, user)
+            if not photo["file_path"] or not photo["content_type"]:
+                raise APIError(404, "photo_not_found", "The photo file is not available.")
+            media_root = self.media_root.resolve()
+            file_path = (media_root / photo["file_path"]).resolve()
+            if not file_path.is_relative_to(media_root) or not file_path.is_file():
+                raise APIError(404, "photo_not_found", "The photo file is not available.")
+            return file_path.read_bytes(), photo["content_type"]
+
     def admin_users(self, user: sqlite3.Row) -> list[dict]:
         self._require_role(user, "admin")
         with self.connect() as conn:
@@ -996,6 +1011,12 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and path == f"{API_PREFIX}/auth/logout":
                 self.server.database.logout(token)
                 return self._json(200, {"ok": True})
+            if method == "GET" and path.startswith(f"{API_PREFIX}/photos/"):
+                photo_id = path.removeprefix(f"{API_PREFIX}/photos/")
+                if not photo_id or "/" in photo_id:
+                    raise APIError(404, "photo_not_found", "The photo could not be found.")
+                body, content_type = self.server.database.get_photo(photo_id, user)
+                return self._binary(200, body, content_type)
             if method == "PATCH" and path == f"{API_PREFIX}/auth/profile":
                 return self._json(200, {"user": self.server.database.update_profile(self._read_json(), user)})
             if method == "POST" and path == f"{API_PREFIX}/auth/change-password":
@@ -1120,6 +1141,15 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _binary(self, status: int, body: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, max-age=300")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 

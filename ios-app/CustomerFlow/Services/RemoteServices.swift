@@ -45,6 +45,7 @@ enum RemoteServiceError: LocalizedError {
 actor RemoteAPIClient {
     let baseURL: URL
     private var accessToken: String?
+    private var photoCache: [String: Data] = [:]
 
     init(baseURL: URL, accessToken: String? = nil) {
         self.baseURL = baseURL
@@ -113,6 +114,25 @@ actor RemoteAPIClient {
         struct Response: Decodable, Sendable { let ok: Bool }
         let _: Response? = try? await send("POST", path: "auth/logout", body: Empty())
         accessToken = nil
+        photoCache.removeAll()
+    }
+
+    func photo(id: String) async throws -> Data {
+        if let cached = photoCache[id] { return cached }
+        guard let url = URL(string: "photos/\(id)", relativeTo: baseURL)?.absoluteURL else {
+            throw RemoteServiceError.invalidServerAddress
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw RemoteServiceError.invalidResponse }
+        guard (200..<300).contains(http.statusCode), !data.isEmpty else {
+            throw RemoteServiceError.server(message: "The patient photo could not be loaded.")
+        }
+        photoCache[id] = data
+        return data
     }
 
     func get<Response: Decodable & Sendable>(_ path: String) async throws -> Response {

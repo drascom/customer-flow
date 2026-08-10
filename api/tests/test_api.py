@@ -123,6 +123,34 @@ class APITestCase(unittest.TestCase):
         closed = self.request("POST", f"/cases/{created['id']}/close", {}, token=agent)["case"]
         self.assertEqual("closed", closed["status"])
 
+    def test_authenticated_photo_download(self):
+        agent = self.login("agent", "agent123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Photo Test Patient", "grafts": "2100", "currency": "EUR",
+            "price": "2200", "note": "Photo delivery test", "photoCount": 0,
+        }, token=agent, expected=201)["case"]
+        photo_body = b"demo-jpeg-body"
+        upload = Request(
+            self.base + f"/cases/{created['id']}/photos",
+            data=photo_body,
+            headers={"Authorization": f"Bearer {agent}", "Content-Type": "image/jpeg"},
+            method="POST",
+        )
+        with urlopen(upload) as response:
+            uploaded = json.load(response)["case"]
+        photo_id = uploaded["photoIDs"][0]
+
+        download = Request(
+            self.base + f"/photos/{photo_id}",
+            headers={"Authorization": f"Bearer {agent}"},
+            method="GET",
+        )
+        with urlopen(download) as response:
+            self.assertEqual("image/jpeg", response.headers.get_content_type())
+            self.assertEqual(photo_body, response.read())
+        missing_auth = self.request("GET", f"/photos/{photo_id}", expected=401)
+        self.assertEqual("authentication_required", missing_auth["error"]["code"])
+
     def test_duplicate_requires_explicit_decision(self):
         agent = self.login("agent", "agent123")
         payload = {"patientName": "Daniel Morris", "grafts": "2500", "currency": "EUR",

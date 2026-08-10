@@ -118,6 +118,11 @@ final class AppState: ObservableObject {
         isWorking = false
     }
 
+    func loadPhoto(id: String) async -> Data? {
+        guard let remoteClient else { return nil }
+        return try? await remoteClient.photo(id: id)
+    }
+
     func updateProfile(displayName: String, email: String, phone: String) async -> Bool {
         guard let remoteClient else { return false }
         isWorking = true
