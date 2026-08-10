@@ -92,20 +92,40 @@ function setChipGroup(id, items, selected, filterKey) {
   ).join("");
 }
 
+function setDropdownFilterGroup(id, items, selected, filterKey, label) {
+  const choices = items.filter(([value]) => value);
+  const placeholder = choices.length ? `Select ${label.toLocaleLowerCase()}` : `No ${label.toLocaleLowerCase()} options`;
+  const options = choices.map(([value, optionLabel]) =>
+    `<option value="${escapeHTML(value)}" ${value === selected ? "selected" : ""}>${escapeHTML(optionLabel)}</option>`
+  ).join("");
+
+  $(id).innerHTML = `
+    <button type="button" class="filter-all ${selected ? "" : "active"}" data-filter-key="${escapeHTML(filterKey)}" data-filter-value="" aria-pressed="${!selected}">All</button>
+    <select class="filter-select ${selected ? "active" : ""}" data-filter-key="${escapeHTML(filterKey)}" aria-label="${escapeHTML(label)} filter" ${choices.length ? "" : "disabled"}>
+      <option value="" disabled ${selected ? "" : "selected"}>${escapeHTML(placeholder)}</option>
+      ${options}
+    </select>`;
+}
+
 function renderFilterChips() {
   const agencies = state.agencies.slice().sort((a, b) => a.name.localeCompare(b.name));
   const doctors = state.users.filter((user) => user.role === "doctor").sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-  setChipGroup("caseStatusChips", [["", "All"], ["waiting", "Waiting"], ["answered", "Answered"], ["closed", "Closed"]], state.filters.caseStatus, "caseStatus");
-  setChipGroup("caseAssignmentChips", [["", "All"], ["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment");
-  setChipGroup("caseAgencyChips", [["", "All"], ...agencies.map((agency) => [agency.name, agency.name])], state.filters.caseAgency, "caseAgency");
-  setChipGroup("caseDoctorChips", [["", "All"], ...doctors.map((doctor) => [doctor.id, doctor.displayName])], state.filters.caseDoctor, "caseDoctor");
+  setDropdownFilterGroup("caseStatusChips", [["waiting", "Waiting"], ["answered", "Answered"], ["closed", "Closed"]], state.filters.caseStatus, "caseStatus", "Status");
+  setDropdownFilterGroup("caseAssignmentChips", [["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment", "Assignment");
+  setDropdownFilterGroup("caseAgencyChips", agencies.map((agency) => [agency.name, agency.name]), state.filters.caseAgency, "caseAgency", "Agency");
+  setDropdownFilterGroup("caseDoctorChips", doctors.map((doctor) => [doctor.id, doctor.displayName]), state.filters.caseDoctor, "caseDoctor", "Doctor");
   setChipGroup("userRoleChips", [["", "All"], ["agent", "Agents"], ["doctor", "Doctors"], ["admin", "Admins"]], state.filters.userRole, "userRole");
   setChipGroup("userStatusChips", [["", "All"], ["active", "Active"], ["inactive", "Inactive"]], state.filters.userStatus, "userStatus");
   setChipGroup("userAgencyChips", [["", "All"], ...agencies.map((agency) => [agency.id, agency.name])], state.filters.userAgency, "userAgency");
 
-  document.querySelectorAll("[data-filter-key]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-filter-value]").forEach((button) => button.addEventListener("click", () => {
     state.filters[button.dataset.filterKey] = button.dataset.filterValue;
+    renderFilterChips();
+    renderCurrentView();
+  }));
+  document.querySelectorAll(".filter-select[data-filter-key]").forEach((select) => select.addEventListener("change", () => {
+    state.filters[select.dataset.filterKey] = select.value;
     renderFilterChips();
     renderCurrentView();
   }));
