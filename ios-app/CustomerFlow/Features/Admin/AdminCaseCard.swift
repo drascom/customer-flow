@@ -13,6 +13,7 @@ struct AdminCaseCard: View {
 
     @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var pendingPurgePhotoID: String?
+    @State private var showsConversation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -78,10 +79,8 @@ struct AdminCaseCard: View {
                         .padding(.top, 12)
                 }
 
-                if !item.messages.isEmpty {
-                    adminMessages
-                        .padding(.top, 12)
-                }
+                conversationButton
+                    .padding(.top, 10)
 
                 Group {
                     if isReadOnly {
@@ -119,6 +118,13 @@ struct AdminCaseCard: View {
             NativePhotoPreview(request: request) { _, _ in } onClose: {
                 photoPreview = nil
             }
+        }
+        .sheet(isPresented: $showsConversation) {
+            AdminConversationSheet(item: item)
+                .presentationDetents([.fraction(0.92)])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(28)
+                .presentationContentInteraction(.scrolls)
         }
         .confirmationDialog(
             "Permanently delete this photo?",
@@ -159,6 +165,37 @@ struct AdminCaseCard: View {
                     }
                     .padding(11)
                     .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var conversationButton: some View {
+        Button {
+            showsConversation = true
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .foregroundStyle(AppTheme.brand)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("View conversation")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("\(item.messages.count) messages")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+                Spacer()
+                if item.deletedMessageCount > 0 {
+                    Text("\(item.deletedMessageCount) deleted")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.red)
+                }
+                Image(systemName: "chevron.up")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.muted)
+            }
+            .padding(11)
+            .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var adminPhotos: some View {
@@ -232,55 +269,6 @@ struct AdminCaseCard: View {
         }
     }
 
-    private var adminMessages: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Conversation")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Spacer()
-                if item.deletedMessageCount > 0 {
-                    Text("\(item.deletedMessageCount) deleted")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                }
-            }
-
-            ForEach(item.messages) { message in
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text(message.author).font(.caption.bold())
-                        Spacer()
-                        Text(message.createdAt, style: .date)
-                            .font(.caption2)
-                            .foregroundStyle(AppTheme.muted)
-                    }
-                    Text(message.text)
-                        .font(.subheadline)
-                    if let attachmentPhotoID = message.attachmentPhotoID {
-                        MessagePhotoView(messageID: attachmentPhotoID)
-                    }
-                    if message.deletedAt != nil {
-                        Label(
-                            "Deleted by \(message.deletedByName ?? message.author)",
-                            systemImage: "trash"
-                        )
-                        .font(.caption2.bold())
-                        .foregroundStyle(.red)
-                    }
-                }
-                .foregroundStyle(message.deletedAt == nil ? AppTheme.ink : AppTheme.muted)
-                .padding(10)
-                .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 12))
-                .overlay {
-                    if message.deletedAt != nil {
-                        RoundedRectangle(cornerRadius: 12).stroke(.red.opacity(0.35))
-                    }
-                }
-            }
-        }
-    }
-
     @MainActor
     private func openNativePreview(photoID: String) async {
         guard let caseID = UUID(uuidString: item.id) else { return }
@@ -341,5 +329,112 @@ struct AdminCaseCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(9)
         .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct AdminConversationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let item: AdminCase
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.patientName)
+                        .font(.title3.bold())
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                    Text("\(item.reference) · Conversation")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .frame(width: 36, height: 36)
+                        .background(AppTheme.inset, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close conversation")
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if item.messages.isEmpty {
+                        ContentUnavailableView(
+                            "No conversation yet",
+                            systemImage: "bubble.left.and.bubble.right"
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 320)
+                    } else {
+                        ForEach(item.messages) { message in
+                            messageRow(message)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(AppTheme.background)
+    }
+
+    private func messageRow(_ message: AdminCaseMessage) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Text(message.author)
+                    .font(.caption.bold())
+                Text(message.role.rawValue.capitalized)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.muted)
+                Spacer()
+                Text(message.createdAt, style: .date)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.muted)
+            }
+
+            Text(message.text)
+                .font(.body)
+
+            if let attachmentPhotoID = message.attachmentPhotoID {
+                MessagePhotoView(messageID: attachmentPhotoID)
+            }
+
+            if let grafts = message.approximateGrafts,
+               let price = message.recommendedPrice {
+                HStack(spacing: 10) {
+                    Text("Approx. \(grafts) grafts")
+                    Text("Recommended \(AppCurrency.amount(price))")
+                }
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.brand)
+            }
+
+            if message.deletedAt != nil {
+                Label(
+                    "Deleted by \(message.deletedByName ?? message.author)",
+                    systemImage: "trash"
+                )
+                .font(.caption2.bold())
+                .foregroundStyle(.red)
+            }
+        }
+        .foregroundStyle(message.deletedAt == nil ? AppTheme.ink : AppTheme.muted)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(message.deletedAt == nil ? AppTheme.border : .red.opacity(0.35))
+        }
     }
 }
