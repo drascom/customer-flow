@@ -1,11 +1,16 @@
 import SwiftUI
 
 struct AdminCaseCard: View {
+    @EnvironmentObject private var state: AppState
+
     let item: AdminCase
     let doctors: [AdminUser]
+    let isReadOnly: Bool
     let isExpanded: Bool
     let onToggle: () -> Void
     let onAssign: (String?) -> Void
+
+    @State private var photoPreview: NativePhotoPreviewRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,7 +39,7 @@ struct AdminCaseCard: View {
                         Image(systemName: "building.2")
                         Text(item.agencyName ?? "No agency")
                         Text("•")
-                        Text(item.agentName)
+                        Text("Agent: \(item.agentName)")
                             .lineLimit(1)
                     }
                     .font(.system(size: 13))
@@ -49,25 +54,57 @@ struct AdminCaseCard: View {
 
                 HStack(spacing: 8) {
                     metric(title: "Grafts", value: item.grafts)
-                    metric(title: "Price", value: "\(item.currency) \(item.price)")
+                    metric(title: "Price", value: AppCurrency.amount(item.price))
                     metric(title: "Media", value: "\(item.photoCount) · \(item.messageCount)")
                 }
 
-                Menu {
-                    Button("Unassigned") { onAssign(nil) }
-                    Divider()
-                    ForEach(doctors) { doctor in
-                        Button {
-                            onAssign(doctor.id)
-                        } label: {
-                            if doctor.id == item.doctorID {
-                                Label(doctor.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(doctor.displayName)
+                if !item.photos.isEmpty {
+                    adminPhotos
+                        .padding(.top, 12)
+                }
+
+                Group {
+                    if isReadOnly {
+                        assignmentLabel
+                    } else {
+                        Menu {
+                            Button("Unassigned") { onAssign(nil) }
+                            Divider()
+                            ForEach(doctors) { doctor in
+                                Button {
+                                    onAssign(doctor.id)
+                                } label: {
+                                    if doctor.id == item.doctorID {
+                                        Label(doctor.displayName, systemImage: "checkmark")
+                                    } else {
+                                        Text(doctor.displayName)
+                                    }
+                                }
                             }
+                        } label: {
+                            assignmentLabel
                         }
                     }
-                } label: {
+                }
+                .padding(.top, 10)
+            }
+        }
+        .padding(14)
+        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AppTheme.border, lineWidth: 1)
+        }
+        .fullScreenCover(item: $photoPreview) { request in
+            NativePhotoPreview(request: request) { _, _ in
+                // Admin preview is intentionally read-only.
+            } onClose: {
+                photoPreview = nil
+            }
+        }
+    }
+
+    private var assignmentLabel: some View {
                     HStack(spacing: 8) {
                         Image(systemName: "stethoscope")
                         VStack(alignment: .leading, spacing: 1) {
@@ -79,21 +116,89 @@ struct AdminCaseCard: View {
                                 .foregroundStyle(AppTheme.ink)
                         }
                         Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.brand)
+                        if !isReadOnly {
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.brand)
+                        }
                     }
                     .padding(11)
                     .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var adminPhotos: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Photos")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                if item.deletedPhotoCount > 0 {
+                    Text("\(item.deletedPhotoCount) deleted")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
                 }
-                .padding(.top, 10)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                ForEach(Array(item.photos.enumerated()), id: \.element.id) { index, photo in
+                    CasePhotoView(
+                        photoID: photo.available ? photo.id : nil,
+                        index: index,
+                        onTap: photo.available ? { Task { await openNativePreview(photoID: photo.id) } } : nil
+                    )
+                        .frame(maxWidth: .infinity, minHeight: 88, maxHeight: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .overlay(alignment: .topLeading) {
+                            Text("\(index + 1)")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .padding(5)
+                                .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+                                .padding(5)
+                        }
+                        .overlay {
+                            if photo.deleted {
+                                ZStack {
+                                    Color.black.opacity(0.58)
+                                    VStack(spacing: 3) {
+                                        Image(systemName: "trash.fill")
+                                        Text("Deleted by agent")
+                                            .multilineTextAlignment(.center)
+                                        if let name = photo.deletedByName {
+                                            Text(name).lineLimit(1)
+                                        }
+                                    }
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.white)
+                                    .padding(6)
+                                }
+                                .allowsHitTesting(false)
+                            }
+                        }
+                }
             }
         }
-        .padding(14)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(AppTheme.border, lineWidth: 1)
+    }
+
+    @MainActor
+    private func openNativePreview(photoID: String) async {
+        guard let caseID = UUID(uuidString: item.id) else { return }
+        let photoIDs = item.photos.filter(\.available).map(\.id)
+        do {
+            var photoData: [String: Data] = [:]
+            for itemID in photoIDs {
+                photoData[itemID] = try await state.photoData(photoID: itemID)
+            }
+            photoPreview = try NativePhotoPreviewRequest.make(
+                caseID: caseID,
+                photoIDs: photoIDs,
+                photoData: photoData,
+                initialIndex: photoIDs.firstIndex(of: photoID) ?? 0,
+                allowsEditing: false
+            )
+        } catch {
+            state.errorMessage = "The photo could not be opened."
         }
     }
 

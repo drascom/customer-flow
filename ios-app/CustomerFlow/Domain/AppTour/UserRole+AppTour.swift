@@ -65,7 +65,7 @@ extension UserRole {
                     tapHint: "Tap Confirm & Close after reviewing the response."
                 ),
             ]
-        case .admin:
+        case .admin, .manager:
             []
         }
     }

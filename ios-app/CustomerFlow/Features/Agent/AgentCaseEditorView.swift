@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 private enum AgentCaseFilter: String, CaseIterable, Identifiable {
     case all
@@ -169,7 +170,11 @@ private struct AgentCaseListCard: View {
 
             TabView(selection: $photoIndex) {
                 ForEach(0..<item.photoCount, id: \.self) { index in
-                    ClinicalPhotoPlaceholder(index: index).tag(index)
+                    CasePhotoView(
+                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                        index: index
+                    )
+                    .tag(index)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -201,7 +206,7 @@ private struct AgentCaseListCard: View {
             HStack {
                 Label("\(item.agentGrafts) grafts", systemImage: "scissors")
                 Spacer()
-                Text("\(item.currency) \(item.agentPrice)")
+                Text(AppCurrency.amount(item.agentPrice))
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(AppTheme.brandDark)
@@ -242,12 +247,17 @@ struct AgentCaseEditorView: View {
     @State private var detailsExpanded: Bool
     @State private var patientName = ""
     @State private var grafts = "3,200"
-    @State private var currency = "EUR"
+    @State private var currency = AppCurrency.code
     @State private var price = "2,850"
     @State private var agentNote = ""
     @State private var updateText = ""
     @State private var photoCount: Int
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var pendingPhotos: [CasePhotoUpload] = []
+    @State private var isImportingPhotos = false
+    @State private var photoReloadToken = 0
+    @State private var pendingPhotoDeletionID: String?
+    @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var matchCandidate: PatientMatchCandidate?
     @State private var duplicateResolution: DuplicateResolution?
     @State private var statusText = "Draft · Not saved"
@@ -341,12 +351,31 @@ struct AgentCaseEditorView: View {
         }
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
-            photoCount += items.count
-            selectedPhotos = []
-            if isEditMode {
-                returnedToDoctor = true
-                statusText = "Waiting for Doctor · Photos uploaded"
+            Task { await importPhotos(items) }
+        }
+        .fullScreenCover(item: $photoPreview) { request in
+            NativePhotoPreview(request: request) { data, contentType in
+                Task { await sendAnnotatedPhoto(data, contentType: contentType, caseID: request.caseID) }
+            } onClose: {
+                photoPreview = nil
             }
+        }
+        .confirmationDialog(
+            "Remove this photo?",
+            isPresented: Binding(
+                get: { pendingPhotoDeletionID != nil },
+                set: { if !$0 { pendingPhotoDeletionID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove photo", role: .destructive) {
+                guard let photoID = pendingPhotoDeletionID else { return }
+                pendingPhotoDeletionID = nil
+                Task { await removePhoto(photoID) }
+            }
+            Button("Cancel", role: .cancel) { pendingPhotoDeletionID = nil }
+        } message: {
+            Text("The photo will disappear for agents and doctors, but administrators will retain access to the original file.")
         }
     }
 
@@ -426,10 +455,9 @@ struct AgentCaseEditorView: View {
                 }
                 labeledField("Estimated price", required: true) {
                     HStack(spacing: 8) {
-                        Picker("Currency", selection: $currency) {
-                            ForEach(["EUR", "GBP", "USD", "TRY"], id: \.self, content: Text.init)
-                        }
-                        .labelsHidden()
+                        Text(AppCurrency.symbol)
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.ink)
                         TextField("2,850", text: $price)
                             .keyboardType(.decimalPad)
                             .textFieldStyle(.roundedBorder)
@@ -457,9 +485,14 @@ struct AgentCaseEditorView: View {
                 }
                 .buttonStyle(.plain)
 
+                if isImportingPhotos {
+                    ProgressView("Preparing photos…")
+                        .font(.caption)
+                }
+
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
-                    ForEach(0..<photoCount, id: \.self) { index in
-                        ClinicalPhotoPlaceholder(index: index)
+                    ForEach(Array(pendingPhotos.enumerated()), id: \.element.id) { index, photo in
+                        PendingPhotoThumbnail(photo: photo, index: index)
                             .frame(height: 92)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
@@ -532,7 +565,7 @@ struct AgentCaseEditorView: View {
 
             HStack(spacing: 10) {
                 summaryMetric("Grafts", grafts)
-                summaryMetric("Price", "\(currency) \(price)")
+                summaryMetric("Price", AppCurrency.amount(price))
             }
 
             if detailsExpanded {
@@ -550,10 +583,9 @@ struct AgentCaseEditorView: View {
                         }
                         labeledField("Price", required: true) {
                             HStack(spacing: 6) {
-                                Picker("Currency", selection: $currency) {
-                                    ForEach(["EUR", "GBP", "USD", "TRY"], id: \.self, content: Text.init)
-                                }
-                                .labelsHidden()
+                                Text(AppCurrency.symbol)
+                                    .font(.headline)
+                                    .foregroundStyle(AppTheme.ink)
                                 TextField("2,850", text: $price)
                                     .keyboardType(.decimalPad)
                                     .textFieldStyle(.roundedBorder)
@@ -601,10 +633,22 @@ struct AgentCaseEditorView: View {
             }
             .buttonStyle(.plain)
 
+            if isImportingPhotos {
+                ProgressView("Uploading photos…")
+                    .font(.caption)
+            }
+
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
                 ForEach(0..<photoCount, id: \.self) { index in
-                    ClinicalPhotoPlaceholder(index: index)
-                        .frame(height: 92)
+                    let photoID = editCase?.photoIDs.indices.contains(index) == true ? editCase?.photoIDs[index] : nil
+                    CasePhotoView(
+                        photoID: photoID,
+                        index: index,
+                        reloadToken: photoReloadToken,
+                        onDelete: photoDeleteAction(for: photoID),
+                        onTap: photoPreviewAction(for: photoID)
+                    )
+                        .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(alignment: .topLeading) {
                             Text("\(index + 1)")
@@ -642,6 +686,62 @@ struct AgentCaseEditorView: View {
         .padding(14)
         .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+    }
+
+    private func photoDeleteAction(for photoID: String?) -> (() -> Void)? {
+        guard let photoID else { return nil }
+        return { pendingPhotoDeletionID = photoID }
+    }
+
+    private func photoPreviewAction(for photoID: String?) -> (() -> Void)? {
+        guard let photoID, let editingCaseID else { return nil }
+        return { Task { await openNativePreview(photoID: photoID, caseID: editingCaseID) } }
+    }
+
+    @MainActor
+    private func openNativePreview(photoID: String, caseID: UUID) async {
+        do {
+            guard let editCase else { return }
+            let photoIDs = editCase.photoIDs
+            var photoData: [String: Data] = [:]
+            for itemID in photoIDs {
+                photoData[itemID] = try await state.photoData(photoID: itemID)
+            }
+            photoPreview = try NativePhotoPreviewRequest.make(
+                caseID: caseID,
+                photoIDs: photoIDs,
+                photoData: photoData,
+                initialIndex: photoIDs.firstIndex(of: photoID) ?? 0,
+                allowsEditing: true
+            )
+        } catch {
+            state.errorMessage = "The photo could not be opened."
+        }
+    }
+
+    @MainActor
+    private func sendAnnotatedPhoto(_ data: Data, contentType: String, caseID: UUID) async {
+        statusText = "Sending annotated photo…"
+        if await state.sendPhotoMessage(caseID: caseID, data: data, contentType: contentType) {
+            statusText = "Waiting for Doctor · Annotated photo sent"
+            returnedToDoctor = true
+        } else {
+            statusText = "Annotated photo could not be sent"
+        }
+    }
+
+    @MainActor
+    private func removePhoto(_ photoID: String) async {
+        guard let editingCaseID else { return }
+        statusText = "Removing photo…"
+        if await state.deletePhoto(caseID: editingCaseID, photoID: photoID) {
+            photoCount = state.cases.first(where: { $0.id == editingCaseID })?.photoCount ?? max(0, photoCount - 1)
+            photoReloadToken += 1
+            returnedToDoctor = true
+            statusText = "Waiting for Doctor · Photo removed"
+        } else {
+            statusText = "Photo removal failed · Try again"
+        }
     }
 
     @ViewBuilder
@@ -742,7 +842,7 @@ struct AgentCaseEditorView: View {
                 currency: currency,
                 price: price,
                 note: agentNote,
-                photoCount: photoCount,
+                photos: pendingPhotos,
                 duplicateConfirmedDifferent: duplicateResolution == .different
             )
             isSubmitting = false
@@ -757,7 +857,7 @@ struct AgentCaseEditorView: View {
             detailsExpanded = false
             patientName = item.patient.name
             grafts = item.agentGrafts
-            currency = item.currency
+            currency = AppCurrency.code
             price = item.agentPrice
             agentNote = item.agentNote
             photoCount = item.photoCount
@@ -766,13 +866,54 @@ struct AgentCaseEditorView: View {
             detailsExpanded = true
             patientName = ""
             grafts = "3,200"
-            currency = "EUR"
+            currency = AppCurrency.code
             price = "2,850"
             agentNote = ""
             photoCount = 0
+            pendingPhotos = []
             createStep = .patient
             patientVerification = .idle
             statusText = "Draft · Not saved"
+        }
+    }
+
+    @MainActor
+    private func importPhotos(_ items: [PhotosPickerItem]) async {
+        guard !isImportingPhotos else { return }
+        isImportingPhotos = true
+        defer {
+            isImportingPhotos = false
+            selectedPhotos = []
+        }
+
+        var imported: [CasePhotoUpload] = []
+        for item in items {
+            do {
+                guard let source = try await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: source),
+                      let jpeg = image.jpegData(compressionQuality: 0.9) else {
+                    throw PhotoImportError.unreadable
+                }
+                imported.append(CasePhotoUpload(data: jpeg, contentType: "image/jpeg"))
+            } catch {
+                state.errorMessage = "One or more selected photos could not be read."
+            }
+        }
+        guard !imported.isEmpty else { return }
+
+        if let editingCaseID {
+            statusText = "Uploading photos…"
+            if await state.uploadPhotos(caseID: editingCaseID, photos: imported) {
+                photoCount = state.cases.first(where: { $0.id == editingCaseID })?.photoCount ?? photoCount
+                photoReloadToken += 1
+                returnedToDoctor = true
+                statusText = "Waiting for Doctor · Photos uploaded"
+            } else {
+                statusText = "Photo upload failed · Try again"
+            }
+        } else {
+            pendingPhotos.append(contentsOf: imported)
+            photoCount = pendingPhotos.count
         }
     }
 
@@ -801,7 +942,7 @@ struct AgentCaseEditorView: View {
             detailsExpanded = false
             patientName = item.patient.name
             grafts = item.agentGrafts
-            currency = item.currency
+            currency = AppCurrency.code
             price = item.agentPrice
             agentNote = item.agentNote
             photoCount = item.photoCount
@@ -829,6 +970,29 @@ struct AgentCaseEditorView: View {
     }
 }
 
+private enum PhotoImportError: Error {
+    case unreadable
+}
+
+private struct PendingPhotoThumbnail: View {
+    let photo: CasePhotoUpload
+    let index: Int
+
+    var body: some View {
+        Group {
+            if let image = UIImage(data: photo.data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ClinicalPhotoPlaceholder(index: index)
+            }
+        }
+        .clipped()
+        .accessibilityLabel("Selected patient photo \(index + 1)")
+    }
+}
+
 private struct MessagePreview: View {
     let message: ConsultationMessage
 
@@ -840,8 +1004,11 @@ private struct MessagePreview: View {
                 Text(message.createdAt, style: .relative).font(.caption2).foregroundStyle(AppTheme.muted)
             }
             Text(message.text).font(.body)
+            if let attachmentPhotoID = message.attachmentPhotoID {
+                MessagePhotoView(messageID: attachmentPhotoID)
+            }
             if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
-                Text("Approx. \(grafts) grafts · Recommended \(price)")
+                Text("Approx. \(grafts) grafts · Recommended \(AppCurrency.amount(price))")
                     .font(.caption.bold()).foregroundStyle(AppTheme.brand)
             }
         }

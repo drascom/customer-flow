@@ -1,10 +1,18 @@
 import SwiftUI
 
 struct AdminDashboardView: View {
+    private enum CaseOverviewFilter {
+        case all
+        case waiting
+        case unassigned
+    }
+
     @State private var model: AdminDashboardModel
+    private let isReadOnly: Bool
     @State private var showsFilters = false
     @State private var showsNewUser = false
-    @State private var showsNewAgency = false
+    @State private var showsAgencyManagement = false
+    @State private var editingUser: AdminUser?
     @State private var expandedCaseID: String?
     @State private var expandedUserID: String?
     @State private var pendingUser: AdminUser?
@@ -16,7 +24,8 @@ struct AdminDashboardView: View {
     @State private var assignmentReason = ""
     @State private var showsAssignmentPrompt = false
 
-    init(repository: any AdminRepository, currentUserID: String) {
+    init(repository: any AdminRepository, currentUserID: String, isReadOnly: Bool = false) {
+        self.isReadOnly = isReadOnly
         _model = State(initialValue: AdminDashboardModel(repository: repository, currentUserID: currentUserID))
     }
 
@@ -24,6 +33,9 @@ struct AdminDashboardView: View {
         ScrollView {
             LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
                 Section {
+                    if isReadOnly {
+                        readOnlyNotice
+                    }
                     overview
                     filters
                     content
@@ -48,8 +60,24 @@ struct AdminDashboardView: View {
                 )
             }
         }
-        .sheet(isPresented: $showsNewAgency) {
-            AdminCreateAgencySheet { name in await model.createAgency(name: name) }
+        .sheet(isPresented: $showsAgencyManagement) {
+            AdminAgencyManagementSheet(
+                agencies: model.agencies,
+                onCreate: { name in await model.createAgency(name: name) },
+                onUpdate: { agency, name in await model.updateAgency(agency, name: name) }
+            )
+        }
+        .sheet(item: $editingUser) { user in
+            AdminEditUserSheet(user: user, agencies: model.agencies) { username, displayName, role, password, agencyID in
+                await model.updateUser(
+                    user,
+                    username: username,
+                    displayName: displayName,
+                    role: role,
+                    password: password,
+                    agencyID: agencyID
+                )
+            }
         }
         .confirmationDialog(userActionTitle, isPresented: $showsUserConfirmation, titleVisibility: .visible) {
             if let user = pendingUser {
@@ -136,10 +164,10 @@ struct AdminDashboardView: View {
                 .buttonStyle(.bordered)
                 .tint(AppTheme.brand)
 
-                if model.selectedSection == .users {
+                if model.selectedSection == .users && !isReadOnly {
                     Menu {
                         Button("New user", systemImage: "person.badge.plus") { showsNewUser = true }
-                        Button("New agency", systemImage: "building.2.crop.circle") { showsNewAgency = true }
+                        Button("Manage agencies", systemImage: "building.2.crop.circle") { showsAgencyManagement = true }
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 20, weight: .semibold))
@@ -157,9 +185,30 @@ struct AdminDashboardView: View {
     private var overview: some View {
         HStack(spacing: 8) {
             if model.selectedSection == .cases {
-                compactMetric(value: model.cases.count, label: "Cases")
-                compactMetric(value: model.cases.filter { $0.status == .waiting }.count, label: "Waiting")
-                compactMetric(value: model.cases.filter { $0.doctorID == nil }.count, label: "Unassigned")
+                caseMetric(
+                    value: model.cases.count,
+                    label: "Cases",
+                    selected: model.caseStatus.isEmpty
+                        && model.caseAssignment.isEmpty
+                        && model.caseAgency.isEmpty
+                        && model.caseDoctorID.isEmpty
+                ) { selectCaseOverviewFilter(.all) }
+                caseMetric(
+                    value: model.cases.filter { $0.status == .waiting }.count,
+                    label: "Waiting",
+                    selected: model.caseStatus == "waiting"
+                        && model.caseAssignment.isEmpty
+                        && model.caseAgency.isEmpty
+                        && model.caseDoctorID.isEmpty
+                ) { selectCaseOverviewFilter(.waiting) }
+                caseMetric(
+                    value: model.cases.filter { $0.doctorID == nil }.count,
+                    label: "Unassigned",
+                    selected: model.caseAssignment == "unassigned"
+                        && model.caseStatus.isEmpty
+                        && model.caseAgency.isEmpty
+                        && model.caseDoctorID.isEmpty
+                ) { selectCaseOverviewFilter(.unassigned) }
             } else {
                 compactMetric(value: model.users.count, label: "Users")
                 compactMetric(value: model.users.filter(\.active).count, label: "Active")
@@ -184,18 +233,15 @@ struct AdminDashboardView: View {
                 }
 
                 if model.selectedSection == .cases {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 7) {
-                            chip("All", selected: model.caseStatus.isEmpty) { model.caseStatus = "" }
-                            chip("Waiting", selected: model.caseStatus == "waiting") { model.caseStatus = "waiting" }
-                            chip("Answered", selected: model.caseStatus == "answered") { model.caseStatus = "answered" }
-                            chip("Closed", selected: model.caseStatus == "closed") { model.caseStatus = "closed" }
-                        }
+                    HStack(spacing: 7) {
+                        chip("Answered", selected: model.caseStatus == "answered") { model.caseStatus = "answered" }
+                        chip("Closed", selected: model.caseStatus == "closed") { model.caseStatus = "closed" }
+                        Spacer()
                     }
                     HStack(spacing: 8) {
                         filterMenu(
                             title: assignmentTitle,
-                            options: [("", "Any assignment"), ("assigned", "Assigned"), ("unassigned", "Unassigned")],
+                            options: [("", "Any assignment"), ("assigned", "Assigned")],
                             selection: $model.caseAssignment
                         )
                         filterMenu(
@@ -216,6 +262,7 @@ struct AdminDashboardView: View {
                             chip("Agents", selected: model.userRole == "agent") { model.userRole = "agent" }
                             chip("Doctors", selected: model.userRole == "doctor") { model.userRole = "doctor" }
                             chip("Admins", selected: model.userRole == "admin") { model.userRole = "admin" }
+                            chip("Managers", selected: model.userRole == "manager") { model.userRole = "manager" }
                         }
                     }
                     HStack(spacing: 8) {
@@ -252,6 +299,7 @@ struct AdminDashboardView: View {
                     AdminCaseCard(
                         item: item,
                         doctors: model.activeDoctors,
+                        isReadOnly: isReadOnly,
                         isExpanded: expandedCaseID == item.id,
                         onToggle: { withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id } },
                         onAssign: { requestAssignment(for: item, doctorID: $0) }
@@ -265,8 +313,10 @@ struct AdminDashboardView: View {
                 AdminUserCard(
                     user: user,
                     currentUserID: model.currentUserID,
+                    isReadOnly: isReadOnly,
                     isExpanded: expandedUserID == user.id,
                     onToggle: { withAnimation { expandedUserID = expandedUserID == user.id ? nil : user.id } },
+                    onEdit: { editingUser = user },
                     onSetActive: { requestUserAction(user, active: $0, delete: false) },
                     onDelete: { requestUserAction(user, active: false, delete: true) }
                 )
@@ -276,6 +326,15 @@ struct AdminDashboardView: View {
 
     private var searchPlaceholder: String {
         model.selectedSection == .cases ? "Patient, ref, agent…" : "Name, username, agency…"
+    }
+
+    private var readOnlyNotice: some View {
+        Label("Manager access is read-only. All records are visible, but changes are disabled.", systemImage: "eye")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(AppTheme.brand)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(AppTheme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var assignmentTitle: String {
@@ -321,6 +380,64 @@ struct AdminDashboardView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func caseMetric(value: Int, label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(value)")
+                    .font(.system(size: 19, weight: .bold))
+                Text(label)
+                    .font(.caption)
+            }
+            .foregroundStyle(selected ? AppTheme.accentInk : AppTheme.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(selected ? AppTheme.accent : AppTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(selected ? AppTheme.brand : AppTheme.border, lineWidth: selected ? 1.5 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label), \(value)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func selectCaseOverviewFilter(_ filter: CaseOverviewFilter) {
+        let wasSelected = switch filter {
+        case .all:
+            model.caseStatus.isEmpty
+                && model.caseAssignment.isEmpty
+                && model.caseAgency.isEmpty
+                && model.caseDoctorID.isEmpty
+        case .waiting:
+            model.caseStatus == "waiting"
+                && model.caseAssignment.isEmpty
+                && model.caseAgency.isEmpty
+                && model.caseDoctorID.isEmpty
+        case .unassigned:
+            model.caseAssignment == "unassigned"
+                && model.caseStatus.isEmpty
+                && model.caseAgency.isEmpty
+                && model.caseDoctorID.isEmpty
+        }
+
+        model.caseStatus = ""
+        model.caseAssignment = ""
+        model.caseAgency = ""
+        model.caseDoctorID = ""
+
+        guard !wasSelected else { return }
+        switch filter {
+        case .all:
+            break
+        case .waiting:
+            model.caseStatus = "waiting"
+        case .unassigned:
+            model.caseAssignment = "unassigned"
+        }
     }
 
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -375,6 +492,7 @@ struct AdminDashboardView: View {
     }
 
     private func requestUserAction(_ user: AdminUser, active: Bool, delete: Bool) {
+        guard !isReadOnly else { return }
         pendingUser = user
         pendingUserActive = active
         pendingUserDelete = delete
@@ -382,6 +500,7 @@ struct AdminDashboardView: View {
     }
 
     private func requestAssignment(for item: AdminCase, doctorID: String?) {
+        guard !isReadOnly else { return }
         guard doctorID != item.doctorID else { return }
         if item.doctorID != nil {
             pendingCase = item
@@ -394,6 +513,7 @@ struct AdminDashboardView: View {
     }
 
     private func confirmDoctorChange() {
+        guard !isReadOnly else { return }
         guard let item = pendingCase else { return }
         let reason = assignmentReason.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reason.isEmpty else {

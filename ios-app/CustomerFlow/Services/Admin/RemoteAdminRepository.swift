@@ -57,6 +57,32 @@ actor RemoteAdminRepository: AdminRepository {
         let _: Envelope = try await client.send("PATCH", path: "admin/users/\(id)", body: Body(active: active))
     }
 
+    func updateUser(
+        id: String,
+        username: String,
+        displayName: String,
+        role: UserRole,
+        password: String?,
+        agencyID: String?
+    ) async throws -> AdminUser {
+        struct Body: Encodable, Sendable {
+            let username: String
+            let displayName: String
+            let role: String
+            let password: String?
+            let agencyID: String?
+        }
+        struct Envelope: Decodable, Sendable { let user: AdminUser }
+        let response: Envelope = try await client.send("PATCH", path: "admin/users/\(id)", body: Body(
+            username: username,
+            displayName: displayName,
+            role: role.rawValue,
+            password: password,
+            agencyID: agencyID
+        ))
+        return response.user
+    }
+
     func deleteUser(id: String) async throws {
         struct Empty: Encodable, Sendable {}
         struct Mutation: Decodable, Sendable { let id: String; let deleted: Bool }
@@ -68,6 +94,13 @@ actor RemoteAdminRepository: AdminRepository {
         struct Body: Encodable, Sendable { let name: String }
         struct Envelope: Decodable, Sendable { let agency: AdminAgency }
         let response: Envelope = try await client.send("POST", path: "admin/agencies", body: Body(name: name))
+        return response.agency
+    }
+
+    func updateAgency(id: String, name: String) async throws -> AdminAgency {
+        struct Body: Encodable, Sendable { let name: String }
+        struct Envelope: Decodable, Sendable { let agency: AdminAgency }
+        let response: Envelope = try await client.send("PATCH", path: "admin/agencies/\(id)", body: Body(name: name))
         return response.agency
     }
 

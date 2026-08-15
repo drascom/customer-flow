@@ -28,6 +28,44 @@ final class MockCaseRepository: CaseRepository {
         return item
     }
 
+    func uploadPhoto(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase {
+        guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
+        cases[index].photoIDs.append(UUID().uuidString)
+        if cases[index].photoIDs.count > cases[index].photoCount {
+            cases[index].photoCount = cases[index].photoIDs.count
+        }
+        cases[index].status = .waiting
+        return cases[index]
+    }
+
+    func deletePhoto(caseID: UUID, photoID: String) async throws -> ConsultationCase {
+        guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
+        guard let photoIndex = cases[index].photoIDs.firstIndex(of: photoID) else { throw MockError.notFound }
+        cases[index].photoIDs.remove(at: photoIndex)
+        cases[index].photoCount = cases[index].photoIDs.count
+        cases[index].status = .waiting
+        return cases[index]
+    }
+
+    func fetchPhoto(photoID: String) async throws -> Data {
+        throw MockError.notFound
+    }
+
+    func sendPhotoMessage(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase {
+        guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
+        cases[index].messages.append(.init(
+            author: "Current User",
+            role: .agent,
+            text: "Annotated patient photo",
+            attachmentPhotoID: UUID().uuidString
+        ))
+        return cases[index]
+    }
+
+    func fetchMessagePhoto(messageID: String) async throws -> Data {
+        throw MockError.notFound
+    }
+
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
         guard cases[index].status == .waiting else { throw MockError.caseChanged }
@@ -149,7 +187,7 @@ enum MockData {
         let date = Calendar.current.date(byAdding: .hour, value: -hoursAgo, to: .now) ?? .now
         var messages = [ConsultationMessage(author: agent, role: .agent, createdAt: date, text: "Patient photos and consultation information uploaded.")]
         if includeDoctorReply {
-            messages.append(.init(author: "Dr. Emre Kaya", role: .doctor, createdAt: date.addingTimeInterval(3600), text: "The donor area appears suitable, subject to an in-person density measurement.", approximateGrafts: "2,400–2,700", recommendedPrice: "€2,600"))
+            messages.append(.init(author: "Dr. Emre Kaya", role: .doctor, createdAt: date.addingTimeInterval(3600), text: "The donor area appears suitable, subject to an in-person density measurement.", approximateGrafts: "2,400–2,700", recommendedPrice: "£2,600"))
         }
         return ConsultationCase(
             id: UUID(),
@@ -162,7 +200,7 @@ enum MockData {
             photoCount: photos,
             agentNote: note,
             agentGrafts: grafts,
-            currency: "EUR",
+            currency: AppCurrency.code,
             agentPrice: price,
             messages: messages
         )

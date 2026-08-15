@@ -27,7 +27,7 @@ final class AppTourModel {
     }
 
     func presentIfNeeded(userID: String, serverAddress: String, role: UserRole) async {
-        guard role != .admin, !userID.isEmpty, !serverAddress.isEmpty else { return }
+        guard role != .admin, role != .manager, !userID.isEmpty, !serverAddress.isEmpty else { return }
         let completed = await store.hasCompleted(
             userID: userID,
             serverAddress: serverAddress,
@@ -39,7 +39,7 @@ final class AppTourModel {
     }
 
     func showAgain(userID: String, serverAddress: String, role: UserRole) {
-        guard role != .admin else { return }
+        guard role != .admin, role != .manager else { return }
         present(userID: userID, serverAddress: serverAddress, role: role)
     }
 

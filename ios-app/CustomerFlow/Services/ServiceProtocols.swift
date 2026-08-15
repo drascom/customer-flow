@@ -5,6 +5,11 @@ import UserNotifications
 protocol CaseRepository: AnyObject {
     func fetchCases() async throws -> [ConsultationCase]
     func createCase(patientName: String, agentName: String, grafts: String, currency: String, price: String, note: String, photoCount: Int, duplicateConfirmedDifferent: Bool) async throws -> ConsultationCase
+    func uploadPhoto(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase
+    func deletePhoto(caseID: UUID, photoID: String) async throws -> ConsultationCase
+    func fetchPhoto(photoID: String) async throws -> Data
+    func sendPhotoMessage(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase
+    func fetchMessagePhoto(messageID: String) async throws -> Data
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase
     func saveAgentValues(caseID: UUID, patientName: String, grafts: String, currency: String, price: String) async throws
     func confirmAndClose(caseID: UUID) async throws

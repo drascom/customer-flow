@@ -3,8 +3,10 @@ import SwiftUI
 struct AdminUserCard: View {
     let user: AdminUser
     let currentUserID: String
+    let isReadOnly: Bool
     let isExpanded: Bool
     let onToggle: () -> Void
+    let onEdit: () -> Void
     let onSetActive: (Bool) -> Void
     let onDelete: () -> Void
 
@@ -18,7 +20,7 @@ struct AdminUserCard: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(AppTheme.ink)
                             .lineLimit(1)
-                        Text("@\(user.username) · \(user.agencyName ?? user.role.title)")
+                        Text(accountSubtitle)
                             .font(.system(size: 13))
                             .foregroundStyle(AppTheme.muted)
                             .lineLimit(1)
@@ -41,7 +43,7 @@ struct AdminUserCard: View {
                 Divider().padding(.vertical, 12)
 
                 HStack {
-                    Label(user.role.title, systemImage: "person.text.rectangle")
+                    Label("Role: \(user.role.title)", systemImage: "person.text.rectangle")
                     Spacer()
                     Text(user.activitySummary)
                 }
@@ -54,8 +56,11 @@ struct AdminUserCard: View {
                         .foregroundStyle(AppTheme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 10)
-                } else {
+                } else if !isReadOnly {
                     HStack(spacing: 10) {
+                        Button("Edit", action: onEdit)
+                            .buttonStyle(.borderedProminent)
+
                         Button(user.active ? "Deactivate" : "Reactivate") {
                             onSetActive(!user.active)
                         }
@@ -88,11 +93,17 @@ struct AdminUserCard: View {
             .background(AppTheme.brand.opacity(0.12), in: Circle())
     }
 
+    private var accountSubtitle: String {
+        let agency = user.agencyName.map { " · \($0)" } ?? ""
+        return "\(user.role.title) account · @\(user.username)\(agency)"
+    }
+
     private var iconName: String {
         switch user.role {
         case .doctor: "stethoscope"
         case .agent: "person.crop.rectangle.stack"
         case .admin: "gearshape.2"
+        case .manager: "eye"
         }
     }
 }

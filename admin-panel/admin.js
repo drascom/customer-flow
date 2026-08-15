@@ -36,7 +36,9 @@ function showLogin(message = "") {
 function showApp() {
   $("loginView").hidden = true;
   $("appView").hidden = false;
-  $("adminName").textContent = state.user.displayName;
+  $("adminName").textContent = state.user.role === "manager"
+    ? `${state.user.displayName} · Read only`
+    : state.user.displayName;
 }
 
 async function signOut(callServer = true) {
@@ -51,7 +53,7 @@ async function restore() {
   if (!state.token) return showLogin();
   try {
     const result = await api("/auth/me");
-    if (result.user.role !== "admin") throw new Error("This account does not have admin access.");
+    if (!["admin", "manager"].includes(result.user.role)) throw new Error("This account does not have management access.");
     state.user = result.user;
     showApp();
     await loadData();
@@ -100,7 +102,7 @@ function renderFilterChips() {
   setChipGroup("caseAssignmentChips", [["", "All"], ["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment");
   setChipGroup("caseAgencyChips", [["", "All"], ...agencies.map((agency) => [agency.name, agency.name])], state.filters.caseAgency, "caseAgency");
   setChipGroup("caseDoctorChips", [["", "All"], ...doctors.map((doctor) => [doctor.id, doctor.displayName])], state.filters.caseDoctor, "caseDoctor");
-  setChipGroup("userRoleChips", [["", "All"], ["agent", "Agents"], ["doctor", "Doctors"], ["admin", "Admins"]], state.filters.userRole, "userRole");
+  setChipGroup("userRoleChips", [["", "All"], ["agent", "Agents"], ["doctor", "Doctors"], ["manager", "Managers"], ["admin", "Admins"]], state.filters.userRole, "userRole");
   setChipGroup("userStatusChips", [["", "All"], ["active", "Active"], ["inactive", "Inactive"]], state.filters.userStatus, "userStatus");
   setChipGroup("userAgencyChips", [["", "All"], ...agencies.map((agency) => [agency.id, agency.name])], state.filters.userAgency, "userAgency");
 
@@ -135,9 +137,11 @@ function renderCases() {
       <td><div class="identity"><strong>${escapeHTML(item.reference)}</strong><small>${item.messageCount} messages</small></div></td>
       <td><span class="status ${escapeHTML(item.status)}">${statusTitle(item.status)}</span></td>
       <td><div class="identity"><strong>${escapeHTML(item.agentName)}</strong><small>${escapeHTML(item.agencyName || "No agency")}</small></div></td>
-      <td><select class="doctor-select" data-patient="${escapeHTML(item.patientID)}" data-previous="${escapeHTML(item.doctorID || "")}">${options}</select></td>
+      <td>${state.user.role === "manager"
+        ? escapeHTML(item.doctorName || "Unassigned")
+        : `<select class="doctor-select" data-patient="${escapeHTML(item.patientID)}" data-previous="${escapeHTML(item.doctorID || "")}">${options}</select>`}</td>
       <td>${item.photoCount}</td>
-      <td><div class="identity"><strong>${escapeHTML(item.grafts)}</strong><small>${escapeHTML(item.currency)} ${escapeHTML(item.price)}</small></div></td>
+      <td><div class="identity"><strong>${escapeHTML(item.grafts)}</strong><small>£${escapeHTML(item.price)}</small></div></td>
       <td>${formatDate(item.uploadedAt)}</td>
     </tr>`;
   }).join("");
@@ -157,7 +161,7 @@ function renderUsers() {
   });
   $("usersBody").innerHTML = rows.map((user) => {
     const activity = user.role === "doctor" ? `${user.patientCount} patients` : user.role === "agent" ? `${user.caseCount} cases` : "System access";
-    const action = user.id === state.user.id ? "" : `<div class="row-actions">
+    const action = state.user.role === "manager" || user.id === state.user.id ? "" : `<div class="row-actions">
       <button class="row-action ${user.active ? "danger" : ""}" data-user="${escapeHTML(user.id)}" data-active="${user.active}">${user.active ? "Deactivate" : "Reactivate"}</button>
       ${user.active ? "" : `<button class="row-action danger" data-delete-user="${escapeHTML(user.id)}" data-username="${escapeHTML(user.username)}">Delete</button>`}
     </div>`;
@@ -272,7 +276,7 @@ function switchView(view) {
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $("casesView").hidden = view !== "cases";
   $("usersView").hidden = view !== "users";
-  $("addUserButton").hidden = view !== "users";
+  $("addUserButton").hidden = view !== "users" || state.user.role === "manager";
   $("searchInput").placeholder = view === "users" ? "Search users" : "Search patients or cases";
   $("searchInput").value = "";
   renderCurrentView();
@@ -303,11 +307,11 @@ $("loginForm").addEventListener("submit", async (event) => {
     const result = await api("/auth/login", { method: "POST", body: {
       username: $("loginUsername").value.trim(), password: $("loginPassword").value
     }});
-    if (result.user.role !== "admin") {
+    if (!["admin", "manager"].includes(result.user.role)) {
       state.token = result.token;
       await api("/auth/logout", { method: "POST", body: {} }).catch(() => {});
       state.token = null;
-      throw new Error("This account does not have admin access.");
+      throw new Error("This account does not have management access.");
     }
     state.token = result.token;
     state.user = result.user;

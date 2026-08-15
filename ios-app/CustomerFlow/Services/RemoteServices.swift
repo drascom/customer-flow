@@ -129,7 +129,37 @@ actor RemoteAPIClient {
         return try await request(method: method, path: path, body: try encoder.encode(body))
     }
 
-    private func request<Response: Decodable & Sendable>(method: String, path: String, body: Data?) async throws -> Response {
+    func upload<Response: Decodable & Sendable>(path: String, data: Data, contentType: String) async throws -> Response {
+        try await request(method: "POST", path: path, body: data, contentType: contentType)
+    }
+
+    func download(_ path: String) async throws -> Data {
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+            throw RemoteServiceError.invalidServerAddress
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw RemoteServiceError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
+                throw RemoteServiceError.server(message: envelope.error.message)
+            }
+            throw RemoteServiceError.server(message: "Server request failed (\(http.statusCode)).")
+        }
+        return data
+    }
+
+    private func request<Response: Decodable & Sendable>(
+        method: String,
+        path: String,
+        body: Data?,
+        contentType: String = "application/json"
+    ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw RemoteServiceError.invalidServerAddress
         }
@@ -138,7 +168,7 @@ actor RemoteAPIClient {
         request.httpBody = body
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        if body != nil { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -190,6 +220,39 @@ final class RemoteCaseRepository: CaseRepository {
             note: note, photoCount: photoCount, duplicateConfirmedDifferent: duplicateConfirmedDifferent
         ))
         return envelope.case
+    }
+
+    func uploadPhoto(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase {
+        struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
+        let envelope: Envelope = try await client.upload(
+            path: "cases/\(caseID)/photos", data: data, contentType: contentType
+        )
+        return envelope.case
+    }
+
+    func deletePhoto(caseID: UUID, photoID: String) async throws -> ConsultationCase {
+        struct Empty: Encodable, Sendable {}
+        struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
+        let envelope: Envelope = try await client.send(
+            "DELETE", path: "cases/\(caseID)/photos/\(photoID)", body: Empty()
+        )
+        return envelope.case
+    }
+
+    func fetchPhoto(photoID: String) async throws -> Data {
+        try await client.download("photos/\(photoID)")
+    }
+
+    func sendPhotoMessage(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase {
+        struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
+        let envelope: Envelope = try await client.upload(
+            path: "cases/\(caseID)/message-photos", data: data, contentType: contentType
+        )
+        return envelope.case
+    }
+
+    func fetchMessagePhoto(messageID: String) async throws -> Data {
+        try await client.download("message-photos/\(messageID)")
     }
 
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase {

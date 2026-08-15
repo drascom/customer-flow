@@ -10,7 +10,7 @@ struct CaseDetailView: View {
     @State private var price = ""
     @State private var response = ""
     @State private var isSending = false
-    @State private var showAnnotationPlaceholder = false
+    @State private var photoPreview: NativePhotoPreviewRequest?
 
     private var item: ConsultationCase? { state.cases.first { $0.id == caseID } }
     private var responseStarted: Bool {
@@ -42,15 +42,23 @@ struct CaseDetailView: View {
 
                             TabView(selection: $photoIndex) {
                                 ForEach(0..<item.photoCount, id: \.self) { index in
-                                    ClinicalPhotoPlaceholder(index: index).tag(index)
+                                    CasePhotoView(
+                                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                        index: index,
+                                        onTap: item.photoIDs.indices.contains(index) ? {
+                                            Task { await openNativePreview(photoID: item.photoIDs[index], caseID: item.id) }
+                                        } : nil
+                                    )
+                                    .tag(index)
                                 }
                             }
                             .tabViewStyle(.page)
                             .frame(height: 330)
                             .clipShape(RoundedRectangle(cornerRadius: 18))
 
-                            Button("View & Annotate", systemImage: "pencil.and.outline") {
-                                showAnnotationPlaceholder = true
+                            Button("Open & Mark Up", systemImage: "pencil.and.outline") {
+                                guard item.photoIDs.indices.contains(photoIndex) else { return }
+                                Task { await openNativePreview(photoID: item.photoIDs[photoIndex], caseID: item.id) }
                             }
                             .buttonStyle(.bordered)
 
@@ -60,7 +68,7 @@ struct CaseDetailView: View {
 
                             HStack(spacing: 10) {
                                 detailMetric("Graft number", item.agentGrafts)
-                                detailMetric("Price", "\(item.currency) \(item.agentPrice)")
+                                detailMetric("Price", AppCurrency.amount(item.agentPrice))
                             }
 
                             detailSection("Case conversation") {
@@ -85,11 +93,34 @@ struct CaseDetailView: View {
             .navigationTitle("Case Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-            .alert("Annotation editor", isPresented: $showAnnotationPlaceholder) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("The drawing/text editor is the next native feature slice; its storage contract is already represented in the API plan.")
+            .fullScreenCover(item: $photoPreview) { request in
+                NativePhotoPreview(request: request) { data, contentType in
+                    Task { await state.sendPhotoMessage(caseID: request.caseID, data: data, contentType: contentType) }
+                } onClose: {
+                    photoPreview = nil
+                }
             }
+        }
+    }
+
+    @MainActor
+    private func openNativePreview(photoID: String, caseID: UUID) async {
+        do {
+            guard let item else { return }
+            let photoIDs = item.photoIDs
+            var photoData: [String: Data] = [:]
+            for itemID in photoIDs {
+                photoData[itemID] = try await state.photoData(photoID: itemID)
+            }
+            photoPreview = try NativePhotoPreviewRequest.make(
+                caseID: caseID,
+                photoIDs: photoIDs,
+                photoData: photoData,
+                initialIndex: photoIDs.firstIndex(of: photoID) ?? 0,
+                allowsEditing: true
+            )
+        } catch {
+            state.errorMessage = "The photo could not be opened."
         }
     }
 
@@ -101,9 +132,15 @@ struct CaseDetailView: View {
                 TextField("Approx. grafts", text: $grafts)
                     .keyboardType(.numbersAndPunctuation)
                     .textFieldStyle(.roundedBorder)
-                TextField("Recommended price", text: $price)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 6) {
+                    Text(AppCurrency.symbol)
+                        .font(.headline)
+                    TextField("Recommended price", text: $price)
+                        .keyboardType(.decimalPad)
+                }
+                .padding(.horizontal, 8)
+                .background(.background, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppTheme.border))
             }
             TextField("Clinical assessment and recommendation", text: $response, axis: .vertical)
                 .lineLimit(4...8)
@@ -129,7 +166,7 @@ struct CaseDetailView: View {
                         isSending = true
                         let sent = await state.sendRecommendation(
                             caseID: item.id,
-                            recommendation: DoctorRecommendation(approximateGrafts: grafts, recommendedPrice: price, text: response)
+                            recommendation: DoctorRecommendation(approximateGrafts: grafts, recommendedPrice: AppCurrency.amount(price), text: response)
                         )
                         isSending = false
                         if sent { dismiss() }
@@ -183,10 +220,13 @@ private struct MessageBubble: View {
                     Text(message.createdAt, style: .relative).font(.caption2).foregroundStyle(AppTheme.muted)
                 }
                 Text(message.text).font(.body)
+                if let attachmentPhotoID = message.attachmentPhotoID {
+                    MessagePhotoView(messageID: attachmentPhotoID)
+                }
                 if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
                     HStack {
                         Text("Approx. \(grafts) grafts")
-                        Text("Recommended \(price)")
+                        Text("Recommended \(AppCurrency.amount(price))")
                     }
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.brand)

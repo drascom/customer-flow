@@ -27,6 +27,7 @@ final class AppState: ObservableObject {
     private var repository: any CaseRepository = MockCaseRepository()
     private let notificationService: any NotificationService
     private var remoteClient: RemoteAPIClient?
+    private let photoCache = NSCache<NSString, NSData>()
     private let serverAddressKey = "customerFlow.serverAddress"
 
     init(notificationService: any NotificationService = NoopNotificationService()) {
@@ -111,6 +112,7 @@ final class AppState: ObservableObject {
         SecureTokenStore.clear()
         currentUser = nil
         cases = []
+        photoCache.removeAllObjects()
         adminRepository = nil
         repository = MockCaseRepository()
         patientMatcher = MockPatientMatchingService()
@@ -183,6 +185,7 @@ final class AppState: ObservableObject {
         remoteClient = nil
         currentUser = nil
         cases = []
+        photoCache.removeAllObjects()
         adminRepository = nil
         connectedServerName = "Customer Flow Server"
         phase = .serverSetup
@@ -195,24 +198,100 @@ final class AppState: ObservableObject {
     }
 
     func createCase(patientName: String, grafts: String, currency: String, price: String, note: String,
-                    photoCount: Int, duplicateConfirmedDifferent: Bool) async -> Bool {
+                    photos: [CasePhotoUpload], duplicateConfirmedDifferent: Bool) async -> Bool {
         do {
-            _ = try await repository.createCase(
+            var created = try await repository.createCase(
                 patientName: patientName,
                 agentName: currentAgentName,
                 grafts: grafts,
                 currency: currency,
                 price: price,
                 note: note,
-                photoCount: photoCount,
+                photoCount: photos.count,
                 duplicateConfirmedDifferent: duplicateConfirmedDifferent
             )
+            for photo in photos {
+                created = try await repository.uploadPhoto(
+                    caseID: created.id, data: photo.data, contentType: photo.contentType
+                )
+            }
             await load()
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    func uploadPhotos(caseID: UUID, photos: [CasePhotoUpload]) async -> Bool {
+        do {
+            var updated: ConsultationCase?
+            for photo in photos {
+                updated = try await repository.uploadPhoto(
+                    caseID: caseID, data: photo.data, contentType: photo.contentType
+                )
+            }
+            if let updated { replace(updated) }
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            await load()
+            return false
+        }
+    }
+
+    func deletePhoto(caseID: UUID, photoID: String) async -> Bool {
+        do {
+            let updated = try await repository.deletePhoto(caseID: caseID, photoID: photoID)
+            photoCache.removeObject(forKey: photoID as NSString)
+            replace(updated)
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            await load()
+            return false
+        }
+    }
+
+    func photoData(photoID: String) async throws -> Data {
+        if let cached = photoCache.object(forKey: photoID as NSString) {
+            return cached as Data
+        }
+        let data = try await repository.fetchPhoto(photoID: photoID)
+        photoCache.setObject(data as NSData, forKey: photoID as NSString)
+        return data
+    }
+
+    func sendPhotoMessage(caseID: UUID, data: Data, contentType: String) async -> Bool {
+        do {
+            let previousIDs = Set(
+                cases.first(where: { $0.id == caseID })?.messages.compactMap(\.attachmentPhotoID) ?? []
+            )
+            let updated = try await repository.sendPhotoMessage(
+                caseID: caseID, data: data, contentType: contentType
+            )
+            if let attachmentID = updated.messages.compactMap(\.attachmentPhotoID).last(where: { !previousIDs.contains($0) }) {
+                photoCache.setObject(data as NSData, forKey: attachmentID as NSString)
+            }
+            replace(updated)
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            await load()
+            return false
+        }
+    }
+
+    func messagePhotoData(messageID: String) async throws -> Data {
+        if let cached = photoCache.object(forKey: messageID as NSString) {
+            return cached as Data
+        }
+        let data = try await repository.fetchMessagePhoto(messageID: messageID)
+        photoCache.setObject(data as NSData, forKey: messageID as NSString)
+        return data
     }
 
     func sendRecommendation(caseID: UUID, recommendation: DoctorRecommendation) async -> Bool {
@@ -268,7 +347,9 @@ final class AppState: ObservableObject {
     private func activate(client: RemoteAPIClient, user: AuthenticatedUser) {
         repository = RemoteCaseRepository(client: client)
         patientMatcher = RemotePatientMatchingService(client: client)
-        adminRepository = user.role == .admin ? RemoteAdminRepository(client: client) : nil
+        adminRepository = user.role == .admin || user.role == .manager
+            ? RemoteAdminRepository(client: client)
+            : nil
         currentUser = user
     }
 

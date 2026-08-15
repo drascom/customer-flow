@@ -15,9 +15,13 @@ struct RootView: View {
                             DoctorQueueView()
                         case .agent:
                             AgentCasesView()
-                        case .admin:
+                        case .admin, .manager:
                             if let repository = state.adminRepository, let user = state.currentUser {
-                                AdminDashboardView(repository: repository, currentUserID: user.id)
+                                AdminDashboardView(
+                                    repository: repository,
+                                    currentUserID: user.id,
+                                    isReadOnly: user.role == .manager
+                                )
                             } else {
                                 ProgressView()
                             }
@@ -86,7 +90,6 @@ struct RootView: View {
             Menu {
                 if let user = state.currentUser {
                     Text(user.displayName)
-                    Text(user.role.title)
                     Divider()
                 }
                 Button("Profile", systemImage: "person.crop.circle") {
@@ -180,7 +183,7 @@ struct ProfileView: View {
                     Text("Use at least 10 characters. Changing your password signs out your other sessions.")
                 }
 
-                if state.role != .admin {
+                if state.role != .admin && state.role != .manager {
                     Section("Help") {
                         Button {
                             onShowTour()

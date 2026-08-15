@@ -124,6 +124,64 @@ final class AdminDashboardModel {
         }
     }
 
+    func updateAgency(_ agency: AdminAgency, name: String) async -> Bool {
+        do {
+            let updated = try await repository.updateAgency(id: agency.id, name: name)
+            guard let index = agencies.firstIndex(where: { $0.id == agency.id }) else { return true }
+            agencies[index] = updated
+            agencies.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            for caseIndex in cases.indices where cases[caseIndex].agencyName == agency.name {
+                cases[caseIndex].agencyName = updated.name
+            }
+            for userIndex in users.indices where users[userIndex].agencyID == agency.id {
+                users[userIndex] = AdminUser(
+                    id: users[userIndex].id,
+                    username: users[userIndex].username,
+                    displayName: users[userIndex].displayName,
+                    role: users[userIndex].role,
+                    agencyID: users[userIndex].agencyID,
+                    agencyName: updated.name,
+                    email: users[userIndex].email,
+                    phone: users[userIndex].phone,
+                    active: users[userIndex].active,
+                    createdAt: users[userIndex].createdAt,
+                    caseCount: users[userIndex].caseCount,
+                    patientCount: users[userIndex].patientCount
+                )
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func updateUser(
+        _ user: AdminUser,
+        username: String,
+        displayName: String,
+        role: UserRole,
+        password: String?,
+        agencyID: String?
+    ) async -> Bool {
+        do {
+            let updated = try await repository.updateUser(
+                id: user.id,
+                username: username,
+                displayName: displayName,
+                role: role,
+                password: password,
+                agencyID: agencyID
+            )
+            guard let index = users.firstIndex(where: { $0.id == user.id }) else { return true }
+            users[index] = updated
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func setUserActive(_ user: AdminUser, active: Bool) async {
         do {
             try await repository.setUserActive(id: user.id, active: active)

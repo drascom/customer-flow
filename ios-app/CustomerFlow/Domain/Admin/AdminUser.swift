@@ -19,6 +19,7 @@ struct AdminUser: Identifiable, Decodable, Sendable {
         case .doctor: "\(patientCount) patients"
         case .agent: "\(caseCount) cases"
         case .admin: "System access"
+        case .manager: "Read-only access"
         }
     }
 }

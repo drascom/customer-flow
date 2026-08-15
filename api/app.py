@@ -47,6 +47,24 @@ def normalize_name(value: str) -> tuple[str, set[str]]:
     return " ".join(sorted(tokens)), tokens
 
 
+def username_base(value: str) -> str:
+    turkish_folded = value.translate(str.maketrans({"ı": "i", "İ": "I"}))
+    folded = unicodedata.normalize("NFKD", turkish_folded).encode("ascii", "ignore").decode().casefold()
+    parts = [part for part in "".join(ch if ch.isalnum() else " " for ch in folded).split() if part]
+    return ".".join(parts)
+
+
+def pound_amount(value: object) -> str:
+    amount = str(value).strip()
+    for prefix in ("GBP ", "EUR "):
+        if amount.startswith(prefix):
+            amount = amount[len(prefix):]
+            break
+    if amount.startswith(("£", "€")):
+        amount = amount[1:]
+    return f"£{amount.strip()}"
+
+
 def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
     salt = salt or secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 210_000)
@@ -74,7 +92,7 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin')),
+  role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','manager')),
   password_salt TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   agency_id TEXT REFERENCES agencies(id),
@@ -135,7 +153,9 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL,
   text TEXT NOT NULL,
   approximate_grafts TEXT,
-  recommended_price TEXT
+  recommended_price TEXT,
+  attachment_path TEXT,
+  attachment_content_type TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_case_time ON messages(case_id, created_at);
 CREATE TABLE IF NOT EXISTS photos (
@@ -146,6 +166,8 @@ CREATE TABLE IF NOT EXISTS photos (
   content_type TEXT,
   uploaded_by TEXT NOT NULL REFERENCES users(id),
   uploaded_at TEXT NOT NULL,
+  deleted_at TEXT,
+  deleted_by TEXT REFERENCES users(id),
   UNIQUE(case_id, position)
 );
 CREATE TABLE IF NOT EXISTS audit_events (
@@ -192,6 +214,27 @@ class Database:
                     conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
                 if "phone" not in columns:
                     conn.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+                photo_columns = {row["name"] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+                if "deleted_at" not in photo_columns:
+                    conn.execute("ALTER TABLE photos ADD COLUMN deleted_at TEXT")
+                if "deleted_by" not in photo_columns:
+                    conn.execute("ALTER TABLE photos ADD COLUMN deleted_by TEXT REFERENCES users(id)")
+                message_columns = {row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
+                if "attachment_path" not in message_columns:
+                    conn.execute("ALTER TABLE messages ADD COLUMN attachment_path TEXT")
+                if "attachment_content_type" not in message_columns:
+                    conn.execute("ALTER TABLE messages ADD COLUMN attachment_content_type TEXT")
+                conn.execute("UPDATE cases SET currency='GBP' WHERE currency <> 'GBP'")
+                conn.execute(
+                    "UPDATE messages SET recommended_price = CASE "
+                    "WHEN recommended_price LIKE '£%' THEN recommended_price "
+                    "WHEN recommended_price LIKE '€%' THEN '£' || SUBSTR(recommended_price, 2) "
+                    "WHEN recommended_price LIKE 'EUR %' THEN '£' || SUBSTR(recommended_price, 5) "
+                    "WHEN recommended_price LIKE 'GBP %' THEN '£' || SUBSTR(recommended_price, 5) "
+                    "ELSE '£' || recommended_price END "
+                    "WHERE recommended_price IS NOT NULL AND TRIM(recommended_price) <> ''"
+                )
+                self._ensure_manager_role(conn)
                 conn.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) "
                     "WHERE email IS NOT NULL AND email <> ''"
@@ -200,19 +243,50 @@ class Database:
             if seed:
                 self.seed_demo()
 
+    @staticmethod
+    def _ensure_manager_role(conn: sqlite3.Connection) -> None:
+        table_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
+        ).fetchone()[0]
+        if "'manager'" in table_sql:
+            return
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "CREATE TABLE users_migrated ("
+                "id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, "
+                "display_name TEXT NOT NULL, "
+                "role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','manager')), "
+                "password_salt TEXT NOT NULL, password_hash TEXT NOT NULL, "
+                "agency_id TEXT REFERENCES agencies(id), email TEXT, phone TEXT, "
+                "active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO users_migrated "
+                "SELECT id,username,display_name,role,password_salt,password_hash,agency_id,email,phone,active,created_at "
+                "FROM users"
+            )
+            conn.execute("DROP TABLE users")
+            conn.execute("ALTER TABLE users_migrated RENAME TO users")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+
     def ensure_demo_agencies(self) -> None:
         now = iso(utc_now())
         agencies = [
-            ("agency-drascom", "Drascom Partner"),
-            ("agency-north", "North Clinic Partners"),
-            ("agency-anatolia", "Anatolia Medical"),
+            ("agency-drascom", "Acenta 1"),
+            ("agency-north", "Acenta 2"),
         ]
         with self.connect() as conn:
             for agency_id, name in agencies:
                 conn.execute("INSERT OR IGNORE INTO agencies VALUES (?,?,1,?)", (agency_id, name, now))
-            conn.execute("UPDATE users SET agency_id='agency-drascom' WHERE username='agent' AND agency_id IS NULL")
-            conn.execute("UPDATE users SET agency_id='agency-north' WHERE username IN ('mert','cem') AND agency_id IS NULL")
-            conn.execute("UPDATE users SET agency_id='agency-anatolia' WHERE username='aylin' AND agency_id IS NULL")
+            conn.execute("UPDATE users SET agency_id='agency-drascom' WHERE username='user1' AND agency_id IS NULL")
+            conn.execute("UPDATE users SET agency_id='agency-north' WHERE username='user2' AND agency_id IS NULL")
 
     def seed_demo(self) -> None:
         with self.connect() as conn:
@@ -220,12 +294,12 @@ class Database:
                 return
             now = iso(utc_now())
             demo_users = [
-                ("doctor-emre", "doctor", "Dr. Emre Kaya", "doctor", None, os.getenv("CF_DOCTOR_PASSWORD", "doctor123")),
-                ("agent-selin", "agent", "Selin Arslan", "agent", "agency-drascom", os.getenv("CF_AGENT_PASSWORD", "agent123")),
-                ("admin-local", "admin", "Local Admin", "admin", None, os.getenv("CF_ADMIN_PASSWORD", "admin123")),
-                ("agent-mert", "mert", "Mert Demir", "agent", "agency-north", secrets.token_urlsafe(24)),
-                ("agent-aylin", "aylin", "Aylin Yılmaz", "agent", "agency-anatolia", secrets.token_urlsafe(24)),
-                ("agent-cem", "cem", "Cem Öztürk", "agent", "agency-north", secrets.token_urlsafe(24)),
+                ("doctor-emre", "doctor1", "Doctor 1", "doctor", None, os.getenv("CF_DOCTOR_PASSWORD", "demo123")),
+                ("doctor-two", "doctor2", "Doctor 2", "doctor", None, os.getenv("CF_DOCTOR2_PASSWORD", "demo123")),
+                ("agent-selin", "user1", "Selin Arslan", "agent", "agency-drascom", os.getenv("CF_AGENT_PASSWORD", "demo123")),
+                ("agent-mert", "user2", "Mert Demir", "agent", "agency-north", os.getenv("CF_AGENT2_PASSWORD", "demo123")),
+                ("manager-local", "manager", "Local Manager", "manager", None, os.getenv("CF_MANAGER_PASSWORD", "demo123")),
+                ("admin-local", "admin", "Local Admin", "admin", None, os.getenv("CF_ADMIN_PASSWORD", "demo123")),
             ]
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -239,10 +313,10 @@ class Database:
                     ("HT-240814", "PT-1042", "Daniel Morris", "agent-selin", "doctor-emre", 8, "waiting", 4, "3,200", "2,850", "Diffuse thinning across the frontal and mid-scalp area. Please assess the graft range and whether the crown should be planned for the same session.", False),
                     ("HT-240825", "PT-1071", "Ayhan Çolak", "agent-mert", "doctor-emre", 12, "waiting", 3, "2,700", "2,550", "Frontal hairline restoration request with progressive temporal recession. Please review the donor area and proposed graft range.", False),
                     ("HT-240817", "PT-1051", "Liam Wilson", "agent-mert", "doctor-emre", 5, "waiting", 3, "2,400", "2,350", "Patient requests a conservative frontal hairline. No previous surgery. Please advise whether medical stabilisation is recommended first.", False),
-                    ("HT-240821", "PT-1060", "Ethan Cole", "agent-aylin", None, 2, "waiting", 4, "1,800", "2,100", "Second opinion requested after a previous FUE procedure. Please review corrective options.", False),
+                    ("HT-240821", "PT-1060", "Ethan Cole", "agent-selin", None, 2, "waiting", 4, "1,800", "2,100", "Second opinion requested after a previous FUE procedure. Please review corrective options.", False),
                     ("HT-240803", "PT-1037", "Noah Bennett", "agent-selin", "doctor-emre", 28, "answered", 3, "2,600", "2,500", "Receding hairline with good donor density. Recommendation is waiting for agent confirmation.", True),
-                    ("HT-240799", "PT-1029", "Oliver Grant", "agent-cem", "doctor-emre", 48, "answered", 4, "3,000", "2,800", "Crown-focused case. Recommendation has been sent.", True),
-                    ("HT-240764", "PT-0998", "George Hall", "agent-aylin", "doctor-emre", 96, "closed", 3, "2,200", "2,300", "Frontal restoration consultation completed and confirmed.", True),
+                    ("HT-240799", "PT-1029", "Oliver Grant", "agent-mert", "doctor-emre", 48, "answered", 4, "3,000", "2,800", "Crown-focused case. Recommendation has been sent.", True),
+                    ("HT-240764", "PT-0998", "George Hall", "agent-selin", "doctor-emre", 96, "closed", 3, "2,200", "2,300", "Frontal restoration consultation completed and confirmed.", True),
                 ]
                 for row in cases:
                     self._seed_case(conn, *row)
@@ -263,23 +337,23 @@ class Database:
         case_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"customer-flow:{reference}"))
         conn.execute(
             "INSERT INTO cases VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)",
-            (case_id, reference, patient_id, agent_id, doctor_id, iso(created), status, photo_count, note, grafts, "EUR", price),
+            (case_id, reference, patient_id, agent_id, doctor_id, iso(created), status, photo_count, note, grafts, "GBP", price),
         )
         agent = conn.execute("SELECT display_name FROM users WHERE id=?", (agent_id,)).fetchone()[0]
         conn.execute(
-            "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), case_id, agent_id, agent, "agent", iso(created), "Patient photos and consultation information uploaded.", None, None),
         )
         for position in range(photo_count):
             conn.execute(
-                "INSERT INTO photos VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO photos(id,case_id,position,file_path,content_type,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?)",
                 (str(uuid.uuid4()), case_id, position, None, None, agent_id, iso(created)),
             )
         if doctor_reply:
             conn.execute(
-                "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)",
-                (str(uuid.uuid4()), case_id, "doctor-emre", "Dr. Emre Kaya", "doctor", iso(created + timedelta(hours=1)),
-                 "The donor area appears suitable, subject to an in-person density measurement.", "2,400–2,700", "€2,600"),
+                "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
+                (str(uuid.uuid4()), case_id, "doctor-emre", "Doctor 1", "doctor", iso(created + timedelta(hours=1)),
+                 "The donor area appears suitable, subject to an in-person density measurement.", "2,400–2,700", "£2,600"),
             )
 
     def login(self, username: str, password: str) -> dict:
@@ -554,13 +628,13 @@ class Database:
                 conn.execute(
                     "INSERT INTO cases VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)",
                     (case_id, reference, patient_id, user["id"], assigned_doctor, now, "waiting", photo_count,
-                     str(payload["note"]), str(payload["grafts"]), str(payload["currency"]), str(payload["price"])),
+                     str(payload["note"]), str(payload["grafts"]), "GBP", str(payload["price"])),
                 )
-                conn.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)",
+                conn.execute("INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
                              (str(uuid.uuid4()), case_id, user["id"], user["display_name"], "agent", now,
                               "Patient photos and consultation information uploaded.", None, None))
                 for position in range(photo_count):
-                    conn.execute("INSERT INTO photos VALUES (?,?,?,?,?,?,?)",
+                    conn.execute("INSERT INTO photos(id,case_id,position,file_path,content_type,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?)",
                                  (str(uuid.uuid4()), case_id, position, None, None, user["id"], now))
                 self._audit(conn, user["id"], "case.created", "case", case_id,
                             {"reference": reference, "duplicateConfirmedDifferent": confirmed_different})
@@ -588,9 +662,9 @@ class Database:
                              (user["id"], case_id))
                 conn.execute("UPDATE patients SET assigned_doctor_id=?, last_updated=? WHERE id=?",
                              (user["id"], now, row["patient_id"]))
-                conn.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)",
+                conn.execute("INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
                              (str(uuid.uuid4()), case_id, user["id"], user["display_name"], "doctor", now,
-                              str(payload["text"]), str(payload["approximateGrafts"]), str(payload["recommendedPrice"])))
+                              str(payload["text"]), str(payload["approximateGrafts"]), pound_amount(payload["recommendedPrice"])))
                 self._audit(conn, user["id"], "case.recommended", "case", case_id, {})
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
@@ -613,7 +687,7 @@ class Database:
                 conn.execute("UPDATE patients SET name=?, normalized_name=?, last_updated=? WHERE id=?",
                              (name, normalized, iso(utc_now()), row["patient_id"]))
                 conn.execute("UPDATE cases SET agent_grafts=?, currency=?, agent_price=?, version=version+1 WHERE id=?",
-                             (str(payload["grafts"]), str(payload["currency"]), str(payload["price"]), case_id))
+                             (str(payload["grafts"]), "GBP", str(payload["price"]), case_id))
                 self._audit(conn, user["id"], "case.agent_values_updated", "case", case_id, {})
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
@@ -635,7 +709,7 @@ class Database:
                 if row["status"] == "closed":
                     raise APIError(409, "case_closed", "A closed case cannot be updated.")
                 now = iso(utc_now())
-                conn.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)",
+                conn.execute("INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
                              (str(uuid.uuid4()), case_id, user["id"], user["display_name"], "agent", now, text, None, None))
                 conn.execute("UPDATE cases SET status='waiting', version=version+1 WHERE id=?", (case_id,))
                 self._audit(conn, user["id"], "case.agent_update_added", "case", case_id, {})
@@ -676,16 +750,34 @@ class Database:
             try:
                 row = self._case_row(conn, case_id)
                 self._assert_owner(row, user)
-                photo_id = str(uuid.uuid4())
+                placeholder = conn.execute(
+                    "SELECT id,position FROM photos WHERE case_id=? AND file_path IS NULL AND deleted_at IS NULL "
+                    "ORDER BY position LIMIT 1",
+                    (case_id,),
+                ).fetchone()
+                photo_id = placeholder["id"] if placeholder else str(uuid.uuid4())
                 case_dir = self.media_root / case_id
                 case_dir.mkdir(parents=True, exist_ok=True)
                 path = case_dir / f"{photo_id}{extension}"
                 path.write_bytes(body)
-                position = conn.execute("SELECT COALESCE(MAX(position),-1)+1 FROM photos WHERE case_id=?", (case_id,)).fetchone()[0]
                 now = iso(utc_now())
-                conn.execute("INSERT INTO photos VALUES (?,?,?,?,?,?,?)",
-                             (photo_id, case_id, position, str(path.relative_to(self.media_root)), content_type, user["id"], now))
-                conn.execute("UPDATE cases SET photo_count=photo_count+1, status='waiting', version=version+1 WHERE id=?", (case_id,))
+                relative_path = str(path.relative_to(self.media_root))
+                if placeholder:
+                    conn.execute(
+                        "UPDATE photos SET file_path=?,content_type=?,uploaded_by=?,uploaded_at=? WHERE id=?",
+                        (relative_path, content_type, user["id"], now, photo_id),
+                    )
+                    conn.execute("UPDATE cases SET status='waiting',version=version+1 WHERE id=?", (case_id,))
+                else:
+                    position = conn.execute(
+                        "SELECT COALESCE(MAX(position),-1)+1 FROM photos WHERE case_id=?", (case_id,)
+                    ).fetchone()[0]
+                    conn.execute("INSERT INTO photos(id,case_id,position,file_path,content_type,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?)",
+                                 (photo_id, case_id, position, relative_path, content_type, user["id"], now))
+                    conn.execute(
+                        "UPDATE cases SET photo_count=photo_count+1,status='waiting',version=version+1 WHERE id=?",
+                        (case_id,),
+                    )
                 self._audit(conn, user["id"], "case.photo_added", "case", case_id, {"photoID": photo_id})
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
@@ -694,8 +786,135 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def delete_photo(self, case_id: str, photo_id: str, user: sqlite3.Row) -> dict:
+        self._require_role(user, "agent")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                case = self._case_row(conn, case_id)
+                self._assert_owner(case, user)
+                photo = conn.execute(
+                    "SELECT * FROM photos WHERE id=? AND case_id=?",
+                    (photo_id, case_id),
+                ).fetchone()
+                if not photo:
+                    raise APIError(404, "photo_not_found", "The photo could not be found.")
+                if photo["uploaded_by"] != user["id"]:
+                    raise APIError(403, "forbidden", "You can only remove photos uploaded by your account.")
+                if not photo["file_path"]:
+                    raise APIError(409, "photo_unavailable", "Only uploaded photo files can be removed.")
+                if photo["deleted_at"]:
+                    raise APIError(409, "photo_already_deleted", "This photo has already been removed.")
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE photos SET deleted_at=?,deleted_by=? WHERE id=?",
+                    (now, user["id"], photo_id),
+                )
+                visible_count = conn.execute(
+                    "SELECT COUNT(*) FROM photos WHERE case_id=? AND deleted_at IS NULL",
+                    (case_id,),
+                ).fetchone()[0]
+                conn.execute(
+                    "UPDATE cases SET photo_count=?,status='waiting',version=version+1 WHERE id=?",
+                    (visible_count, case_id),
+                )
+                self._audit(conn, user["id"], "case.photo_removed", "photo", photo_id,
+                            {"caseID": case_id, "fileRetained": True})
+                result = self._case_json(conn, self._case_row(conn, case_id))
+                conn.execute("COMMIT")
+                return result
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def get_photo(self, photo_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
+        with self.connect() as conn:
+            photo = conn.execute(
+                "SELECT p.*,c.agent_id,c.assigned_doctor_id FROM photos p "
+                "JOIN cases c ON c.id=p.case_id WHERE p.id=?",
+                (photo_id,),
+            ).fetchone()
+            if not photo:
+                raise APIError(404, "photo_not_found", "The photo could not be found.")
+            self._assert_case_visible(photo, user)
+            if photo["deleted_at"] and user["role"] not in {"admin", "manager"}:
+                raise APIError(404, "photo_not_found", "The photo could not be found.")
+            if not photo["file_path"] or not photo["content_type"]:
+                raise APIError(404, "photo_unavailable", "This case does not have an uploaded photo file.")
+            media_root = self.media_root.resolve()
+            file_path = (media_root / photo["file_path"]).resolve()
+            if media_root not in file_path.parents or not file_path.is_file():
+                raise APIError(404, "photo_unavailable", "The uploaded photo file is unavailable.")
+            return file_path.read_bytes(), photo["content_type"]
+
+    def add_message_photo(self, case_id: str, body: bytes, content_type: str, user: sqlite3.Row) -> dict:
+        self._require_any_role(user, "agent", "doctor")
+        if not body or len(body) > 20 * 1024 * 1024:
+            raise APIError(422, "invalid_photo", "Photo must be between 1 byte and 20 MB.")
+        extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/heic": ".heic"}.get(content_type)
+        if not extension:
+            raise APIError(415, "unsupported_photo", "Use JPEG, PNG or HEIC photos.")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                case = self._case_row(conn, case_id)
+                self._assert_case_visible(case, user)
+                if user["role"] == "agent":
+                    self._assert_owner(case, user)
+                if case["status"] == "closed":
+                    raise APIError(409, "case_closed", "A closed case cannot receive new messages.")
+
+                message_id = str(uuid.uuid4())
+                message_dir = self.media_root / case_id / "messages"
+                message_dir.mkdir(parents=True, exist_ok=True)
+                path = message_dir / f"{message_id}{extension}"
+                path.write_bytes(body)
+                relative_path = str(path.relative_to(self.media_root))
+                now = iso(utc_now())
+                conn.execute(
+                    "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,"
+                    "approximate_grafts,recommended_price,attachment_path,attachment_content_type) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (message_id, case_id, user["id"], user["display_name"], user["role"], now,
+                     "Annotated patient photo", None, None, relative_path, content_type),
+                )
+                if user["role"] == "doctor" and case["assigned_doctor_id"] is None:
+                    conn.execute("UPDATE cases SET assigned_doctor_id=? WHERE id=?", (user["id"], case_id))
+                    conn.execute(
+                        "UPDATE patients SET assigned_doctor_id=?,last_updated=? WHERE id=?",
+                        (user["id"], now, case["patient_id"]),
+                    )
+                if user["role"] == "agent":
+                    conn.execute("UPDATE cases SET status='waiting',version=version+1 WHERE id=?", (case_id,))
+                else:
+                    conn.execute("UPDATE cases SET version=version+1 WHERE id=?", (case_id,))
+                self._audit(conn, user["id"], "case.annotated_photo_added", "message", message_id,
+                            {"caseID": case_id, "originalRetained": True})
+                result = self._case_json(conn, self._case_row(conn, case_id))
+                conn.execute("COMMIT")
+                return result
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def get_message_photo(self, message_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
+        with self.connect() as conn:
+            message = conn.execute(
+                "SELECT m.attachment_path,m.attachment_content_type,c.agent_id,c.assigned_doctor_id "
+                "FROM messages m JOIN cases c ON c.id=m.case_id WHERE m.id=?",
+                (message_id,),
+            ).fetchone()
+            if not message or not message["attachment_path"] or not message["attachment_content_type"]:
+                raise APIError(404, "message_photo_not_found", "The message photo could not be found.")
+            self._assert_case_visible(message, user)
+            media_root = self.media_root.resolve()
+            file_path = (media_root / message["attachment_path"]).resolve()
+            if media_root not in file_path.parents or not file_path.is_file():
+                raise APIError(404, "message_photo_unavailable", "The message photo file is unavailable.")
+            return file_path.read_bytes(), message["attachment_content_type"]
+
     def admin_users(self, user: sqlite3.Row) -> list[dict]:
-        self._require_role(user, "admin")
+        self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT u.*, ag.name agency_name, "
@@ -719,11 +938,11 @@ class Database:
         display_name = str(payload.get("displayName", "")).strip()
         role = str(payload.get("role", "")).strip().lower()
         password = str(payload.get("password", ""))
-        if not username or not display_name or role not in {"doctor", "agent", "admin"}:
-            raise APIError(422, "invalid_user", "Username, display name and a valid role are required.")
+        if not display_name or role not in {"doctor", "agent", "admin", "manager"}:
+            raise APIError(422, "invalid_user", "Display name and a valid role are required.")
         if len(password) < 10:
             raise APIError(422, "weak_password", "The temporary password must contain at least 10 characters.")
-        if any(ch.isspace() for ch in username):
+        if username and any(ch.isspace() for ch in username):
             raise APIError(422, "invalid_username", "Username cannot contain spaces.")
         agency_id = str(payload.get("agencyID", "")).strip() or None
         user_id = f"{role}-{uuid.uuid4().hex[:12]}"
@@ -731,6 +950,15 @@ class Database:
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                if not username:
+                    base = username_base(display_name)
+                    if not base:
+                        raise APIError(422, "invalid_username", "A username could not be generated from this display name.")
+                    username = base
+                    suffix = 2
+                    while conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                        username = f"{base}{suffix}"
+                        suffix += 1
                 if role == "agent":
                     agency = conn.execute("SELECT * FROM agencies WHERE id=? AND active=1", (agency_id,)).fetchone()
                     if not agency:
@@ -749,6 +977,77 @@ class Database:
                 return {**self._public_user(row), "agencyName": agency_name[0] if agency_name else None,
                         "active": True, "createdAt": row["created_at"],
                         "caseCount": 0, "patientCount": 0}
+            except sqlite3.IntegrityError:
+                conn.execute("ROLLBACK")
+                raise APIError(409, "username_exists", "This username is already in use.")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def admin_update_user(self, user_id: str, payload: dict, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                target = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+                if not target:
+                    raise APIError(404, "user_not_found", "The user could not be found.")
+                username = str(payload.get("username", target["username"])).strip()
+                display_name = str(payload.get("displayName", target["display_name"])).strip()
+                role = str(payload.get("role", target["role"])).strip().lower()
+                agency_id = str(payload.get("agencyID", target["agency_id"] or "")).strip() or None
+                new_password = str(payload.get("password", ""))
+                if not username or any(ch.isspace() for ch in username):
+                    raise APIError(422, "invalid_username", "Enter a username without spaces.")
+                if len(display_name) < 2 or len(display_name) > 120:
+                    raise APIError(422, "invalid_display_name", "Enter a valid display name.")
+                if role not in {"doctor", "agent", "admin", "manager"}:
+                    raise APIError(422, "invalid_user", "Select a valid role.")
+                if user_id == user["id"] and role != "admin":
+                    raise APIError(409, "cannot_change_own_role", "You cannot remove your own admin role.")
+                if role != target["role"]:
+                    history_count = sum((
+                        conn.execute("SELECT COUNT(*) FROM cases WHERE agent_id=?", (user_id,)).fetchone()[0],
+                        conn.execute("SELECT COUNT(*) FROM patients WHERE assigned_doctor_id=?", (user_id,)).fetchone()[0],
+                        conn.execute("SELECT COUNT(*) FROM messages WHERE author_id=?", (user_id,)).fetchone()[0],
+                        conn.execute("SELECT COUNT(*) FROM photos WHERE uploaded_by=?", (user_id,)).fetchone()[0],
+                    ))
+                    if history_count:
+                        raise APIError(409, "role_change_has_history",
+                                       "This user's role cannot be changed because consultation history is attached to the account.")
+                if role == "agent":
+                    agency = conn.execute("SELECT * FROM agencies WHERE id=? AND active=1", (agency_id,)).fetchone()
+                    if not agency:
+                        raise APIError(422, "agency_required", "Select an active agency for the agent.")
+                else:
+                    agency_id = None
+                if new_password and len(new_password) < 10:
+                    raise APIError(422, "weak_password", "The new temporary password must contain at least 10 characters.")
+                conn.execute(
+                    "UPDATE users SET username=?,display_name=?,role=?,agency_id=? WHERE id=?",
+                    (username, display_name, role, agency_id, user_id),
+                )
+                if new_password:
+                    salt, digest = hash_password(new_password)
+                    conn.execute("UPDATE users SET password_salt=?,password_hash=? WHERE id=?", (salt, digest, user_id))
+                    conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+                self._audit(conn, user["id"], "user.updated", "user", user_id,
+                            {"username": username, "displayName": display_name, "role": role,
+                             "agencyID": agency_id, "passwordChanged": bool(new_password)})
+                updated = conn.execute(
+                    "SELECT u.*,ag.name agency_name,"
+                    "(SELECT COUNT(*) FROM cases c WHERE c.agent_id=u.id) agent_case_count,"
+                    "(SELECT COUNT(*) FROM patients p WHERE p.assigned_doctor_id=u.id) doctor_patient_count "
+                    "FROM users u LEFT JOIN agencies ag ON ag.id=u.agency_id WHERE u.id=?",
+                    (user_id,),
+                ).fetchone()
+                conn.execute("COMMIT")
+                return {
+                    **self._public_user(updated), "agencyName": updated["agency_name"],
+                    "active": bool(updated["active"]), "createdAt": updated["created_at"],
+                    "caseCount": updated["agent_case_count"] if role == "agent" else 0,
+                    "patientCount": updated["doctor_patient_count"] if role == "doctor" else 0,
+                }
             except sqlite3.IntegrityError:
                 conn.execute("ROLLBACK")
                 raise APIError(409, "username_exists", "This username is already in use.")
@@ -808,7 +1107,7 @@ class Database:
                 raise
 
     def admin_agencies(self, user: sqlite3.Row) -> list[dict]:
-        self._require_role(user, "admin")
+        self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT ag.*, (SELECT COUNT(*) FROM users u WHERE u.agency_id=ag.id) user_count "
@@ -837,8 +1136,33 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
-    def admin_cases(self, user: sqlite3.Row) -> list[dict]:
+    def admin_update_agency(self, agency_id: str, payload: dict, user: sqlite3.Row) -> dict:
         self._require_role(user, "admin")
+        name = str(payload.get("name", "")).strip()
+        if len(name) < 2:
+            raise APIError(422, "invalid_agency", "Enter a valid agency name.")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                agency = conn.execute("SELECT * FROM agencies WHERE id=?", (agency_id,)).fetchone()
+                if not agency:
+                    raise APIError(404, "agency_not_found", "The agency could not be found.")
+                conn.execute("UPDATE agencies SET name=? WHERE id=?", (name, agency_id))
+                self._audit(conn, user["id"], "agency.updated", "agency", agency_id,
+                            {"from": agency["name"], "to": name})
+                user_count = conn.execute("SELECT COUNT(*) FROM users WHERE agency_id=?", (agency_id,)).fetchone()[0]
+                conn.execute("COMMIT")
+                return {"id": agency_id, "name": name, "active": bool(agency["active"]),
+                        "userCount": user_count}
+            except sqlite3.IntegrityError:
+                conn.execute("ROLLBACK")
+                raise APIError(409, "agency_exists", "An agency with this name already exists.")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def admin_cases(self, user: sqlite3.Row) -> list[dict]:
+        self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_grafts,c.currency,c.agent_price,"
@@ -850,15 +1174,30 @@ class Database:
                 "LEFT JOIN users d ON d.id=p.assigned_doctor_id "
                 "ORDER BY c.uploaded_at DESC"
             ).fetchall()
-            return [{
-                "id": row["id"], "reference": row["reference"], "patientID": row["patient_id"],
-                "patientName": row["patient_name"], "agentName": row["agent_name"],
-                "agencyName": row["agency_name"],
-                "doctorID": row["assigned_doctor_id"], "doctorName": row["doctor_name"],
-                "uploadedAt": row["uploaded_at"], "status": row["status"],
-                "photoCount": row["photo_count"], "messageCount": row["message_count"],
-                "grafts": row["agent_grafts"], "currency": row["currency"], "price": row["agent_price"],
-            } for row in rows]
+            result = []
+            for row in rows:
+                photos = conn.execute(
+                    "SELECT p.id,p.position,p.file_path,p.uploaded_at,p.deleted_at,u.display_name deleted_by_name "
+                    "FROM photos p LEFT JOIN users u ON u.id=p.deleted_by WHERE p.case_id=? ORDER BY p.position",
+                    (row["id"],),
+                ).fetchall()
+                result.append({
+                    "id": row["id"], "reference": row["reference"], "patientID": row["patient_id"],
+                    "patientName": row["patient_name"], "agentName": row["agent_name"],
+                    "agencyName": row["agency_name"],
+                    "doctorID": row["assigned_doctor_id"], "doctorName": row["doctor_name"],
+                    "uploadedAt": row["uploaded_at"], "status": row["status"],
+                    "photoCount": len(photos),
+                    "deletedPhotoCount": sum(1 for photo in photos if photo["deleted_at"]),
+                    "photos": [{
+                        "id": photo["id"], "position": photo["position"],
+                        "available": bool(photo["file_path"]), "deleted": bool(photo["deleted_at"]),
+                        "deletedAt": photo["deleted_at"], "deletedByName": photo["deleted_by_name"],
+                    } for photo in photos],
+                    "messageCount": row["message_count"],
+                    "grafts": row["agent_grafts"], "currency": row["currency"], "price": row["agent_price"],
+                })
+            return result
 
     def admin_assign_doctor(self, patient_id: str, payload: dict, user: sqlite3.Row) -> dict:
         self._require_role(user, "admin")
@@ -901,6 +1240,11 @@ class Database:
             raise APIError(403, "forbidden", f"This action requires the {role} role.")
 
     @staticmethod
+    def _require_any_role(user: sqlite3.Row, *roles: str) -> None:
+        if user["role"] not in roles:
+            raise APIError(403, "forbidden", "This account does not have access to this record.")
+
+    @staticmethod
     def _assert_owner(case: sqlite3.Row, user: sqlite3.Row) -> None:
         if case["agent_id"] != user["id"]:
             raise APIError(403, "forbidden", "You cannot change another agent's case.")
@@ -931,18 +1275,22 @@ class Database:
     @staticmethod
     def _case_json(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         messages = conn.execute("SELECT * FROM messages WHERE case_id=? ORDER BY created_at,id", (row["id"],)).fetchall()
-        photos = conn.execute("SELECT id,position FROM photos WHERE case_id=? ORDER BY position", (row["id"],)).fetchall()
+        photos = conn.execute(
+            "SELECT id,position FROM photos WHERE case_id=? AND deleted_at IS NULL ORDER BY position",
+            (row["id"],),
+        ).fetchall()
         return {
             "id": row["id"], "reference": row["reference"],
             "patient": {"id": row["patient_id"], "name": row["patient_name"],
                         "assignedDoctorID": row["patient_doctor"], "lastUpdated": row["last_updated"]},
             "agentName": row["agent_name"], "assignedDoctorID": row["assigned_doctor_id"],
-            "uploadedAt": row["uploaded_at"], "status": row["status"], "photoCount": row["photo_count"],
+            "uploadedAt": row["uploaded_at"], "status": row["status"], "photoCount": len(photos),
             "agentNote": row["agent_note"], "agentGrafts": row["agent_grafts"],
             "currency": row["currency"], "agentPrice": row["agent_price"],
             "messages": [{"id": m["id"], "author": m["author_name"], "role": m["role"],
                           "createdAt": m["created_at"], "text": m["text"],
-                          "approximateGrafts": m["approximate_grafts"], "recommendedPrice": m["recommended_price"]}
+                          "approximateGrafts": m["approximate_grafts"], "recommendedPrice": m["recommended_price"],
+                          "attachmentPhotoID": m["id"] if m["attachment_path"] else None}
                          for m in messages],
             "photoIDs": [p["id"] for p in photos],
         }
@@ -982,7 +1330,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "patient-matching", "photos", "role-auth", "profile", "password-reset"]})
+                                        "capabilities": ["cases", "patient-matching", "photos", "photo-messages", "role-auth", "profile", "password-reset"]})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
                 payload = self._read_json()
                 return self._json(200, self.server.database.login(str(payload.get("username", "")), str(payload.get("password", ""))))
@@ -994,6 +1342,7 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "GET" and path == f"{API_PREFIX}/auth/me":
                 return self._json(200, {"user": self.server.database._public_user(user)})
             if method == "POST" and path == f"{API_PREFIX}/auth/logout":
+                self._read_json()
                 self.server.database.logout(token)
                 return self._json(200, {"ok": True})
             if method == "PATCH" and path == f"{API_PREFIX}/auth/profile":
@@ -1012,15 +1361,24 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._json(200, {"cases": self.server.database.admin_cases(user)})
             admin_parts = path.removeprefix(f"{API_PREFIX}/admin/").split("/")
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "users":
+                self._read_json()
                 return self._json(200, {"user": self.server.database.admin_delete_user(admin_parts[1], user)})
             if path.startswith(f"{API_PREFIX}/admin/") and method == "PATCH" and len(admin_parts) == 2:
                 if admin_parts[0] == "users":
                     payload = self._read_json()
-                    return self._json(200, {"user": self.server.database.admin_set_user_active(
-                        admin_parts[1], bool(payload.get("active")), user
+                    if "active" in payload and len(payload) == 1:
+                        return self._json(200, {"user": self.server.database.admin_set_user_active(
+                            admin_parts[1], bool(payload.get("active")), user
+                        )})
+                    return self._json(200, {"user": self.server.database.admin_update_user(
+                        admin_parts[1], payload, user
                     )})
                 if admin_parts[0] == "patients":
                     return self._json(200, {"assignment": self.server.database.admin_assign_doctor(
+                        admin_parts[1], self._read_json(), user
+                    )})
+                if admin_parts[0] == "agencies":
+                    return self._json(200, {"agency": self.server.database.admin_update_agency(
                         admin_parts[1], self._read_json(), user
                     )})
             if method == "GET" and path == f"{API_PREFIX}/cases":
@@ -1030,10 +1388,22 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "GET" and path == f"{API_PREFIX}/patients/matches":
                 name = parse_qs(parsed.query).get("name", [""])[0]
                 return self._json(200, {"matches": self.server.database.find_matches(name, user)})
+            if method == "GET" and path.startswith(f"{API_PREFIX}/photos/"):
+                photo_id = path.removeprefix(f"{API_PREFIX}/photos/")
+                if not photo_id or "/" in photo_id:
+                    raise APIError(404, "photo_not_found", "The photo could not be found.")
+                body, content_type = self.server.database.get_photo(photo_id, user)
+                return self._binary(200, body, content_type)
+            if method == "GET" and path.startswith(f"{API_PREFIX}/message-photos/"):
+                message_id = path.removeprefix(f"{API_PREFIX}/message-photos/")
+                if not message_id or "/" in message_id:
+                    raise APIError(404, "message_photo_not_found", "The message photo could not be found.")
+                body, content_type = self.server.database.get_message_photo(message_id, user)
+                return self._binary(200, body, content_type)
             parts = path.removeprefix(f"{API_PREFIX}/cases/").split("/")
             if not path.startswith(f"{API_PREFIX}/cases/") or not parts[0]:
                 raise APIError(404, "not_found", "Endpoint not found.")
-            case_id = parts[0]
+            case_id = parts[0].lower()
             if method == "GET" and len(parts) == 1:
                 return self._json(200, {"case": self.server.database.get_case(case_id, user)})
             action = parts[1] if len(parts) > 1 else ""
@@ -1044,11 +1414,21 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and action == "agent-updates":
                 return self._json(200, {"case": self.server.database.add_agent_update(case_id, self._read_json(), user)})
             if method == "POST" and action == "close":
+                self._read_json()
                 return self._json(200, {"case": self.server.database.close_case(case_id, user)})
             if method == "POST" and action == "photos":
                 body = self.rfile.read(self._content_length())
                 content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
                 return self._json(201, {"case": self.server.database.add_photo(case_id, body, content_type, user)})
+            if method == "POST" and action == "message-photos":
+                body = self.rfile.read(self._content_length())
+                content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
+                return self._json(201, {"case": self.server.database.add_message_photo(case_id, body, content_type, user)})
+            if method == "DELETE" and action == "photos" and len(parts) == 3:
+                self._read_json()
+                return self._json(200, {"case": self.server.database.delete_photo(
+                    case_id, parts[2], user
+                )})
             raise APIError(404, "not_found", "Endpoint not found.")
         except APIError as exc:
             self._json(exc.status, {"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
@@ -1120,6 +1500,15 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _binary(self, status: int, body: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 

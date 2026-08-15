@@ -193,7 +193,11 @@ private struct CaseCardView: View {
 
             TabView(selection: $photoIndex) {
                 ForEach(0..<item.photoCount, id: \.self) { index in
-                    ClinicalPhotoPlaceholder(index: index).tag(index)
+                    CasePhotoView(
+                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                        index: index
+                    )
+                    .tag(index)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -229,7 +233,7 @@ private struct CaseCardView: View {
 
             HStack(spacing: 8) {
                 metric("Graft number", item.agentGrafts)
-                metric("Price", "\(item.currency) \(item.agentPrice)")
+                metric("Price", AppCurrency.amount(item.agentPrice))
             }
 
             Divider()
