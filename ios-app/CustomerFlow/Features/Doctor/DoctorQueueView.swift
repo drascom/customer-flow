@@ -261,14 +261,13 @@ private struct CaseCardView: View {
 
     private var summaryHeader: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(item.patient.name)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-                StatusChip(status: item.status)
-            }
+            Text(item.patient.name)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 6) {
                 Text(item.reference)
@@ -291,6 +290,9 @@ private struct CaseCardView: View {
             }
             .font(.system(size: 13))
             .foregroundStyle(AppTheme.muted)
+
+            StatusChip(status: item.status)
+                .frame(maxWidth: .infinity, alignment: .trailing)
 
             if let latestMessage {
                 Divider().padding(.vertical, 2)
