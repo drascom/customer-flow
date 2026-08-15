@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 import QuickLook
-import PencilKit
 
 enum AppTheme {
     static let brand = adaptive(
@@ -230,37 +229,6 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
         )
         let navigationController = UINavigationController(rootViewController: controller)
         navigationController.navigationBar.prefersLargeTitles = false
-        if request.allowsEditing {
-            let markupButton = UIButton(type: .system)
-            var configuration = UIButton.Configuration.filled()
-            configuration.title = "Markup"
-            configuration.image = UIImage(systemName: "pencil.tip.crop.circle")
-            configuration.imagePadding = 7
-            configuration.cornerStyle = .capsule
-            configuration.baseBackgroundColor = .systemOrange
-            configuration.baseForegroundColor = .white
-            markupButton.configuration = configuration
-            markupButton.accessibilityLabel = "Open drawing tools"
-            markupButton.addAction(
-                UIAction { [weak coordinator = context.coordinator] _ in
-                    coordinator?.openMarkupEditor()
-                },
-                for: .touchUpInside
-            )
-            markupButton.translatesAutoresizingMaskIntoConstraints = false
-            navigationController.view.addSubview(markupButton)
-            NSLayoutConstraint.activate([
-                markupButton.trailingAnchor.constraint(
-                    equalTo: navigationController.view.safeAreaLayoutGuide.trailingAnchor,
-                    constant: -18
-                ),
-                markupButton.bottomAnchor.constraint(
-                    equalTo: navigationController.view.safeAreaLayoutGuide.bottomAnchor,
-                    constant: -18
-                ),
-                markupButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
-            ])
-        }
         return navigationController
     }
 
@@ -313,20 +281,6 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
             onClose()
         }
 
-        func openMarkupEditor() {
-            guard request.allowsEditing,
-                  let previewController,
-                  request.fileURLs.indices.contains(previewController.currentPreviewItemIndex) else { return }
-            let fileURL = request.fileURLs[previewController.currentPreviewItemIndex]
-            guard let image = UIImage(contentsOfFile: fileURL.path) else { return }
-            let editor = PhotoMarkupViewController(image: image) { [weak self] data, contentType in
-                self?.onEdited(data, contentType)
-            }
-            let navigationController = UINavigationController(rootViewController: editor)
-            navigationController.modalPresentationStyle = .fullScreen
-            previewController.present(navigationController, animated: true)
-        }
-
         private func sendEditedFile(at fileURL: URL) {
             let normalizedURL = fileURL.standardizedFileURL
             guard !sentEditedFiles.contains(normalizedURL), let data = try? Data(contentsOf: fileURL) else { return }
@@ -339,107 +293,6 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
             }
             onEdited(data, contentType)
         }
-    }
-}
-
-private final class PhotoMarkupViewController: UIViewController {
-    private let sourceImage: UIImage
-    private let onDone: (Data, String) -> Void
-    private let imageView = UIImageView()
-    private let canvasView = PKCanvasView()
-    private let toolPicker = PKToolPicker()
-
-    init(image: UIImage, onDone: @escaping (Data, String) -> Void) {
-        sourceImage = image
-        self.onDone = onDone
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        title = "Markup"
-        view.backgroundColor = .black
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .cancel,
-            target: self,
-            action: #selector(cancel)
-        )
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: self,
-            action: #selector(finish)
-        )
-
-        imageView.image = sourceImage
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(imageView)
-
-        canvasView.backgroundColor = .clear
-        canvasView.isOpaque = false
-        canvasView.drawingPolicy = .anyInput
-        canvasView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(canvasView)
-
-        NSLayoutConstraint.activate([
-            imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            imageView.topAnchor.constraint(equalTo: view.topAnchor),
-            imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            canvasView.leadingAnchor.constraint(equalTo: imageView.leadingAnchor),
-            canvasView.trailingAnchor.constraint(equalTo: imageView.trailingAnchor),
-            canvasView.topAnchor.constraint(equalTo: imageView.topAnchor),
-            canvasView.bottomAnchor.constraint(equalTo: imageView.bottomAnchor)
-        ])
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        toolPicker.addObserver(canvasView)
-        toolPicker.setVisible(true, forFirstResponder: canvasView)
-        canvasView.becomeFirstResponder()
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        toolPicker.removeObserver(canvasView)
-        super.viewWillDisappear(animated)
-    }
-
-    @objc private func cancel() {
-        dismiss(animated: true)
-    }
-
-    @objc private func finish() {
-        view.layoutIfNeeded()
-        let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
-        guard imageRect.width > 0, imageRect.height > 0 else { return }
-        let drawingScale = sourceImage.size.width / imageRect.width
-        let drawingImage = canvasView.drawing.image(from: imageRect, scale: drawingScale)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        let renderer = UIGraphicsImageRenderer(size: sourceImage.size, format: format)
-        let markedImage = renderer.image { _ in
-            sourceImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
-            drawingImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
-        }
-        guard let data = markedImage.jpegData(compressionQuality: 0.92) else { return }
-        onDone(data, "image/jpeg")
-        dismiss(animated: true)
-    }
-
-    private func aspectFitRect(for imageSize: CGSize, in bounds: CGRect) -> CGRect {
-        let scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
-        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        return CGRect(
-            x: bounds.midX - size.width / 2,
-            y: bounds.midY - size.height / 2,
-            width: size.width,
-            height: size.height
-        )
     }
 }
 
