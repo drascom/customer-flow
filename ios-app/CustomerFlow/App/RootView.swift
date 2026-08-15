@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @Bindable var tourModel: AppTourModel
     @State private var showsProfile = false
 
@@ -59,6 +60,10 @@ struct RootView: View {
                 serverAddress: state.savedServerAddress,
                 role: user.role
             )
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await state.refreshAfterForeground() }
         }
         .alert("Something changed", isPresented: Binding(get: { state.errorMessage != nil }, set: { if !$0 { state.errorMessage = nil } })) {
             Button("OK", role: .cancel) { state.errorMessage = nil }

@@ -31,6 +31,8 @@ final class AppState: ObservableObject {
     private let notificationService: any NotificationService
     private var remoteClient: RemoteAPIClient?
     private var liveUpdatesTask: Task<Void, Never>?
+    private var caseLoadInProgress = false
+    private var caseReloadRequested = false
     private let photoCache = NSCache<NSString, NSData>()
     private let serverAddressKey = "customerFlow.serverAddress"
 
@@ -201,11 +203,32 @@ final class AppState: ObservableObject {
 
     func load() async {
         guard phase == .authenticated else { return }
-        do { cases = try await repository.fetchCases() }
-        catch {
-            guard !Self.isCancellation(error) else { return }
-            errorMessage = error.localizedDescription
+        guard !caseLoadInProgress else {
+            caseReloadRequested = true
+            return
         }
+
+        caseLoadInProgress = true
+        defer { caseLoadInProgress = false }
+        repeat {
+            caseReloadRequested = false
+            do {
+                let updatedCases = try await repository.fetchCases()
+                guard phase == .authenticated else { return }
+                cases = updatedCases
+            } catch {
+                guard !Self.isCancellation(error) else { return }
+                errorMessage = error.localizedDescription
+            }
+        } while caseReloadRequested && phase == .authenticated
+    }
+
+    func refreshAfterForeground() async {
+        guard phase == .authenticated, let remoteClient else { return }
+        startLiveUpdates(client: remoteClient)
+        await load()
+        guard phase == .authenticated else { return }
+        liveRevision &+= 1
     }
 
     func createCase(patientName: String, grafts: String, currency: String, price: String, note: String,
