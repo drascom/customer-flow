@@ -40,6 +40,17 @@ struct RootView: View {
         }
         .background(AppTheme.background.ignoresSafeArea())
         .tint(AppTheme.accent)
+        .overlay {
+            if state.isRefreshingAfterForeground {
+                ZStack {
+                    AppTheme.background.opacity(0.82).ignoresSafeArea()
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(AppTheme.brand)
+                }
+                .transition(.opacity)
+            }
+        }
         .sheet(isPresented: $showsProfile) {
             ProfileView {
                 guard let user = state.currentUser else { return }

@@ -14,6 +14,7 @@ final class AppState: ObservableObject {
     @Published private(set) var connectedServerName = "Customer Flow Server"
     @Published private(set) var cases: [ConsultationCase] = []
     @Published private(set) var liveRevision = 0
+    @Published private(set) var isRefreshingAfterForeground = false
     @Published var errorMessage: String?
     @Published var isWorking = false
 
@@ -225,6 +226,8 @@ final class AppState: ObservableObject {
 
     func refreshAfterForeground() async {
         guard phase == .authenticated, let remoteClient else { return }
+        isRefreshingAfterForeground = true
+        defer { isRefreshingAfterForeground = false }
         startLiveUpdates(client: remoteClient)
         await load()
         guard phase == .authenticated else { return }
