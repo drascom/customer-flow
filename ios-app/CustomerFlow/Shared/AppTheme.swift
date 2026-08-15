@@ -836,7 +836,7 @@ struct LatestMessagePreview: View {
             .foregroundStyle(AppTheme.ink)
             .lineLimit(1)
             Spacer(minLength: 6)
-            Text(createdAt, style: .relative)
+            Text(dayRelativeText)
                 .foregroundStyle(AppTheme.muted)
                 .lineLimit(1)
         }
@@ -848,5 +848,18 @@ struct LatestMessagePreview: View {
         if hasPhoto { return "Photo sent" }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "New reply" : trimmed
+    }
+
+    private var dayRelativeText: String {
+        let calendar = Calendar.current
+        let startDate = calendar.startOfDay(for: createdAt)
+        let startToday = calendar.startOfDay(for: Date())
+        let days = max(0, calendar.dateComponents([.day], from: startDate, to: startToday).day ?? 0)
+
+        return switch days {
+        case 0: "Today"
+        case 1: "Yesterday"
+        default: "\(days) days ago"
+        }
     }
 }
