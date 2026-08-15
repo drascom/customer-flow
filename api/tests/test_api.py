@@ -198,6 +198,45 @@ class APITestCase(unittest.TestCase):
             for message in closed["messages"]
         ))
 
+    def test_doctor_and_agent_can_exchange_multiple_messages_with_optional_plan_fields(self):
+        doctor = self.login("doctor1", "demo123")
+        agent = self.login("user1", "demo123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Conversation Test", "grafts": "2000", "currency": "GBP",
+            "price": "1900", "note": "Continuous conversation test", "photoCount": 0,
+        }, token=agent, expected=201)["case"]
+
+        first_reply = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "Could you upload another donor-area photo?",
+        }, token=doctor)["case"]
+        self.assertEqual("answered", first_reply["status"])
+        first_message = next(
+            message for message in first_reply["messages"]
+            if message["text"] == "Could you upload another donor-area photo?"
+        )
+        self.assertIsNone(first_message["approximateGrafts"])
+        self.assertIsNone(first_message["recommendedPrice"])
+
+        second_reply = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "A front-facing photo would also be useful.",
+        }, token=doctor)["case"]
+        doctor_messages = [message for message in second_reply["messages"] if message["role"] == "doctor"]
+        self.assertEqual(2, len(doctor_messages))
+
+        agent_reply = self.request("POST", f"/cases/{created['id']}/agent-updates", {
+            "text": "I will upload both photos now.",
+        }, token=agent)["case"]
+        self.assertEqual("waiting", agent_reply["status"])
+
+        plan_reply = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "The graft range can remain conservative.",
+            "approximateGrafts": "2100-2300",
+        }, token=doctor)["case"]
+        self.assertEqual("answered", plan_reply["status"])
+        latest_message = plan_reply["messages"][-1]
+        self.assertEqual("2100-2300", latest_message["approximateGrafts"])
+        self.assertIsNone(latest_message["recommendedPrice"])
+
     def test_agent_uploads_and_authorized_users_fetch_real_photo(self):
         doctor = self.login("doctor1", "demo123")
         agent = self.login("user1", "demo123")

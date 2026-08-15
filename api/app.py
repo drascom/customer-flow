@@ -750,15 +750,20 @@ class Database:
 
     def send_recommendation(self, case_id: str, payload: dict, user: sqlite3.Row) -> dict:
         self._require_role(user, "doctor")
-        for key in ("approximateGrafts", "recommendedPrice", "text"):
-            if not str(payload.get(key, "")).strip():
-                raise APIError(422, "missing_fields", "Complete all recommendation fields.")
+        text = str(payload.get("text", "")).strip()
+        if not text:
+            raise APIError(422, "message_required", "Enter a message.")
+        approximate_grafts = str(payload.get("approximateGrafts") or "").strip() or None
+        raw_price = str(payload.get("recommendedPrice") or "").strip()
+        recommended_price = pound_amount(raw_price) if raw_price else None
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._case_row(conn, case_id)
-                if row["status"] != "waiting" or row["assigned_doctor_id"] not in (None, user["id"]):
-                    raise APIError(409, "case_changed", "This case was already answered or assigned. Refresh to continue.")
+                if row["status"] == "closed":
+                    raise APIError(409, "case_closed", "A closed case cannot receive new messages.")
+                if row["assigned_doctor_id"] not in (None, user["id"]):
+                    raise APIError(409, "case_changed", "This case is assigned to another doctor. Refresh to continue.")
                 now = iso(utc_now())
                 conn.execute("UPDATE cases SET assigned_doctor_id=?, status='answered', version=version+1 WHERE id=?",
                              (user["id"], case_id))
@@ -766,8 +771,11 @@ class Database:
                              (user["id"], now, row["patient_id"]))
                 conn.execute("INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
                              (str(uuid.uuid4()), case_id, user["id"], user["display_name"], "doctor", now,
-                              str(payload["text"]), str(payload["approximateGrafts"]), pound_amount(payload["recommendedPrice"])))
-                self._audit(conn, user["id"], "case.recommended", "case", case_id, {})
+                              text, approximate_grafts, recommended_price))
+                self._audit(conn, user["id"], "case.doctor_message_added", "case", case_id, {
+                    "includesGrafts": approximate_grafts is not None,
+                    "includesPrice": recommended_price is not None,
+                })
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
                 return result
@@ -1025,6 +1033,8 @@ class Database:
                     )
                 if user["role"] == "agent":
                     conn.execute("UPDATE cases SET status='waiting',version=version+1 WHERE id=?", (case_id,))
+                elif user["role"] == "doctor":
+                    conn.execute("UPDATE cases SET status='answered',version=version+1 WHERE id=?", (case_id,))
                 else:
                     conn.execute("UPDATE cases SET version=version+1 WHERE id=?", (case_id,))
                 self._audit(conn, user["id"], "case.annotated_photo_added", "message", message_id,
@@ -1062,20 +1072,26 @@ class Database:
                         "UPDATE messages SET deleted_at=?,deleted_by=? WHERE id=?",
                         (now, user["id"], message_id),
                     )
-                    if message["role"] == "doctor" and (
-                        message["approximate_grafts"] is not None
-                        or message["recommended_price"] is not None
-                    ):
-                        active_recommendations = conn.execute(
-                            "SELECT COUNT(*) FROM messages WHERE case_id=? AND role='doctor' "
-                            "AND deleted_at IS NULL AND (approximate_grafts IS NOT NULL OR recommended_price IS NOT NULL)",
+                    latest_active_message = conn.execute(
+                        "SELECT role FROM messages WHERE case_id=? AND role IN ('agent','doctor') "
+                        "AND deleted_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 1",
+                        (case_id,),
+                    ).fetchone()
+                    if case["status"] == "closed":
+                        conn.execute(
+                            "UPDATE cases SET version=version+1 WHERE id=?",
                             (case_id,),
-                        ).fetchone()[0]
-                        if not active_recommendations and case["status"] == "answered":
-                            conn.execute(
-                                "UPDATE cases SET status='waiting',version=version+1 WHERE id=?",
-                                (case_id,),
-                            )
+                        )
+                    else:
+                        next_status = (
+                            "answered"
+                            if latest_active_message and latest_active_message["role"] == "doctor"
+                            else "waiting"
+                        )
+                        conn.execute(
+                            "UPDATE cases SET status=?,version=version+1 WHERE id=?",
+                            (next_status, case_id),
+                        )
                     self._audit(conn, user["id"], "case.message_removed", "message", message_id,
                                 {"caseID": case_id, "contentRetained": True})
 
@@ -1651,9 +1667,9 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "GET" and len(parts) == 1:
                 return self._json(200, {"case": self.server.database.get_case(case_id, user)})
             action = parts[1] if len(parts) > 1 else ""
-            if method == "POST" and action == "recommendations":
+            if method == "POST" and action in {"doctor-messages", "recommendations"}:
                 updated = self.server.database.send_recommendation(case_id, self._read_json(), user)
-                return self._changed(200, {"case": updated}, "recommendation.created", case_id, user)
+                return self._changed(200, {"case": updated}, "message.created", case_id, user)
             if method == "PATCH" and action == "agent-values":
                 updated = self.server.database.save_agent_values(case_id, self._read_json(), user)
                 return self._changed(200, {"case": updated}, "case.updated", case_id, user)

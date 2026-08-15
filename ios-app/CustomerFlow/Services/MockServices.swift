@@ -74,7 +74,7 @@ final class MockCaseRepository: CaseRepository {
 
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
-        guard cases[index].status == .waiting else { throw MockError.caseChanged }
+        guard cases[index].status != .closed else { throw MockError.caseChanged }
 
         if let assigned = cases[index].assignedDoctorID, assigned != doctorID {
             throw MockError.caseChanged

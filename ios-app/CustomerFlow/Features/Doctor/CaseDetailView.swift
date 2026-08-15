@@ -14,15 +14,8 @@ struct CaseDetailView: View {
     @State private var pendingMessageDeletion: ConsultationMessage?
 
     private var item: ConsultationCase? { state.cases.first { $0.id == caseID } }
-    private var responseStarted: Bool {
-        !grafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
     private var responseReady: Bool {
-        !grafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -100,11 +93,11 @@ struct CaseDetailView: View {
                                 }
                             }
 
-                        if item.status == .waiting {
+                        if item.status != .closed {
                             responseComposer(item)
                         } else {
                             detailSection("Current state") {
-                                Text(item.status == .answered ? "Your response has been sent. The agent must confirm before this case closes." : "The agent confirmed and closed this case.")
+                                Text("The agent confirmed and closed this case.")
                                     .foregroundStyle(AppTheme.muted)
                             }
                         }
@@ -167,32 +160,27 @@ struct CaseDetailView: View {
     @ViewBuilder
     private func responseComposer(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Doctor response").font(.headline)
+            Text("Message agent").font(.headline)
             HStack {
-                TextField("Approx. grafts", text: $grafts)
+                TextField("Grafts (optional)", text: $grafts)
                     .keyboardType(.numbersAndPunctuation)
                     .textFieldStyle(.roundedBorder)
                 HStack(spacing: 6) {
                     Text(AppCurrency.symbol)
                         .font(.headline)
-                    TextField("Recommended price", text: $price)
+                    TextField("Price (optional)", text: $price)
                         .keyboardType(.decimalPad)
                 }
                 .padding(.horizontal, 8)
                 .background(.background, in: RoundedRectangle(cornerRadius: 6))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppTheme.border))
             }
-            TextField("Clinical assessment and recommendation", text: $response, axis: .vertical)
+            TextField("Write a message", text: $response, axis: .vertical)
                 .lineLimit(4...8)
                 .textFieldStyle(.roundedBorder)
 
             if item.assignedDoctorID == nil {
-                Label("Sending this response assigns the patient to you.", systemImage: "person.badge.plus")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.accent)
-            }
-            if responseStarted && !responseReady {
-                Label("Complete all three fields to send the recommendation.", systemImage: "exclamationmark.circle")
+                Label("Sending your first message assigns the patient to you.", systemImage: "person.badge.plus")
                     .font(.caption)
                     .foregroundStyle(AppTheme.accent)
             }
@@ -200,19 +188,30 @@ struct CaseDetailView: View {
             if isSending {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .trailing)
-            } else if responseReady {
-                Button(item.assignedDoctorID == nil ? "Respond & Take Patient" : "Send Response") {
+            } else {
+                Button(item.assignedDoctorID == nil ? "Send & Take Patient" : "Send message") {
                     Task {
                         isSending = true
+                        let trimmedGrafts = grafts.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let trimmedPrice = price.trimmingCharacters(in: .whitespacesAndNewlines)
                         let sent = await state.sendRecommendation(
                             caseID: item.id,
-                            recommendation: DoctorRecommendation(approximateGrafts: grafts, recommendedPrice: AppCurrency.amount(price), text: response)
+                            recommendation: DoctorRecommendation(
+                                approximateGrafts: trimmedGrafts.isEmpty ? nil : trimmedGrafts,
+                                recommendedPrice: trimmedPrice.isEmpty ? nil : AppCurrency.amount(trimmedPrice),
+                                text: response.trimmingCharacters(in: .whitespacesAndNewlines)
+                            )
                         )
                         isSending = false
-                        if sent { dismiss() }
+                        if sent {
+                            grafts = ""
+                            price = ""
+                            response = ""
+                        }
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!responseReady)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }

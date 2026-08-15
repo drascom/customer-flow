@@ -289,12 +289,12 @@ final class RemoteCaseRepository: CaseRepository {
 
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase {
         struct Body: Encodable, Sendable {
-            let approximateGrafts: String
-            let recommendedPrice: String
+            let approximateGrafts: String?
+            let recommendedPrice: String?
             let text: String
         }
         struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
-        let envelope: Envelope = try await client.send("POST", path: "cases/\(caseID)/recommendations", body: Body(
+        let envelope: Envelope = try await client.send("POST", path: "cases/\(caseID)/doctor-messages", body: Body(
             approximateGrafts: recommendation.approximateGrafts,
             recommendedPrice: recommendation.recommendedPrice,
             text: recommendation.text

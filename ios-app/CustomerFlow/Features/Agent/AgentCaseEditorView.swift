@@ -356,7 +356,8 @@ struct AgentCaseEditorView: View {
                 if isEditMode {
                     caseDetails
                     patientPhotos
-                    if let editCase, editCase.status == .answered || editCase.status == .closed {
+                    if let editCase,
+                       editCase.status == .closed || (editCase.status == .answered && latestDoctorRecommendation != nil) {
                         finalPlanSection(editCase)
                     }
                 } else {
@@ -912,7 +913,7 @@ struct AgentCaseEditorView: View {
     @ViewBuilder
     private var actionBar: some View {
         if isEditMode {
-            if detailsExpanded || (editCase?.status == .answered && !returnedToDoctor) {
+            if detailsExpanded || (editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor) {
                 editActionBar
             }
         } else {
@@ -936,7 +937,7 @@ struct AgentCaseEditorView: View {
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.borderedProminent)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-            } else if editCase?.status == .answered && !returnedToDoctor {
+            } else if editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor {
                 Button("Save Final Plan & Close") {
                     if let editCase {
                         Task {

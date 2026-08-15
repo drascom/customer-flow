@@ -143,7 +143,7 @@ struct PatientMatchCandidate: Identifiable, Hashable, Codable, Sendable {
 }
 
 struct DoctorRecommendation: Codable, Sendable {
-    let approximateGrafts: String
-    let recommendedPrice: String
+    let approximateGrafts: String?
+    let recommendedPrice: String?
     let text: String
 }
