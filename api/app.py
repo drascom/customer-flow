@@ -646,9 +646,7 @@ class Database:
 
     def fetch_cases(self, user: sqlite3.Row) -> list[dict]:
         where, params = "", []
-        if user["role"] == "doctor":
-            where, params = "WHERE c.assigned_doctor_id=? OR c.assigned_doctor_id IS NULL", [user["id"]]
-        elif user["role"] == "agent":
+        if user["role"] == "agent":
             where, params = "WHERE c.agent_id=?", [user["id"]]
         with self.connect() as conn:
             rows = conn.execute(
@@ -1009,6 +1007,8 @@ class Database:
                 self._assert_case_visible(case, user)
                 if user["role"] == "agent":
                     self._assert_owner(case, user)
+                if user["role"] == "doctor" and case["assigned_doctor_id"] not in (None, user["id"]):
+                    raise APIError(409, "case_changed", "This case is assigned to another doctor.")
                 if case["status"] == "closed":
                     raise APIError(409, "case_closed", "A closed case cannot receive new messages.")
 
@@ -1489,8 +1489,6 @@ class Database:
 
     @staticmethod
     def _assert_case_visible(case: sqlite3.Row, user: sqlite3.Row) -> None:
-        if user["role"] == "doctor" and case["assigned_doctor_id"] not in (None, user["id"]):
-            raise APIError(403, "forbidden", "This case is assigned to another doctor.")
         if user["role"] == "agent" and case["agent_id"] != user["id"]:
             raise APIError(403, "forbidden", "This case belongs to another agent.")
 

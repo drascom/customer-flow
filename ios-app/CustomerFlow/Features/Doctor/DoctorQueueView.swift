@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DoctorQueueView: View {
     @EnvironmentObject private var state: AppState
-    @State private var filter: DoctorQueueFilter = .myWaiting
+    @State private var filter: DoctorQueueFilter = .waiting
     @State private var searchText = ""
     @State private var oldestFirst = true
     @State private var selectedCase: ConsultationCase?
@@ -145,20 +145,18 @@ struct DoctorQueueView: View {
 
     private func matchesQueue(_ item: ConsultationCase) -> Bool {
         switch filter {
-        case .myWaiting: item.status == .waiting && item.assignedDoctorID == state.currentDoctorID
-        case .unassigned: item.status == .waiting && item.assignedDoctorID == nil
-        case .answered: item.status == .answered && item.assignedDoctorID == state.currentDoctorID
-        case .closed: item.status == .closed && item.assignedDoctorID == state.currentDoctorID
+        case .waiting: item.status == .waiting
+        case .answered: item.status == .answered
+        case .confirmed: item.status == .closed
         }
     }
 
     private func count(for filter: DoctorQueueFilter) -> Int {
         state.cases.filter { item in
             switch filter {
-            case .myWaiting: item.status == .waiting && item.assignedDoctorID == state.currentDoctorID
-            case .unassigned: item.status == .waiting && item.assignedDoctorID == nil
-            case .answered: item.status == .answered && item.assignedDoctorID == state.currentDoctorID
-            case .closed: item.status == .closed && item.assignedDoctorID == state.currentDoctorID
+            case .waiting: item.status == .waiting
+            case .answered: item.status == .answered
+            case .confirmed: item.status == .closed
             }
         }.count
     }
@@ -255,6 +253,18 @@ private struct CaseCardView: View {
                             .padding(.top, 12)
                     }
                 }
+
+                if let latestMessage {
+                    Divider()
+                        .padding(.top, isExpanded ? 14 : 8)
+                        .padding(.bottom, 8)
+                    LatestMessagePreview(
+                        author: latestMessage.author,
+                        text: latestMessage.text,
+                        createdAt: latestMessage.createdAt,
+                        hasPhoto: latestMessage.attachmentPhotoID != nil
+                    )
+                }
             }
             .padding(14)
         }
@@ -302,15 +312,6 @@ private struct CaseCardView: View {
             .font(.system(size: 13))
             .foregroundStyle(AppTheme.muted)
 
-            if let latestMessage {
-                Divider().padding(.vertical, 2)
-                LatestMessagePreview(
-                    author: latestMessage.author,
-                    text: latestMessage.text,
-                    createdAt: latestMessage.createdAt,
-                    hasPhoto: latestMessage.attachmentPhotoID != nil
-                )
-            }
         }
         .contentShape(Rectangle())
     }
@@ -327,7 +328,16 @@ private struct CaseCardView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity)
-        .background(statusBandColor)
+        .background(
+            statusBandColor,
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: 20,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 20,
+                style: .continuous
+            )
+        )
         .accessibilityElement(children: .combine)
     }
 

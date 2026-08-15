@@ -170,6 +170,35 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("Ayhan Çolak", matches[0]["name"])
         self.assertTrue(matches[0]["createdByAnotherAgent"])
 
+    def test_doctors_can_view_every_case_but_cannot_change_another_doctors_case(self):
+        doctor = self.login("doctor1", "demo123")
+        other_doctor = self.login("doctor2", "demo123")
+        agent = self.login("user1", "demo123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Shared Doctor View", "grafts": "2200", "currency": "GBP",
+            "price": "2100", "note": "Visible to every doctor", "photoCount": 1,
+        }, token=agent, expected=201)["case"]
+        photo = b"\xff\xd8shared-doctor-photo\xff\xd9"
+        uploaded_body, _ = self.raw_request(
+            "POST", f"/cases/{created['id']}/photos", body=photo,
+            content_type="image/jpeg", token=agent, expected=201,
+        )
+        photo_id = json.loads(uploaded_body)["case"]["photoIDs"][0]
+        self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "Claimed by the second doctor",
+        }, token=other_doctor)
+
+        visible_cases = self.request("GET", "/cases", token=doctor)["cases"]
+        self.assertTrue(any(item["id"] == created["id"] for item in visible_cases))
+        self.assertEqual(created["id"], self.request(
+            "GET", f"/cases/{created['id']}", token=doctor,
+        )["case"]["id"])
+        self.assertEqual(photo, self.raw_request("GET", f"/photos/{photo_id}", token=doctor)[0])
+        blocked = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "Should not overwrite the assigned doctor",
+        }, token=doctor, expected=409)
+        self.assertEqual("case_changed", blocked["error"]["code"])
+
     def test_agent_create_doctor_response_and_agent_close(self):
         doctor = self.login("doctor1", "demo123")
         agent = self.login("user1", "demo123")

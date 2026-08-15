@@ -35,25 +35,23 @@ enum ConsultationStatus: String, Codable, Sendable {
         switch self {
         case .waiting: "Waiting for Doctor"
         case .answered: "Waiting for Agent Confirmation"
-        case .closed: "Closed"
+        case .closed: "Confirmed"
         }
     }
 }
 
 enum DoctorQueueFilter: String, CaseIterable, Identifiable {
-    case myWaiting
-    case unassigned
+    case waiting
     case answered
-    case closed
+    case confirmed
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .myWaiting: "My Waiting"
-        case .unassigned: "Unassigned"
+        case .waiting: "Waiting"
         case .answered: "Answered"
-        case .closed: "Closed"
+        case .confirmed: "Confirmed"
         }
     }
 }
