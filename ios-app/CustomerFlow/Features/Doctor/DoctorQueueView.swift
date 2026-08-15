@@ -232,8 +232,16 @@ private struct CaseCardView: View {
                 .lineLimit(2)
 
             HStack(spacing: 8) {
-                metric("Graft number", item.agentGrafts)
-                metric("Price", AppCurrency.amount(item.agentPrice))
+                metric("Estimated grafts", item.agentGrafts)
+                metric("Estimated price", AppCurrency.amount(item.agentPrice))
+            }
+
+            if let finalGrafts = item.finalGrafts,
+               let finalPrice = item.finalPrice {
+                HStack(spacing: 8) {
+                    metric("Final grafts", finalGrafts)
+                    metric("Final price", AppCurrency.amount(finalPrice))
+                }
             }
 
             Divider()

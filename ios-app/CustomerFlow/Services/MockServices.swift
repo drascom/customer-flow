@@ -104,8 +104,11 @@ final class MockCaseRepository: CaseRepository {
         cases[index].agentPrice = price
     }
 
-    func confirmAndClose(caseID: UUID) async throws {
+    func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String) async throws {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
+        cases[index].finalGrafts = finalGrafts
+        cases[index].finalPrice = finalPrice
+        cases[index].finalizedAt = .now
         cases[index].status = .closed
     }
 

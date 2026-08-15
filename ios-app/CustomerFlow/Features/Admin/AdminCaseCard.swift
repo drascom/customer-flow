@@ -69,9 +69,18 @@ struct AdminCaseCard: View {
                 Divider().padding(.vertical, 12)
 
                 HStack(spacing: 8) {
-                    metric(title: "Grafts", value: item.grafts)
-                    metric(title: "Price", value: AppCurrency.amount(item.price))
+                    metric(title: "Est. grafts", value: item.grafts)
+                    metric(title: "Est. price", value: AppCurrency.amount(item.price))
                     metric(title: "Media", value: "\(item.photoCount) · \(item.messageCount)")
+                }
+
+                if let finalGrafts = item.finalGrafts,
+                   let finalPrice = item.finalPrice {
+                    HStack(spacing: 8) {
+                        metric(title: "Final grafts", value: finalGrafts)
+                        metric(title: "Final price", value: AppCurrency.amount(finalPrice))
+                    }
+                    .padding(.top, 8)
                 }
 
                 if !item.photos.isEmpty {

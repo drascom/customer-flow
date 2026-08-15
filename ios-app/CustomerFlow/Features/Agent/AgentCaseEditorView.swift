@@ -204,12 +204,19 @@ private struct AgentCaseListCard: View {
                 .lineLimit(2)
 
             HStack {
-                Label("\(item.agentGrafts) grafts", systemImage: "scissors")
+                Label(
+                    "\(item.finalGrafts ?? item.agentGrafts) grafts",
+                    systemImage: "scissors"
+                )
                 Spacer()
-                Text(AppCurrency.amount(item.agentPrice))
+                Text(AppCurrency.amount(item.finalPrice ?? item.agentPrice))
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(AppTheme.brandDark)
+
+            Text(item.finalGrafts == nil ? "Estimated plan" : "Final agreed plan")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.muted)
 
             if let latestMessage {
                 Divider()
@@ -263,6 +270,8 @@ struct AgentCaseEditorView: View {
     @State private var grafts = "3,200"
     @State private var currency = AppCurrency.code
     @State private var price = "2,850"
+    @State private var finalGrafts = ""
+    @State private var finalPrice = ""
     @State private var agentNote = ""
     @State private var updateText = ""
     @State private var photoCount: Int
@@ -312,6 +321,18 @@ struct AgentCaseEditorView: View {
         return state.cases.first { $0.id == editingCaseID }
     }
 
+    private var latestDoctorRecommendation: ConsultationMessage? {
+        editCase?.messages.last {
+            $0.role == .doctor
+                && ($0.approximateGrafts != nil || $0.recommendedPrice != nil)
+        }
+    }
+
+    private var finalPlanReady: Bool {
+        !finalGrafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !finalPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var missingItems: [String] {
         var result: [String] = []
         if patientName.trimmingCharacters(in: .whitespaces).isEmpty { result.append("patient name") }
@@ -329,6 +350,9 @@ struct AgentCaseEditorView: View {
                 if isEditMode {
                     caseDetails
                     patientPhotos
+                    if let editCase, editCase.status == .answered || editCase.status == .closed {
+                        finalPlanSection(editCase)
+                    }
                 } else {
                     createStepContent
                 }
@@ -596,8 +620,8 @@ struct AgentCaseEditorView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
-                summaryMetric("Grafts", grafts)
-                summaryMetric("Price", AppCurrency.amount(price))
+                summaryMetric("Estimated grafts", grafts)
+                summaryMetric("Estimated price", AppCurrency.amount(price))
             }
 
             if detailsExpanded {
@@ -608,12 +632,12 @@ struct AgentCaseEditorView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                     HStack(spacing: 10) {
-                        labeledField("Grafts", required: true) {
+                        labeledField("Estimated grafts", required: true) {
                             TextField("3,200", text: $grafts)
                                 .keyboardType(.numberPad)
                                 .textFieldStyle(.roundedBorder)
                         }
-                        labeledField("Price", required: true) {
+                        labeledField("Estimated price", required: true) {
                             HStack(spacing: 6) {
                                 Text(AppCurrency.symbol)
                                     .font(.headline)
@@ -697,7 +721,7 @@ struct AgentCaseEditorView: View {
                 ForEach(editCase.messages) { message in
                     MessagePreview(
                         message: message,
-                        canDelete: message.authorID == state.currentUser?.id,
+                        canDelete: message.role == .agent && message.authorID == state.currentUser?.id,
                         onDelete: { pendingMessageDeletion = message }
                     )
                 }
@@ -718,6 +742,73 @@ struct AgentCaseEditorView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+        }
+        .padding(14)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+    }
+
+    private func finalPlanSection(_ item: ConsultationCase) -> some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Final agreed plan")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                if item.status == .closed {
+                    Label("Confirmed", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.brandDark)
+                } else {
+                    Text("Required")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.accentInk)
+                }
+            }
+
+            if let recommendation = latestDoctorRecommendation {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Doctor recommendation")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.muted)
+                    HStack(spacing: 10) {
+                        summaryMetric("Recommended grafts", recommendation.approximateGrafts ?? "—")
+                        summaryMetric(
+                            "Recommended price",
+                            recommendation.recommendedPrice.map(AppCurrency.amount) ?? "—"
+                        )
+                    }
+                }
+            }
+
+            if item.status == .closed {
+                HStack(spacing: 10) {
+                    summaryMetric("Final grafts", item.finalGrafts ?? item.agentGrafts)
+                    summaryMetric("Final price", AppCurrency.amount(item.finalPrice ?? item.agentPrice))
+                }
+            } else {
+                Text("Using the doctor’s recommendation, enter the graft number and price agreed with the patient.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+
+                HStack(spacing: 10) {
+                    labeledField("Final agreed grafts", required: true) {
+                        TextField("e.g. 2,600", text: $finalGrafts)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    labeledField("Final agreed price", required: true) {
+                        HStack(spacing: 6) {
+                            Text(AppCurrency.symbol)
+                                .font(.headline)
+                                .foregroundStyle(AppTheme.ink)
+                            TextField("e.g. 2,700", text: $finalPrice)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
                 }
             }
         }
@@ -810,13 +901,22 @@ struct AgentCaseEditorView: View {
                 .buttonStyle(.borderedProminent)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             } else if editCase?.status == .answered && !returnedToDoctor {
-                Button("Confirm & Close") {
+                Button("Save Final Plan & Close") {
                     if let editCase {
-                        Task { if await state.confirmAndClose(caseID: editCase.id) { statusText = "Closed" } }
+                        Task {
+                            if await state.confirmAndClose(
+                                caseID: editCase.id,
+                                finalGrafts: finalGrafts,
+                                finalPrice: finalPrice
+                            ) {
+                                statusText = "Final plan confirmed · Closed"
+                            }
+                        }
                     }
                 }
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.borderedProminent)
+                .disabled(!finalPlanReady)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
@@ -897,6 +997,14 @@ struct AgentCaseEditorView: View {
             grafts = item.agentGrafts
             currency = AppCurrency.code
             price = item.agentPrice
+            finalGrafts = item.finalGrafts
+                ?? latestDoctorRecommendation?.approximateGrafts
+                ?? ""
+            finalPrice = item.finalPrice
+                ?? latestDoctorRecommendation?.recommendedPrice.map { recommended in
+                    String(AppCurrency.amount(recommended).dropFirst())
+                }
+                ?? ""
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = item.status.title
@@ -906,6 +1014,8 @@ struct AgentCaseEditorView: View {
             grafts = "3,200"
             currency = AppCurrency.code
             price = "2,850"
+            finalGrafts = ""
+            finalPrice = ""
             agentNote = ""
             photoCount = 0
             pendingPhotos = []
@@ -982,6 +1092,20 @@ struct AgentCaseEditorView: View {
             grafts = item.agentGrafts
             currency = AppCurrency.code
             price = item.agentPrice
+            finalGrafts = item.finalGrafts
+                ?? item.messages.last(where: {
+                    $0.role == .doctor
+                        && ($0.approximateGrafts != nil || $0.recommendedPrice != nil)
+                })?.approximateGrafts
+                ?? ""
+            finalPrice = item.finalPrice
+                ?? item.messages.last(where: {
+                    $0.role == .doctor
+                        && ($0.approximateGrafts != nil || $0.recommendedPrice != nil)
+                })?.recommendedPrice.map { recommended in
+                    String(AppCurrency.amount(recommended).dropFirst())
+                }
+                ?? ""
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = "Existing patient · Assigned doctor preserved"

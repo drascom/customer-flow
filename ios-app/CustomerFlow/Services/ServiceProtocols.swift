@@ -13,7 +13,7 @@ protocol CaseRepository: AnyObject {
     func deleteMessage(caseID: UUID, messageID: UUID) async throws -> ConsultationCase
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase
     func saveAgentValues(caseID: UUID, patientName: String, grafts: String, currency: String, price: String) async throws
-    func confirmAndClose(caseID: UUID) async throws
+    func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String) async throws
     func sendAgentUpdate(caseID: UUID, text: String) async throws
 }
 

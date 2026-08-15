@@ -46,4 +46,7 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let grafts: String
     let currency: String
     let price: String
+    let finalGrafts: String?
+    let finalPrice: String?
+    let finalizedAt: Date?
 }

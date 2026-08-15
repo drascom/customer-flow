@@ -115,6 +115,9 @@ struct ConsultationCase: Identifiable, Hashable, Codable, Sendable {
     var agentGrafts: String
     var currency: String
     var agentPrice: String
+    var finalGrafts: String? = nil
+    var finalPrice: String? = nil
+    var finalizedAt: Date? = nil
     var messages: [ConsultationMessage]
 }
 

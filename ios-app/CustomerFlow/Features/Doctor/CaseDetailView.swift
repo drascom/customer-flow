@@ -68,8 +68,18 @@ struct CaseDetailView: View {
                             }
 
                             HStack(spacing: 10) {
-                                detailMetric("Graft number", item.agentGrafts)
-                                detailMetric("Price", AppCurrency.amount(item.agentPrice))
+                                detailMetric("Estimated grafts", item.agentGrafts)
+                                detailMetric("Estimated price", AppCurrency.amount(item.agentPrice))
+                            }
+
+                            if let finalGrafts = item.finalGrafts,
+                               let finalPrice = item.finalPrice {
+                                detailSection("Final agreed plan") {
+                                    HStack(spacing: 10) {
+                                        detailMetric("Final grafts", finalGrafts)
+                                        detailMetric("Final price", AppCurrency.amount(finalPrice))
+                                    }
+                                }
                             }
 
                             detailSection("Case conversation") {
@@ -77,7 +87,7 @@ struct CaseDetailView: View {
                                     ForEach(item.messages) { message in
                                         MessageBubble(
                                             message: message,
-                                            canDelete: message.authorID == state.currentUser?.id,
+                                            canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
                                             onDelete: { pendingMessageDeletion = message }
                                         )
                                     }

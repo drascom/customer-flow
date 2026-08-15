@@ -165,8 +165,19 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("doctor-emre", answered["assignedDoctorID"])
         doctor_message = next(message for message in answered["messages"] if message["role"] == "doctor")
         self.assertEqual("£2500", doctor_message["recommendedPrice"])
-        closed = self.request("POST", f"/cases/{created['id']}/close", {}, token=agent)["case"]
+        missing = self.request("POST", f"/cases/{created['id']}/close", {}, token=agent, expected=422)
+        self.assertEqual("final_plan_required", missing["error"]["code"])
+        closed = self.request("POST", f"/cases/{created['id']}/close", {
+            "finalGrafts": "2550", "finalPrice": "2450",
+        }, token=agent)["case"]
         self.assertEqual("closed", closed["status"])
+        self.assertEqual("2550", closed["finalGrafts"])
+        self.assertEqual("2450", closed["finalPrice"])
+        self.assertIsNotNone(closed["finalizedAt"])
+        self.assertTrue(any(
+            message["role"] == "system" and "2550 grafts" in message["text"]
+            for message in closed["messages"]
+        ))
 
     def test_agent_uploads_and_authorized_users_fetch_real_photo(self):
         doctor = self.login("doctor1", "demo123")

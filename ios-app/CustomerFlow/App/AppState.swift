@@ -333,9 +333,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    func confirmAndClose(caseID: UUID) async -> Bool {
+    func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String) async -> Bool {
         do {
-            try await repository.confirmAndClose(caseID: caseID)
+            try await repository.confirmAndClose(
+                caseID: caseID,
+                finalGrafts: finalGrafts,
+                finalPrice: finalPrice
+            )
             await load()
             return true
         } catch {

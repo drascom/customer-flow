@@ -140,6 +140,10 @@ CREATE TABLE IF NOT EXISTS cases (
   agent_grafts TEXT NOT NULL,
   currency TEXT NOT NULL,
   agent_price TEXT NOT NULL,
+  final_grafts TEXT,
+  final_price TEXT,
+  finalized_at TEXT,
+  finalized_by TEXT REFERENCES users(id),
   version INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_cases_doctor_status ON cases(assigned_doctor_id, status);
@@ -230,6 +234,20 @@ class Database:
                     conn.execute("ALTER TABLE messages ADD COLUMN deleted_at TEXT")
                 if "deleted_by" not in message_columns:
                     conn.execute("ALTER TABLE messages ADD COLUMN deleted_by TEXT REFERENCES users(id)")
+                case_columns = {row["name"] for row in conn.execute("PRAGMA table_info(cases)").fetchall()}
+                if "final_grafts" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN final_grafts TEXT")
+                if "final_price" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN final_price TEXT")
+                if "finalized_at" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN finalized_at TEXT")
+                if "finalized_by" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN finalized_by TEXT REFERENCES users(id)")
+                conn.execute(
+                    "UPDATE cases SET final_grafts=agent_grafts,final_price=agent_price,"
+                    "finalized_at=uploaded_at,finalized_by=agent_id "
+                    "WHERE status='closed' AND final_grafts IS NULL"
+                )
                 conn.execute("UPDATE cases SET currency='GBP' WHERE currency <> 'GBP'")
                 conn.execute(
                     "UPDATE messages SET recommended_price = CASE "
@@ -378,9 +396,19 @@ class Database:
             (patient_id, patient_name, normalized, doctor_id, iso(created)),
         )
         case_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"customer-flow:{reference}"))
+        final_grafts = grafts if status == "closed" else None
+        final_price = price if status == "closed" else None
+        finalized_at = iso(created) if status == "closed" else None
+        finalized_by = agent_id if status == "closed" else None
         conn.execute(
-            "INSERT INTO cases VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)",
-            (case_id, reference, patient_id, agent_id, doctor_id, iso(created), status, photo_count, note, grafts, "GBP", price),
+            "INSERT INTO cases("
+            "id,reference,patient_id,agent_id,assigned_doctor_id,uploaded_at,status,photo_count,"
+            "agent_note,agent_grafts,currency,agent_price,final_grafts,final_price,finalized_at,finalized_by,version"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
+            (
+                case_id, reference, patient_id, agent_id, doctor_id, iso(created), status, photo_count,
+                note, grafts, "GBP", price, final_grafts, final_price, finalized_at, finalized_by,
+            ),
         )
         agent = conn.execute("SELECT display_name FROM users WHERE id=?", (agent_id,)).fetchone()[0]
         conn.execute(
@@ -669,7 +697,10 @@ class Database:
                 now = iso(utc_now())
                 photo_count = max(0, int(payload["photoCount"]))
                 conn.execute(
-                    "INSERT INTO cases VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)",
+                    "INSERT INTO cases("
+                    "id,reference,patient_id,agent_id,assigned_doctor_id,uploaded_at,status,photo_count,"
+                    "agent_note,agent_grafts,currency,agent_price,version"
+                    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)",
                     (case_id, reference, patient_id, user["id"], assigned_doctor, now, "waiting", photo_count,
                      str(payload["note"]), str(payload["grafts"]), "GBP", str(payload["price"])),
                 )
@@ -763,8 +794,12 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
-    def close_case(self, case_id: str, user: sqlite3.Row) -> dict:
+    def close_case(self, case_id: str, payload: dict, user: sqlite3.Row) -> dict:
         self._require_role(user, "agent")
+        final_grafts = str(payload.get("finalGrafts", "")).strip()
+        final_price = str(payload.get("finalPrice", "")).strip()
+        if not final_grafts or not final_price:
+            raise APIError(422, "final_plan_required", "Enter the final agreed graft number and price.")
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -772,8 +807,20 @@ class Database:
                 self._assert_owner(row, user)
                 if row["status"] != "answered":
                     raise APIError(409, "not_ready_to_close", "Only an answered case can be confirmed and closed.")
-                conn.execute("UPDATE cases SET status='closed', version=version+1 WHERE id=?", (case_id,))
-                self._audit(conn, user["id"], "case.closed", "case", case_id, {})
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE cases SET status='closed',final_grafts=?,final_price=?,finalized_at=?,"
+                    "finalized_by=?,version=version+1 WHERE id=?",
+                    (final_grafts, final_price, now, user["id"], case_id),
+                )
+                conn.execute(
+                    "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (str(uuid.uuid4()), case_id, user["id"], "System", "system", now,
+                     f"Final agreed plan confirmed: {final_grafts} grafts · £{final_price.lstrip('£').strip()}"),
+                )
+                self._audit(conn, user["id"], "case.closed", "case", case_id,
+                            {"finalGrafts": final_grafts, "finalPrice": final_price})
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
                 return result
@@ -1294,6 +1341,7 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_grafts,c.currency,c.agent_price,"
+                "c.final_grafts,c.final_price,c.finalized_at,"
                 "p.id patient_id,p.name patient_name,p.assigned_doctor_id,"
                 "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NULL) message_count,"
@@ -1349,6 +1397,8 @@ class Database:
                     "latestMessageAt": latest_message["created_at"] if latest_message else None,
                     "latestMessageHasPhoto": bool(latest_message["attachment_path"]) if latest_message else False,
                     "grafts": row["agent_grafts"], "currency": row["currency"], "price": row["agent_price"],
+                    "finalGrafts": row["final_grafts"], "finalPrice": row["final_price"],
+                    "finalizedAt": row["finalized_at"],
                 })
             return result
 
@@ -1443,6 +1493,8 @@ class Database:
             "uploadedAt": row["uploaded_at"], "status": row["status"], "photoCount": len(photos),
             "agentNote": row["agent_note"], "agentGrafts": row["agent_grafts"],
             "currency": row["currency"], "agentPrice": row["agent_price"],
+            "finalGrafts": row["final_grafts"], "finalPrice": row["final_price"],
+            "finalizedAt": row["finalized_at"],
             "messages": [{"id": m["id"], "authorID": m["author_id"],
                           "author": m["author_name"], "role": m["role"],
                           "createdAt": m["created_at"], "text": m["text"],
@@ -1574,8 +1626,9 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and action == "agent-updates":
                 return self._json(200, {"case": self.server.database.add_agent_update(case_id, self._read_json(), user)})
             if method == "POST" and action == "close":
-                self._read_json()
-                return self._json(200, {"case": self.server.database.close_case(case_id, user)})
+                return self._json(200, {"case": self.server.database.close_case(
+                    case_id, self._read_json(), user
+                )})
             if method == "POST" and action == "photos":
                 body = self.rfile.read(self._content_length())
                 content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
