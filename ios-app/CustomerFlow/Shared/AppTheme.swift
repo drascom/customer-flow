@@ -76,31 +76,29 @@ enum AppTheme {
     }
 }
 
-struct ClinicalPhotoPlaceholder: View {
-    let index: Int
-
+struct PhotoUnavailableView: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: index.isMultiple(of: 2)
-                    ? [Color(red: 0.82, green: 0.65, blue: 0.56), Color(red: 0.43, green: 0.31, blue: 0.27)]
-                    : [Color(red: 0.72, green: 0.54, blue: 0.47), Color(red: 0.28, green: 0.21, blue: 0.19)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            Ellipse()
-                .fill(Color.black.opacity(0.42))
-                .frame(width: 120, height: 58)
-                .offset(y: -28)
-            Text("DEMO CLINICAL IMAGE")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white.opacity(0.78))
-                .padding(8)
-                .background(.black.opacity(0.24), in: Capsule())
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(12)
+        Image(systemName: "photo.badge.exclamationmark")
+            .font(.title2)
+            .foregroundStyle(AppTheme.muted)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppTheme.inset)
+            .accessibilityLabel("Photo unavailable")
+    }
+}
+
+struct NoPhotosView: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.title2)
+            Text("No photos uploaded")
+                .font(.caption.weight(.semibold))
         }
-        .accessibilityLabel("Demo patient photo \(index + 1)")
+        .foregroundStyle(AppTheme.muted)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.inset)
+        .accessibilityLabel("No patient photos uploaded")
     }
 }
 
@@ -114,6 +112,7 @@ struct CasePhotoView: View {
     var onTap: (() -> Void)? = nil
 
     @State private var image: UIImage?
+    @State private var isLoading = true
 
     var body: some View {
         Group {
@@ -122,8 +121,12 @@ struct CasePhotoView: View {
                     .resizable()
                     .scaledToFill()
                     .accessibilityLabel("Patient photo \(index + 1)")
+            } else if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppTheme.inset)
             } else {
-                ClinicalPhotoPlaceholder(index: index)
+                PhotoUnavailableView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -149,10 +152,18 @@ struct CasePhotoView: View {
         }
         .task(id: "\(photoID ?? "missing"):\(reloadToken)") {
             image = nil
-            guard let photoID else { return }
+            isLoading = true
+            guard let photoID else {
+                isLoading = false
+                return
+            }
             guard let data = try? await state.photoData(photoID: photoID),
-                  let loaded = UIImage(data: data) else { return }
+                  let loaded = UIImage(data: data) else {
+                isLoading = false
+                return
+            }
             image = loaded
+            isLoading = false
         }
     }
 }

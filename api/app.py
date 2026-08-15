@@ -243,6 +243,11 @@ class Database:
                     conn.execute("ALTER TABLE cases ADD COLUMN finalized_at TEXT")
                 if "finalized_by" not in case_columns:
                     conn.execute("ALTER TABLE cases ADD COLUMN finalized_by TEXT REFERENCES users(id)")
+                conn.execute("DELETE FROM photos WHERE file_path IS NULL")
+                conn.execute(
+                    "UPDATE cases SET photo_count=(SELECT COUNT(*) FROM photos p "
+                    "WHERE p.case_id=cases.id AND p.file_path IS NOT NULL AND p.deleted_at IS NULL)"
+                )
                 conn.execute(
                     "UPDATE cases SET final_grafts=agent_grafts,final_price=agent_price,"
                     "finalized_at=uploaded_at,finalized_by=agent_id "
@@ -406,7 +411,7 @@ class Database:
             "agent_note,agent_grafts,currency,agent_price,final_grafts,final_price,finalized_at,finalized_by,version"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
             (
-                case_id, reference, patient_id, agent_id, doctor_id, iso(created), status, photo_count,
+                case_id, reference, patient_id, agent_id, doctor_id, iso(created), status, 0,
                 note, grafts, "GBP", price, final_grafts, final_price, finalized_at, finalized_by,
             ),
         )
@@ -415,11 +420,6 @@ class Database:
             "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), case_id, agent_id, agent, "agent", iso(created), "Patient photos and consultation information uploaded.", None, None),
         )
-        for position in range(photo_count):
-            conn.execute(
-                "INSERT INTO photos(id,case_id,position,file_path,content_type,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?)",
-                (str(uuid.uuid4()), case_id, position, None, None, agent_id, iso(created)),
-            )
         if doctor_reply:
             conn.execute(
                 "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -695,23 +695,21 @@ class Database:
                 case_id = str(uuid.uuid4())
                 reference = self._next_reference(conn, "case_reference", "HT-")
                 now = iso(utc_now())
-                photo_count = max(0, int(payload["photoCount"]))
+                requested_photo_count = max(0, int(payload["photoCount"]))
                 conn.execute(
                     "INSERT INTO cases("
                     "id,reference,patient_id,agent_id,assigned_doctor_id,uploaded_at,status,photo_count,"
                     "agent_note,agent_grafts,currency,agent_price,version"
                     ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)",
-                    (case_id, reference, patient_id, user["id"], assigned_doctor, now, "waiting", photo_count,
+                    (case_id, reference, patient_id, user["id"], assigned_doctor, now, "waiting", 0,
                      str(payload["note"]), str(payload["grafts"]), "GBP", str(payload["price"])),
                 )
                 conn.execute("INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
                              (str(uuid.uuid4()), case_id, user["id"], user["display_name"], "agent", now,
                               "Patient photos and consultation information uploaded.", None, None))
-                for position in range(photo_count):
-                    conn.execute("INSERT INTO photos(id,case_id,position,file_path,content_type,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?)",
-                                 (str(uuid.uuid4()), case_id, position, None, None, user["id"], now))
                 self._audit(conn, user["id"], "case.created", "case", case_id,
-                            {"reference": reference, "duplicateConfirmedDifferent": confirmed_different})
+                            {"reference": reference, "duplicateConfirmedDifferent": confirmed_different,
+                             "requestedPhotoCount": requested_photo_count})
                 row = self._case_row(conn, case_id)
                 result = self._case_json(conn, row)
                 conn.execute("COMMIT")
@@ -840,34 +838,22 @@ class Database:
             try:
                 row = self._case_row(conn, case_id)
                 self._assert_owner(row, user)
-                placeholder = conn.execute(
-                    "SELECT id,position FROM photos WHERE case_id=? AND file_path IS NULL AND deleted_at IS NULL "
-                    "ORDER BY position LIMIT 1",
-                    (case_id,),
-                ).fetchone()
-                photo_id = placeholder["id"] if placeholder else str(uuid.uuid4())
+                photo_id = str(uuid.uuid4())
                 case_dir = self.media_root / case_id
                 case_dir.mkdir(parents=True, exist_ok=True)
                 path = case_dir / f"{photo_id}{extension}"
                 path.write_bytes(body)
                 now = iso(utc_now())
                 relative_path = str(path.relative_to(self.media_root))
-                if placeholder:
-                    conn.execute(
-                        "UPDATE photos SET file_path=?,content_type=?,uploaded_by=?,uploaded_at=? WHERE id=?",
-                        (relative_path, content_type, user["id"], now, photo_id),
-                    )
-                    conn.execute("UPDATE cases SET status='waiting',version=version+1 WHERE id=?", (case_id,))
-                else:
-                    position = conn.execute(
-                        "SELECT COALESCE(MAX(position),-1)+1 FROM photos WHERE case_id=?", (case_id,)
-                    ).fetchone()[0]
-                    conn.execute("INSERT INTO photos(id,case_id,position,file_path,content_type,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?)",
-                                 (photo_id, case_id, position, relative_path, content_type, user["id"], now))
-                    conn.execute(
-                        "UPDATE cases SET photo_count=photo_count+1,status='waiting',version=version+1 WHERE id=?",
-                        (case_id,),
-                    )
+                position = conn.execute(
+                    "SELECT COALESCE(MAX(position),-1)+1 FROM photos WHERE case_id=?", (case_id,)
+                ).fetchone()[0]
+                conn.execute("INSERT INTO photos(id,case_id,position,file_path,content_type,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?)",
+                             (photo_id, case_id, position, relative_path, content_type, user["id"], now))
+                conn.execute(
+                    "UPDATE cases SET photo_count=photo_count+1,status='waiting',version=version+1 WHERE id=?",
+                    (case_id,),
+                )
                 self._audit(conn, user["id"], "case.photo_added", "case", case_id, {"photoID": photo_id})
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
@@ -901,7 +887,7 @@ class Database:
                     (now, user["id"], photo_id),
                 )
                 visible_count = conn.execute(
-                    "SELECT COUNT(*) FROM photos WHERE case_id=? AND deleted_at IS NULL",
+                    "SELECT COUNT(*) FROM photos WHERE case_id=? AND file_path IS NOT NULL AND deleted_at IS NULL",
                     (case_id,),
                 ).fetchone()[0]
                 conn.execute(
@@ -1355,7 +1341,8 @@ class Database:
             for row in rows:
                 photos = conn.execute(
                     "SELECT p.id,p.position,p.file_path,p.uploaded_at,p.deleted_at,u.display_name deleted_by_name "
-                    "FROM photos p LEFT JOIN users u ON u.id=p.deleted_by WHERE p.case_id=? ORDER BY p.position",
+                    "FROM photos p LEFT JOIN users u ON u.id=p.deleted_by "
+                    "WHERE p.case_id=? AND p.file_path IS NOT NULL ORDER BY p.position",
                     (row["id"],),
                 ).fetchall()
                 messages = conn.execute(
@@ -1482,7 +1469,8 @@ class Database:
             (row["id"],),
         ).fetchall()
         photos = conn.execute(
-            "SELECT id,position FROM photos WHERE case_id=? AND deleted_at IS NULL ORDER BY position",
+            "SELECT id,position FROM photos WHERE case_id=? AND file_path IS NOT NULL "
+            "AND deleted_at IS NULL ORDER BY position",
             (row["id"],),
         ).fetchall()
         return {

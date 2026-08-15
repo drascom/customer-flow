@@ -191,27 +191,33 @@ private struct CaseCardView: View {
             .font(.caption)
             .foregroundStyle(AppTheme.muted)
 
-            TabView(selection: $photoIndex) {
-                ForEach(0..<item.photoCount, id: \.self) { index in
-                    CasePhotoView(
-                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                        index: index
-                    )
-                    .tag(index)
+            Group {
+                if item.photoCount == 0 {
+                    NoPhotosView()
+                } else {
+                    TabView(selection: $photoIndex) {
+                        ForEach(0..<item.photoCount, id: \.self) { index in
+                            CasePhotoView(
+                                photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                index: index
+                            )
+                            .tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .overlay(alignment: .bottomTrailing) {
+                        Text("\(photoIndex + 1) / \(item.photoCount)")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.6), in: Capsule())
+                            .padding(10)
+                    }
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: 250)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(alignment: .bottomTrailing) {
-                Text("\(photoIndex + 1) / \(item.photoCount)")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.6), in: Capsule())
-                    .padding(10)
-            }
 
             HStack(spacing: 8) {
                 Text(item.patient.name)

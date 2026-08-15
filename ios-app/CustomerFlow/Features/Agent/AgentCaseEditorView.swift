@@ -168,27 +168,33 @@ private struct AgentCaseListCard: View {
             .font(.caption)
             .foregroundStyle(AppTheme.muted)
 
-            TabView(selection: $photoIndex) {
-                ForEach(0..<item.photoCount, id: \.self) { index in
-                    CasePhotoView(
-                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                        index: index
-                    )
-                    .tag(index)
+            Group {
+                if item.photoCount == 0 {
+                    NoPhotosView()
+                } else {
+                    TabView(selection: $photoIndex) {
+                        ForEach(0..<item.photoCount, id: \.self) { index in
+                            CasePhotoView(
+                                photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                index: index
+                            )
+                            .tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .overlay(alignment: .bottomTrailing) {
+                        Text("\(photoIndex + 1) / \(item.photoCount)")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.6), in: Capsule())
+                            .padding(9)
+                    }
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: 210)
             .clipShape(RoundedRectangle(cornerRadius: 15))
-            .overlay(alignment: .bottomTrailing) {
-                Text("\(photoIndex + 1) / \(item.photoCount)")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.6), in: Capsule())
-                    .padding(9)
-            }
 
             HStack(alignment: .firstTextBaseline) {
                 Text(item.patient.name)
@@ -532,14 +538,19 @@ struct AgentCaseEditorView: View {
                         .foregroundStyle(photoCount >= 2 ? AppTheme.brandDark : AppTheme.accent)
                 }
 
-                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 12, matching: .images) {
-                    Label("Add photos", systemImage: "plus")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.brand)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 5)
+                if photoCount > 0 {
+                    PhotoSourceButton(
+                        selectedPhotos: $selectedPhotos,
+                        onCameraPhoto: importCameraPhoto
+                    ) {
+                        Label("Add photos", systemImage: "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.brand)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 5)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 if isImportingPhotos {
                     ProgressView("Preparing photos…")
@@ -547,6 +558,16 @@ struct AgentCaseEditorView: View {
                 }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+                    if pendingPhotos.isEmpty {
+                        PhotoSourceButton(
+                            selectedPhotos: $selectedPhotos,
+                            onCameraPhoto: importCameraPhoto
+                        ) {
+                            EmptyPhotoAddCard()
+                        }
+                        .buttonStyle(.plain)
+                        .frame(height: 92)
+                    }
                     ForEach(Array(pendingPhotos.enumerated()), id: \.element.id) { index, photo in
                         PendingPhotoThumbnail(photo: photo, index: index)
                             .frame(height: 92)
@@ -680,14 +701,19 @@ struct AgentCaseEditorView: View {
                     .foregroundStyle(AppTheme.muted)
             }
 
-            PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 12, matching: .images) {
-                Label("Add photos", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.brand)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
+            if photoCount > 0 {
+                PhotoSourceButton(
+                    selectedPhotos: $selectedPhotos,
+                    onCameraPhoto: importCameraPhoto
+                ) {
+                    Label("Add photos", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.brand)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             if isImportingPhotos {
                 ProgressView("Uploading photos…")
@@ -695,6 +721,16 @@ struct AgentCaseEditorView: View {
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+                if photoCount == 0 {
+                    PhotoSourceButton(
+                        selectedPhotos: $selectedPhotos,
+                        onCameraPhoto: importCameraPhoto
+                    ) {
+                        EmptyPhotoAddCard()
+                    }
+                    .buttonStyle(.plain)
+                    .frame(height: 92)
+                }
                 ForEach(0..<photoCount, id: \.self) { index in
                     let photoID = editCase?.photoIDs.indices.contains(index) == true ? editCase?.photoIDs[index] : nil
                     CasePhotoView(
@@ -1065,6 +1101,36 @@ struct AgentCaseEditorView: View {
         }
     }
 
+    private func importCameraPhoto(_ image: UIImage) {
+        guard let jpeg = image.jpegData(compressionQuality: 0.9) else {
+            state.errorMessage = "The captured photo could not be read."
+            return
+        }
+        Task { await acceptImportedPhotos([CasePhotoUpload(data: jpeg, contentType: "image/jpeg")]) }
+    }
+
+    @MainActor
+    private func acceptImportedPhotos(_ imported: [CasePhotoUpload]) async {
+        guard !imported.isEmpty, !isImportingPhotos else { return }
+        isImportingPhotos = true
+        defer { isImportingPhotos = false }
+
+        if let editingCaseID {
+            statusText = "Uploading photos…"
+            if await state.uploadPhotos(caseID: editingCaseID, photos: imported) {
+                photoCount = state.cases.first(where: { $0.id == editingCaseID })?.photoCount ?? photoCount
+                photoReloadToken += 1
+                returnedToDoctor = true
+                statusText = "Waiting for Doctor · Photos uploaded"
+            } else {
+                statusText = "Photo upload failed · Try again"
+            }
+        } else {
+            pendingPhotos.append(contentsOf: imported)
+            photoCount = pendingPhotos.count
+        }
+    }
+
     private func checkForExistingPatient() async {
         guard duplicateResolution == nil else { return }
         do {
@@ -1132,6 +1198,110 @@ struct AgentCaseEditorView: View {
     }
 }
 
+private struct EmptyPhotoAddCard: View {
+    var body: some View {
+        VStack(spacing: 7) {
+            Image(systemName: "plus")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(AppTheme.brand)
+            Text("Add photo")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.brandDark)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppTheme.brand.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityLabel("Add a patient photo")
+    }
+}
+
+private struct PhotoSourceButton<Label: View>: View {
+    @Binding var selectedPhotos: [PhotosPickerItem]
+    let onCameraPhoto: (UIImage) -> Void
+    @ViewBuilder let label: () -> Label
+
+    @State private var showsSourceOptions = false
+    @State private var showsPhotoLibrary = false
+    @State private var showsCamera = false
+
+    var body: some View {
+        Button { showsSourceOptions = true } label: { label() }
+            .confirmationDialog("Add photos", isPresented: $showsSourceOptions, titleVisibility: .visible) {
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button("Take Photo", systemImage: "camera") { showsCamera = true }
+                }
+                Button("Choose from Photo Library", systemImage: "photo.on.rectangle") {
+                    showsPhotoLibrary = true
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .photosPicker(
+                isPresented: $showsPhotoLibrary,
+                selection: $selectedPhotos,
+                maxSelectionCount: 12,
+                matching: .images
+            )
+            .fullScreenCover(isPresented: $showsCamera) {
+                CameraImagePicker(
+                    onImagePicked: { image in
+                        showsCamera = false
+                        onCameraPhoto(image)
+                    },
+                    onCancel: { showsCamera = false }
+                )
+                .ignoresSafeArea()
+            }
+    }
+}
+
+private struct CameraImagePicker: UIViewControllerRepresentable {
+    let onImagePicked: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onImagePicked: onImagePicked, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let onImagePicked: (UIImage) -> Void
+        let onCancel: () -> Void
+
+        init(onImagePicked: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+            self.onImagePicked = onImagePicked
+            self.onCancel = onCancel
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            guard let image = info[.originalImage] as? UIImage else {
+                onCancel()
+                return
+            }
+            onImagePicked(image)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            onCancel()
+        }
+    }
+}
+
 private enum PhotoImportError: Error {
     case unreadable
 }
@@ -1147,7 +1317,7 @@ private struct PendingPhotoThumbnail: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                ClinicalPhotoPlaceholder(index: index)
+                PhotoUnavailableView()
             }
         }
         .clipped()

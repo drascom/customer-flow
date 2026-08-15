@@ -186,8 +186,8 @@ class APITestCase(unittest.TestCase):
             "patientName": "Photo Test Patient", "grafts": "2200", "currency": "GBP",
             "price": "2100", "note": "Real photo upload test", "photoCount": 2,
         }, token=agent, expected=201)["case"]
-        self.assertEqual(2, created["photoCount"])
-        self.assertEqual(2, len(created["photoIDs"]))
+        self.assertEqual(0, created["photoCount"])
+        self.assertEqual([], created["photoIDs"])
 
         jpeg = b"\xff\xd8customer-flow-test-photo\xff\xd9"
         uploaded_body, _ = self.raw_request(
@@ -195,15 +195,16 @@ class APITestCase(unittest.TestCase):
             content_type="image/jpeg", token=agent, expected=201,
         )
         uploaded = json.loads(uploaded_body)["case"]
-        self.assertEqual(2, uploaded["photoCount"])
-        self.assertEqual(created["photoIDs"], uploaded["photoIDs"])
+        self.assertEqual(1, uploaded["photoCount"])
+        self.assertEqual(1, len(uploaded["photoIDs"]))
+        photo_id = uploaded["photoIDs"][0]
 
         photo_body, photo_headers = self.raw_request(
-            "GET", f"/photos/{created['photoIDs'][0]}", token=doctor,
+            "GET", f"/photos/{photo_id}", token=doctor,
         )
         self.assertEqual(jpeg, photo_body)
         self.assertEqual("image/jpeg", photo_headers.get_content_type())
-        self.raw_request("GET", f"/photos/{created['photoIDs'][0]}", expected=401)
+        self.raw_request("GET", f"/photos/{photo_id}", expected=401)
 
     def test_case_edits_and_photo_uploads_accept_uppercase_uuid_paths(self):
         agent = self.login("user1", "demo123")

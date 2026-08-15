@@ -213,7 +213,7 @@ private struct ConfidentialClinicalPhoto: View {
     let index: Int
 
     var body: some View {
-        ClinicalPhotoPlaceholder(index: index)
+        PhotoUnavailableView()
             .overlay(alignment: .center) {
                 Text("CONFIDENTIAL · DO NOT SHARE")
                     .font(.caption2.weight(.heavy))

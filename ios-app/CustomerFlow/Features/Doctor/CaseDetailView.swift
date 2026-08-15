@@ -41,27 +41,33 @@ struct CaseDetailView: View {
                                 StatusChip(status: item.status)
                             }
 
-                            TabView(selection: $photoIndex) {
-                                ForEach(0..<item.photoCount, id: \.self) { index in
-                                    CasePhotoView(
-                                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                                        index: index,
-                                        onTap: item.photoIDs.indices.contains(index) ? {
-                                            Task { await openNativePreview(photoID: item.photoIDs[index], caseID: item.id) }
-                                        } : nil
-                                    )
-                                    .tag(index)
+                            if item.photoCount == 0 {
+                                NoPhotosView()
+                                    .frame(height: 220)
+                                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                            } else {
+                                TabView(selection: $photoIndex) {
+                                    ForEach(0..<item.photoCount, id: \.self) { index in
+                                        CasePhotoView(
+                                            photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                            index: index,
+                                            onTap: item.photoIDs.indices.contains(index) ? {
+                                                Task { await openNativePreview(photoID: item.photoIDs[index], caseID: item.id) }
+                                            } : nil
+                                        )
+                                        .tag(index)
+                                    }
                                 }
-                            }
-                            .tabViewStyle(.page)
-                            .frame(height: 330)
-                            .clipShape(RoundedRectangle(cornerRadius: 18))
+                                .tabViewStyle(.page)
+                                .frame(height: 330)
+                                .clipShape(RoundedRectangle(cornerRadius: 18))
 
-                            Button("Open & Mark Up", systemImage: "pencil.and.outline") {
-                                guard item.photoIDs.indices.contains(photoIndex) else { return }
-                                Task { await openNativePreview(photoID: item.photoIDs[photoIndex], caseID: item.id) }
+                                Button("Open & Mark Up", systemImage: "pencil.and.outline") {
+                                    guard item.photoIDs.indices.contains(photoIndex) else { return }
+                                    Task { await openNativePreview(photoID: item.photoIDs[photoIndex], caseID: item.id) }
+                                }
+                                .buttonStyle(.bordered)
                             }
-                            .buttonStyle(.bordered)
 
                             detailSection("Agent note") {
                                 Text(item.agentNote).foregroundStyle(AppTheme.ink)
