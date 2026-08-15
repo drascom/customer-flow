@@ -173,82 +173,94 @@ private struct CaseCardView: View {
     @State private var photoIndex = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Group {
-                if isCollapsible {
-                    Button(action: onToggle) {
+        VStack(spacing: 0) {
+            statusBand
+                .onTapGesture {
+                    if isCollapsible {
+                        onToggle()
+                    } else {
+                        onOpen()
+                    }
+                }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Group {
+                    if isCollapsible {
+                        Button(action: onToggle) {
+                            summaryHeader
+                        }
+                        .buttonStyle(.plain)
+                    } else {
                         summaryHeader
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    summaryHeader
                 }
-            }
 
-            if isExpanded {
-                Divider().padding(.vertical, 12)
+                if isExpanded {
+                    Divider().padding(.vertical, 12)
 
-                Group {
-                    if item.photoCount == 0 {
-                        NoPhotosView()
-                    } else {
-                        TabView(selection: $photoIndex) {
-                            ForEach(0..<item.photoCount, id: \.self) { index in
-                                CasePhotoView(
-                                    photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                                    index: index
-                                )
-                                .tag(index)
+                    Group {
+                        if item.photoCount == 0 {
+                            NoPhotosView()
+                        } else {
+                            TabView(selection: $photoIndex) {
+                                ForEach(0..<item.photoCount, id: \.self) { index in
+                                    CasePhotoView(
+                                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                        index: index
+                                    )
+                                    .tag(index)
+                                }
+                            }
+                            .tabViewStyle(.page(indexDisplayMode: .never))
+                            .overlay(alignment: .bottomTrailing) {
+                                Text("\(photoIndex + 1) / \(item.photoCount)")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 6)
+                                    .background(.black.opacity(0.6), in: Capsule())
+                                    .padding(10)
                             }
                         }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
-                        .overlay(alignment: .bottomTrailing) {
-                            Text("\(photoIndex + 1) / \(item.photoCount)")
-                                .font(.caption2.bold())
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 6)
-                                .background(.black.opacity(0.6), in: Capsule())
-                                .padding(10)
-                        }
                     }
-                }
-                .frame(height: 250)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .frame(height: 250)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                Text(item.agentNote)
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.muted)
-                    .lineLimit(2)
+                    Text(item.agentNote)
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.muted)
+                        .lineLimit(2)
+                        .padding(.top, 12)
+
+                    HStack(spacing: 8) {
+                        metric("Estimated grafts", item.agentGrafts)
+                        metric("Estimated price", AppCurrency.amount(item.agentPrice))
+                    }
                     .padding(.top, 12)
 
-                HStack(spacing: 8) {
-                    metric("Estimated grafts", item.agentGrafts)
-                    metric("Estimated price", AppCurrency.amount(item.agentPrice))
-                }
-                .padding(.top, 12)
-
-                if let finalGrafts = item.finalGrafts,
-                   let finalPrice = item.finalPrice {
-                    HStack(spacing: 8) {
-                        metric("Final grafts", finalGrafts)
-                        metric("Final price", AppCurrency.amount(finalPrice))
+                    if let finalGrafts = item.finalGrafts,
+                       let finalPrice = item.finalPrice {
+                        HStack(spacing: 8) {
+                            metric("Final grafts", finalGrafts)
+                            metric("Final price", AppCurrency.amount(finalPrice))
+                        }
+                        .padding(.top, 8)
                     }
-                    .padding(.top, 8)
-                }
 
-                if isCollapsible {
-                    Button("Open case", systemImage: "arrow.up.right.square", action: onOpen)
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.top, 12)
+                    if isCollapsible {
+                        Button("Open case", systemImage: "arrow.up.right.square", action: onOpen)
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.top, 12)
+                    }
                 }
             }
+            .padding(14)
         }
-        .padding(14)
         .foregroundStyle(AppTheme.ink)
         .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AppTheme.border))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .onTapGesture {
@@ -269,9 +281,8 @@ private struct CaseCardView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 6) {
-                Text(item.reference)
-                Text("•")
+            HStack(spacing: 5) {
+                Image(systemName: "clock")
                 Text(item.uploadedAt.compactRelativeText)
                 Spacer(minLength: 4)
                 if isCollapsible {
@@ -291,9 +302,6 @@ private struct CaseCardView: View {
             .font(.system(size: 13))
             .foregroundStyle(AppTheme.muted)
 
-            StatusChip(status: item.status)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
             if let latestMessage {
                 Divider().padding(.vertical, 2)
                 LatestMessagePreview(
@@ -305,6 +313,38 @@ private struct CaseCardView: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private var statusBand: some View {
+        HStack(spacing: 8) {
+            Image(systemName: statusBandIcon)
+            Text(item.status.title)
+                .fontWeight(.bold)
+            Spacer(minLength: 8)
+        }
+        .font(.subheadline)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity)
+        .background(statusBandColor)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var statusBandIcon: String {
+        switch item.status {
+        case .waiting: "exclamationmark.circle.fill"
+        case .answered: "checkmark.circle.fill"
+        case .closed: "lock.circle.fill"
+        }
+    }
+
+    private var statusBandColor: Color {
+        switch item.status {
+        case .waiting: Color(red: 0.78, green: 0.16, blue: 0.14)
+        case .answered: Color(red: 0.08, green: 0.52, blue: 0.32)
+        case .closed: AppTheme.muted
+        }
     }
 
     private var latestMessage: ConsultationMessage? {
