@@ -292,10 +292,18 @@ class APITestCase(unittest.TestCase):
         )
         admin_updated = json.loads(admin_body)["case"]
         admin_message = next(
-            message for message in reversed(admin_updated["messages"])
-            if message["attachmentPhotoID"]
+            message for message in admin_updated["messages"]
+            if message["attachmentPhotoID"] and message["role"] == "admin"
         )
         self.assertEqual("admin", admin_message["role"])
+        admin_case = next(
+            item for item in self.request("GET", "/admin/cases", token=admin)["cases"]
+            if item["id"] == created["id"]
+        )
+        self.assertEqual(admin_message["author"], admin_case["latestMessageAuthor"])
+        self.assertEqual(admin_message["text"], admin_case["latestMessageText"])
+        self.assertEqual(admin_message["createdAt"], admin_case["latestMessageAt"])
+        self.assertTrue(admin_case["latestMessageHasPhoto"])
         self.raw_request(
             "POST", f"/cases/{created['id']}/message-photos", body=admin_edit,
             content_type="image/jpeg", token=manager, expected=403,

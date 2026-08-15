@@ -210,11 +210,25 @@ private struct AgentCaseListCard: View {
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(AppTheme.brandDark)
+
+            if let latestMessage {
+                Divider()
+                LatestMessagePreview(
+                    author: latestMessage.author,
+                    text: latestMessage.text,
+                    createdAt: latestMessage.createdAt,
+                    hasPhoto: latestMessage.attachmentPhotoID != nil
+                )
+            }
         }
         .padding(14)
         .foregroundStyle(AppTheme.ink)
         .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border))
+    }
+
+    private var latestMessage: ConsultationMessage? {
+        item.messages.last { $0.role != .system }
     }
 }
 

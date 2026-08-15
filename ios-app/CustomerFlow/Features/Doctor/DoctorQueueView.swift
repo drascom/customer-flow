@@ -244,6 +244,15 @@ private struct CaseCardView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.muted)
             }
+
+            if let latestMessage {
+                LatestMessagePreview(
+                    author: latestMessage.author,
+                    text: latestMessage.text,
+                    createdAt: latestMessage.createdAt,
+                    hasPhoto: latestMessage.attachmentPhotoID != nil
+                )
+            }
         }
         .padding(16)
         .foregroundStyle(AppTheme.ink)
@@ -251,6 +260,10 @@ private struct CaseCardView: View {
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .onTapGesture(perform: onOpen)
+    }
+
+    private var latestMessage: ConsultationMessage? {
+        item.messages.last { $0.role != .system }
     }
 
     private func metric(_ label: String, _ value: String) -> some View {

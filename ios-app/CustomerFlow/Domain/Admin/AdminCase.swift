@@ -24,6 +24,10 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let deletedPhotoCount: Int
     let photos: [AdminCasePhoto]
     let messageCount: Int
+    let latestMessageAuthor: String?
+    let latestMessageText: String?
+    let latestMessageAt: Date?
+    let latestMessageHasPhoto: Bool?
     let grafts: String
     let currency: String
     let price: String

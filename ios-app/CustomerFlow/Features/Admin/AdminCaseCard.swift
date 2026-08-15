@@ -45,6 +45,18 @@ struct AdminCaseCard: View {
                     }
                     .font(.system(size: 13))
                     .foregroundStyle(AppTheme.muted)
+
+                    if let author = item.latestMessageAuthor,
+                       let text = item.latestMessageText,
+                       let createdAt = item.latestMessageAt {
+                        Divider().padding(.vertical, 2)
+                        LatestMessagePreview(
+                            author: author,
+                            text: text,
+                            createdAt: createdAt,
+                            hasPhoto: item.latestMessageHasPhoto ?? false
+                        )
+                    }
                 }
                 .contentShape(Rectangle())
             }

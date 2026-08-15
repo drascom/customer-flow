@@ -1217,6 +1217,11 @@ class Database:
                     "FROM photos p LEFT JOIN users u ON u.id=p.deleted_by WHERE p.case_id=? ORDER BY p.position",
                     (row["id"],),
                 ).fetchall()
+                latest_message = conn.execute(
+                    "SELECT author_name,text,created_at,attachment_path FROM messages "
+                    "WHERE case_id=? AND role <> 'system' ORDER BY created_at DESC,rowid DESC LIMIT 1",
+                    (row["id"],),
+                ).fetchone()
                 result.append({
                     "id": row["id"], "reference": row["reference"], "patientID": row["patient_id"],
                     "patientName": row["patient_name"], "agentName": row["agent_name"],
@@ -1231,6 +1236,10 @@ class Database:
                         "deletedAt": photo["deleted_at"], "deletedByName": photo["deleted_by_name"],
                     } for photo in photos],
                     "messageCount": row["message_count"],
+                    "latestMessageAuthor": latest_message["author_name"] if latest_message else None,
+                    "latestMessageText": latest_message["text"] if latest_message else None,
+                    "latestMessageAt": latest_message["created_at"] if latest_message else None,
+                    "latestMessageHasPhoto": bool(latest_message["attachment_path"]) if latest_message else False,
                     "grafts": row["agent_grafts"], "currency": row["currency"], "price": row["agent_price"],
                 })
             return result
@@ -1310,7 +1319,10 @@ class Database:
 
     @staticmethod
     def _case_json(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
-        messages = conn.execute("SELECT * FROM messages WHERE case_id=? ORDER BY created_at,id", (row["id"],)).fetchall()
+        messages = conn.execute(
+            "SELECT * FROM messages WHERE case_id=? ORDER BY created_at,rowid",
+            (row["id"],),
+        ).fetchall()
         photos = conn.execute(
             "SELECT id,position FROM photos WHERE case_id=? AND deleted_at IS NULL ORDER BY position",
             (row["id"],),

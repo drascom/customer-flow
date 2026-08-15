@@ -818,3 +818,35 @@ struct MessagePhotoView: View {
         .accessibilityLabel("Annotated patient photo")
     }
 }
+
+struct LatestMessagePreview: View {
+    let author: String
+    let text: String
+    let createdAt: Date
+    let hasPhoto: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Image(systemName: hasPhoto ? "photo" : "bubble.left")
+                .foregroundStyle(AppTheme.brand)
+            (
+                Text(author).fontWeight(.semibold)
+                + Text("  \(previewText)")
+            )
+            .foregroundStyle(AppTheme.ink)
+            .lineLimit(1)
+            Spacer(minLength: 6)
+            Text(createdAt, style: .relative)
+                .foregroundStyle(AppTheme.muted)
+                .lineLimit(1)
+        }
+        .font(.caption)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var previewText: String {
+        if hasPhoto { return "Photo sent" }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "New reply" : trimmed
+    }
+}
