@@ -66,7 +66,7 @@ struct Patient: Identifiable, Hashable, Codable, Sendable {
 }
 
 struct ConsultationMessage: Identifiable, Hashable, Codable, Sendable {
-    enum AuthorRole: String, Codable, Sendable { case agent, doctor, system }
+    enum AuthorRole: String, Codable, Sendable { case agent, doctor, admin, system }
 
     let id: UUID
     let author: String

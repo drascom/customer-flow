@@ -260,6 +260,8 @@ class APITestCase(unittest.TestCase):
         agent = self.login("user1", "demo123")
         other_agent = self.login("user2", "demo123")
         doctor = self.login("doctor1", "demo123")
+        admin = self.login("admin", "demo123")
+        manager = self.login("manager", "demo123")
         created = self.request("POST", "/cases", {
             "patientName": "Markup Message Patient", "grafts": "2000", "currency": "GBP",
             "price": "1900", "note": "Quick Look markup test", "photoCount": 0,
@@ -282,6 +284,22 @@ class APITestCase(unittest.TestCase):
             self.raw_request("GET", f"/message-photos/{attachment_id}", token=agent)[0],
         )
         self.raw_request("GET", f"/message-photos/{attachment_id}", token=other_agent, expected=403)
+
+        admin_edit = b"\xff\xd8admin-markup-copy\xff\xd9"
+        admin_body, _ = self.raw_request(
+            "POST", f"/cases/{created['id']}/message-photos", body=admin_edit,
+            content_type="image/jpeg", token=admin, expected=201,
+        )
+        admin_updated = json.loads(admin_body)["case"]
+        admin_message = next(
+            message for message in reversed(admin_updated["messages"])
+            if message["attachmentPhotoID"]
+        )
+        self.assertEqual("admin", admin_message["role"])
+        self.raw_request(
+            "POST", f"/cases/{created['id']}/message-photos", body=admin_edit,
+            content_type="image/jpeg", token=manager, expected=403,
+        )
 
     def test_duplicate_requires_explicit_decision(self):
         agent = self.login("user1", "demo123")

@@ -218,11 +218,10 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
     }
 
     func makeUIViewController(context: Context) -> UINavigationController {
-        let controller = EditablePhotoPreviewController()
+        let controller = QLPreviewController()
         controller.dataSource = context.coordinator
         controller.delegate = context.coordinator
         controller.currentPreviewItemIndex = request.initialIndex
-        controller.onMarkup = request.allowsEditing ? context.coordinator.openMarkupEditor : nil
         context.coordinator.previewController = controller
         controller.navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .close,
@@ -231,6 +230,37 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
         )
         let navigationController = UINavigationController(rootViewController: controller)
         navigationController.navigationBar.prefersLargeTitles = false
+        if request.allowsEditing {
+            let markupButton = UIButton(type: .system)
+            var configuration = UIButton.Configuration.filled()
+            configuration.title = "Markup"
+            configuration.image = UIImage(systemName: "pencil.tip.crop.circle")
+            configuration.imagePadding = 7
+            configuration.cornerStyle = .capsule
+            configuration.baseBackgroundColor = .systemOrange
+            configuration.baseForegroundColor = .white
+            markupButton.configuration = configuration
+            markupButton.accessibilityLabel = "Open drawing tools"
+            markupButton.addAction(
+                UIAction { [weak coordinator = context.coordinator] _ in
+                    coordinator?.openMarkupEditor()
+                },
+                for: .touchUpInside
+            )
+            markupButton.translatesAutoresizingMaskIntoConstraints = false
+            navigationController.view.addSubview(markupButton)
+            NSLayoutConstraint.activate([
+                markupButton.trailingAnchor.constraint(
+                    equalTo: navigationController.view.safeAreaLayoutGuide.trailingAnchor,
+                    constant: -18
+                ),
+                markupButton.bottomAnchor.constraint(
+                    equalTo: navigationController.view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -18
+                ),
+                markupButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+            ])
+        }
         return navigationController
     }
 
@@ -309,38 +339,6 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
             }
             onEdited(data, contentType)
         }
-    }
-}
-
-private final class EditablePhotoPreviewController: QLPreviewController {
-    var onMarkup: (() -> Void)?
-    private lazy var markupButton = UIBarButtonItem(
-        title: "Markup",
-        style: .plain,
-        target: self,
-        action: #selector(showMarkup)
-    )
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        installMarkupButtonIfNeeded()
-    }
-
-    override func viewWillLayoutSubviews() {
-        super.viewWillLayoutSubviews()
-        installMarkupButtonIfNeeded()
-    }
-
-    private func installMarkupButtonIfNeeded() {
-        guard onMarkup != nil else { return }
-        var buttons = navigationItem.rightBarButtonItems ?? []
-        guard !buttons.contains(where: { $0 === markupButton }) else { return }
-        buttons.insert(markupButton, at: 0)
-        navigationItem.rightBarButtonItems = buttons
-    }
-
-    @objc private func showMarkup() {
-        onMarkup?()
     }
 }
 

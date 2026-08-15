@@ -96,8 +96,15 @@ struct AdminCaseCard: View {
                 .stroke(AppTheme.border, lineWidth: 1)
         }
         .fullScreenCover(item: $photoPreview) { request in
-            NativePhotoPreview(request: request) { _, _ in
-                // Admin preview is intentionally read-only.
+            NativePhotoPreview(request: request) { data, contentType in
+                guard !isReadOnly else { return }
+                Task {
+                    await state.sendPhotoMessage(
+                        caseID: request.caseID,
+                        data: data,
+                        contentType: contentType
+                    )
+                }
             } onClose: {
                 photoPreview = nil
             }
@@ -195,7 +202,7 @@ struct AdminCaseCard: View {
                 photoIDs: photoIDs,
                 photoData: photoData,
                 initialIndex: photoIDs.firstIndex(of: photoID) ?? 0,
-                allowsEditing: false
+                allowsEditing: !isReadOnly
             )
         } catch {
             state.errorMessage = "The photo could not be opened."

@@ -209,7 +209,7 @@ private struct MessageBubble: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
-            Text(message.role == .doctor ? "DR" : "AG")
+            Text(authorBadge)
                 .font(.caption2.bold())
                 .frame(width: 32, height: 32)
                 .background((message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.14), in: Circle())
@@ -234,6 +234,15 @@ private struct MessageBubble: View {
             }
             .padding(11)
             .background((message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private var authorBadge: String {
+        switch message.role {
+        case .doctor: "DR"
+        case .agent: "AG"
+        case .admin: "AD"
+        case .system: "SY"
         }
     }
 }

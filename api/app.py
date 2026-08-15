@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS messages (
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
   author_id TEXT NOT NULL REFERENCES users(id),
   author_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('doctor','agent','system')),
+  role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','system')),
   created_at TEXT NOT NULL,
   text TEXT NOT NULL,
   approximate_grafts TEXT,
@@ -235,6 +235,7 @@ class Database:
                     "WHERE recommended_price IS NOT NULL AND TRIM(recommended_price) <> ''"
                 )
                 self._ensure_manager_role(conn)
+                self._ensure_admin_message_role(conn)
                 conn.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) "
                     "WHERE email IS NOT NULL AND email <> ''"
@@ -269,6 +270,41 @@ class Database:
             )
             conn.execute("DROP TABLE users")
             conn.execute("ALTER TABLE users_migrated RENAME TO users")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    @staticmethod
+    def _ensure_admin_message_role(conn: sqlite3.Connection) -> None:
+        table_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'"
+        ).fetchone()[0]
+        if "'admin'" in table_sql:
+            return
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "CREATE TABLE messages_migrated ("
+                "id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE, "
+                "author_id TEXT NOT NULL REFERENCES users(id), author_name TEXT NOT NULL, "
+                "role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','system')), "
+                "created_at TEXT NOT NULL, text TEXT NOT NULL, approximate_grafts TEXT, "
+                "recommended_price TEXT, attachment_path TEXT, attachment_content_type TEXT)"
+            )
+            conn.execute(
+                "INSERT INTO messages_migrated "
+                "SELECT id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,"
+                "recommended_price,attachment_path,attachment_content_type FROM messages"
+            )
+            conn.execute("DROP TABLE messages")
+            conn.execute("ALTER TABLE messages_migrated RENAME TO messages")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_messages_case_time ON messages(case_id, created_at)"
+            )
             conn.execute("COMMIT")
         except Exception:
             conn.execute("ROLLBACK")
@@ -848,7 +884,7 @@ class Database:
             return file_path.read_bytes(), photo["content_type"]
 
     def add_message_photo(self, case_id: str, body: bytes, content_type: str, user: sqlite3.Row) -> dict:
-        self._require_any_role(user, "agent", "doctor")
+        self._require_any_role(user, "agent", "doctor", "admin")
         if not body or len(body) > 20 * 1024 * 1024:
             raise APIError(422, "invalid_photo", "Photo must be between 1 byte and 20 MB.")
         extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/heic": ".heic"}.get(content_type)
