@@ -7,6 +7,7 @@ struct DoctorQueueView: View {
     @State private var oldestFirst = true
     @State private var selectedCase: ConsultationCase?
     @State private var uploaderFilter: String?
+    @State private var expandedCaseID: UUID?
 
     private var filteredCases: [ConsultationCase] {
         state.cases
@@ -26,22 +27,25 @@ struct DoctorQueueView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 10, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    VStack(spacing: 10) {
-                        filterMenu
-                        if let uploaderFilter {
-                            uploaderFilterBanner(uploaderFilter)
+        GeometryReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 10, pinnedViews: [.sectionHeaders]) {
+                    Section {
+                        VStack(spacing: 10) {
+                            filterMenu
+                            if let uploaderFilter {
+                                uploaderFilterBanner(uploaderFilter)
+                            }
+                            caseGrid(minimumEmptyHeight: max(320, proxy.size.height - 125))
                         }
-                        caseGrid
+                        .padding(.horizontal, 12)
+                    } header: {
+                        searchHeader
                     }
-                    .padding(.horizontal, 12)
-                } header: {
-                    searchHeader
                 }
+                .padding(.bottom, 16)
             }
-            .padding(.bottom, 16)
+            .refreshable { await state.load() }
         }
         .background(AppTheme.background)
         .navigationTitle("")
@@ -50,7 +54,6 @@ struct DoctorQueueView: View {
             CaseDetailView(caseID: item.id)
                 .environmentObject(state)
         }
-        .refreshable { await state.load() }
     }
 
     private var searchHeader: some View {
@@ -78,6 +81,7 @@ struct DoctorQueueView: View {
                     Button {
                         filter = item
                         uploaderFilter = nil
+                        expandedCaseID = nil
                     } label: {
                         Label("\(item.title)  ·  \(count(for: item))", systemImage: filter == item ? "checkmark" : "circle")
                     }
@@ -123,20 +127,30 @@ struct DoctorQueueView: View {
         .padding(.vertical, 7)
     }
 
-    private var caseGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 14)], spacing: 14) {
-            ForEach(filteredCases) { item in
-                CaseCardView(item: item) {
-                    selectedCase = item
-                } onAgentFilter: {
-                    uploaderFilter = item.agentName
+    @ViewBuilder
+    private func caseGrid(minimumEmptyHeight: CGFloat) -> some View {
+        if filteredCases.isEmpty {
+            ContentUnavailableView("No cases", systemImage: "tray", description: Text("No cases match this view."))
+                .frame(maxWidth: .infinity, minHeight: minimumEmptyHeight)
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 14)], spacing: 14) {
+                ForEach(filteredCases) { item in
+                    CaseCardView(
+                        item: item,
+                        isCollapsible: item.status != .waiting,
+                        isExpanded: item.status == .waiting || expandedCaseID == item.id,
+                        onToggle: {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                expandedCaseID = expandedCaseID == item.id ? nil : item.id
+                            }
+                        },
+                        onOpen: { selectedCase = item },
+                        onAgentFilter: {
+                            uploaderFilter = item.agentName
+                            expandedCaseID = nil
+                        }
+                    )
                 }
-            }
-        }
-        .overlay {
-            if filteredCases.isEmpty {
-                ContentUnavailableView("No cases", systemImage: "tray", description: Text("No cases match this view."))
-                    .frame(minHeight: 280)
             }
         }
     }
@@ -177,103 +191,129 @@ struct DoctorQueueView: View {
 
 private struct CaseCardView: View {
     let item: ConsultationCase
+    let isCollapsible: Bool
+    let isExpanded: Bool
+    let onToggle: () -> Void
     let onOpen: () -> Void
     let onAgentFilter: () -> Void
     @State private var photoIndex = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Uploaded \(item.uploadedAt.formatted(.relative(presentation: .named)))")
-                Spacer()
-                Text(item.reference).fontWeight(.bold)
-            }
-            .font(.caption)
-            .foregroundStyle(AppTheme.muted)
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: isCollapsible ? onToggle : onOpen) {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.patient.name)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(AppTheme.ink)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        StatusChip(status: item.status)
+                    }
 
-            Group {
-                if item.photoCount == 0 {
-                    NoPhotosView()
-                } else {
-                    TabView(selection: $photoIndex) {
-                        ForEach(0..<item.photoCount, id: \.self) { index in
-                            CasePhotoView(
-                                photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                                index: index
-                            )
-                            .tag(index)
+                    HStack(spacing: 6) {
+                        Text(item.reference)
+                        Text("•")
+                        Text(item.uploadedAt, style: .relative)
+                        Spacer(minLength: 4)
+                        if isCollapsible {
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         }
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .overlay(alignment: .bottomTrailing) {
-                        Text("\(photoIndex + 1) / \(item.photoCount)")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 6)
-                            .background(.black.opacity(0.6), in: Capsule())
-                            .padding(10)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppTheme.muted)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.crop.circle")
+                        Text(item.agentName)
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppTheme.muted)
+
+                    if let latestMessage {
+                        Divider().padding(.vertical, 2)
+                        LatestMessagePreview(
+                            author: latestMessage.author,
+                            text: latestMessage.text,
+                            createdAt: latestMessage.createdAt,
+                            hasPhoto: latestMessage.attachmentPhotoID != nil
+                        )
                     }
                 }
+                .contentShape(Rectangle())
             }
-            .frame(height: 250)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .buttonStyle(.plain)
 
-            HStack(spacing: 8) {
-                Text(item.patient.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer()
-                Text(item.assignedDoctorID == nil ? "Unassigned" : "Assigned to you")
-                    .font(.caption2.bold())
-                    .foregroundStyle(item.assignedDoctorID == nil ? AppTheme.accent : AppTheme.brandDark)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background((item.assignedDoctorID == nil ? AppTheme.accent : AppTheme.brand).opacity(0.14), in: Capsule())
-            }
+            if isExpanded {
+                Divider().padding(.vertical, 12)
 
-            Text(item.agentNote)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.muted)
-                .lineLimit(2)
-
-            HStack(spacing: 8) {
-                metric("Estimated grafts", item.agentGrafts)
-                metric("Estimated price", AppCurrency.amount(item.agentPrice))
-            }
-
-            if let finalGrafts = item.finalGrafts,
-               let finalPrice = item.finalPrice {
-                HStack(spacing: 8) {
-                    metric("Final grafts", finalGrafts)
-                    metric("Final price", AppCurrency.amount(finalPrice))
+                Group {
+                    if item.photoCount == 0 {
+                        NoPhotosView()
+                    } else {
+                        TabView(selection: $photoIndex) {
+                            ForEach(0..<item.photoCount, id: \.self) { index in
+                                CasePhotoView(
+                                    photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                    index: index
+                                )
+                                .tag(index)
+                            }
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .overlay(alignment: .bottomTrailing) {
+                            Text("\(photoIndex + 1) / \(item.photoCount)")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(.black.opacity(0.6), in: Capsule())
+                                .padding(10)
+                        }
+                    }
                 }
-            }
+                .frame(height: 250)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
 
-            Divider()
-            HStack {
-                StatusChip(status: item.status)
-                Spacer()
-                Button("by \(item.agentName)", action: onAgentFilter)
-                    .font(.caption.weight(.semibold))
+                Text(item.agentNote)
+                    .font(.subheadline)
                     .foregroundStyle(AppTheme.muted)
-            }
+                    .lineLimit(2)
+                    .padding(.top, 12)
 
-            if let latestMessage {
-                LatestMessagePreview(
-                    author: latestMessage.author,
-                    text: latestMessage.text,
-                    createdAt: latestMessage.createdAt,
-                    hasPhoto: latestMessage.attachmentPhotoID != nil
-                )
+                HStack(spacing: 8) {
+                    metric("Estimated grafts", item.agentGrafts)
+                    metric("Estimated price", AppCurrency.amount(item.agentPrice))
+                }
+                .padding(.top, 12)
+
+                if let finalGrafts = item.finalGrafts,
+                   let finalPrice = item.finalPrice {
+                    HStack(spacing: 8) {
+                        metric("Final grafts", finalGrafts)
+                        metric("Final price", AppCurrency.amount(finalPrice))
+                    }
+                    .padding(.top, 8)
+                }
+
+                HStack(spacing: 10) {
+                    Button("by \(item.agentName)", action: onAgentFilter)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.muted)
+                    Spacer()
+                    Button("Open case", systemImage: "arrow.up.right.square", action: onOpen)
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding(.top, 12)
             }
         }
-        .padding(16)
+        .padding(14)
         .foregroundStyle(AppTheme.ink)
-        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border))
-        .contentShape(RoundedRectangle(cornerRadius: 18))
-        .onTapGesture(perform: onOpen)
+        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AppTheme.border))
+        .animation(.easeInOut(duration: 0.22), value: isExpanded)
     }
 
     private var latestMessage: ConsultationMessage? {
