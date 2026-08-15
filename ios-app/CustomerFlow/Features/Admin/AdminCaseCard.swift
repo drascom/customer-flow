@@ -38,8 +38,9 @@ struct AdminCaseCard: View {
                     HStack(spacing: 6) {
                         Image(systemName: "building.2")
                         Text(item.agencyName ?? "No agency")
-                        Text("•")
-                        Text("Agent: \(item.agentName)")
+                            .lineLimit(1)
+                        Spacer(minLength: 12)
+                        Text(item.agentName)
                             .lineLimit(1)
                     }
                     .font(.system(size: 13))
