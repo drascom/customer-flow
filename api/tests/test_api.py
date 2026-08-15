@@ -164,6 +164,8 @@ class APITestCase(unittest.TestCase):
         doctor_cases = self.request("GET", "/cases", token=doctor)["cases"]
         agent_cases = self.request("GET", "/cases", token=agent)["cases"]
         self.assertGreater(len(doctor_cases), len(agent_cases))
+        self.assertTrue(agent_cases)
+        self.assertTrue(all(item["agencyName"] == "Acenta 1" for item in agent_cases))
         matches = self.request("GET", f"/patients/matches?name={quote('Çolak Ayhan')}", token=agent)["matches"]
         self.assertEqual("Ayhan Çolak", matches[0]["name"])
         self.assertTrue(matches[0]["createdByAnotherAgent"])

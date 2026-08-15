@@ -6,20 +6,16 @@ struct DoctorQueueView: View {
     @State private var searchText = ""
     @State private var oldestFirst = true
     @State private var selectedCase: ConsultationCase?
-    @State private var uploaderFilter: String?
     @State private var expandedCaseID: UUID?
 
     private var filteredCases: [ConsultationCase] {
         state.cases
             .filter(matchesQueue)
             .filter { item in
-                guard let uploaderFilter else { return true }
-                return item.agentName == uploaderFilter
-            }
-            .filter { item in
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !query.isEmpty else { return true }
-                return [item.patient.name, item.reference, item.agentName, item.agentNote]
+                return [item.patient.name, item.reference, item.agencyName, item.agentName, item.agentNote]
+                    .compactMap { $0 }
                     .joined(separator: " ")
                     .localizedCaseInsensitiveContains(query)
             }
@@ -33,9 +29,6 @@ struct DoctorQueueView: View {
                     Section {
                         VStack(spacing: 10) {
                             filterMenu
-                            if let uploaderFilter {
-                                uploaderFilterBanner(uploaderFilter)
-                            }
                             caseGrid(minimumEmptyHeight: max(320, proxy.size.height - 125))
                         }
                         .padding(.horizontal, 12)
@@ -80,7 +73,6 @@ struct DoctorQueueView: View {
                 ForEach(DoctorQueueFilter.allCases) { item in
                     Button {
                         filter = item
-                        uploaderFilter = nil
                         expandedCaseID = nil
                     } label: {
                         Label("\(item.title)  ·  \(count(for: item))", systemImage: filter == item ? "checkmark" : "circle")
@@ -144,28 +136,11 @@ struct DoctorQueueView: View {
                                 expandedCaseID = expandedCaseID == item.id ? nil : item.id
                             }
                         },
-                        onOpen: { selectedCase = item },
-                        onAgentFilter: {
-                            uploaderFilter = item.agentName
-                            expandedCaseID = nil
-                        }
+                        onOpen: { selectedCase = item }
                     )
                 }
             }
         }
-    }
-
-    private func uploaderFilterBanner(_ name: String) -> some View {
-        HStack {
-            Text("Posts by **\(name)**")
-            Spacer()
-            Button("Clear", systemImage: "xmark") { uploaderFilter = nil }
-                .font(.caption.weight(.semibold))
-        }
-        .font(.subheadline)
-        .foregroundStyle(AppTheme.brandDark)
-        .padding(12)
-        .background(AppTheme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func matchesQueue(_ item: ConsultationCase) -> Bool {
@@ -195,55 +170,20 @@ private struct CaseCardView: View {
     let isExpanded: Bool
     let onToggle: () -> Void
     let onOpen: () -> Void
-    let onAgentFilter: () -> Void
     @State private var photoIndex = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: isCollapsible ? onToggle : onOpen) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(item.patient.name)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(AppTheme.ink)
-                            .lineLimit(1)
-                        Spacer(minLength: 6)
-                        StatusChip(status: item.status)
+            Group {
+                if isCollapsible {
+                    Button(action: onToggle) {
+                        summaryHeader
                     }
-
-                    HStack(spacing: 6) {
-                        Text(item.reference)
-                        Text("•")
-                        Text(item.uploadedAt, style: .relative)
-                        Spacer(minLength: 4)
-                        if isCollapsible {
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        }
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppTheme.muted)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.crop.circle")
-                        Text(item.agentName)
-                            .lineLimit(1)
-                    }
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppTheme.muted)
-
-                    if let latestMessage {
-                        Divider().padding(.vertical, 2)
-                        LatestMessagePreview(
-                            author: latestMessage.author,
-                            text: latestMessage.text,
-                            createdAt: latestMessage.createdAt,
-                            hasPhoto: latestMessage.attachmentPhotoID != nil
-                        )
-                    }
+                    .buttonStyle(.plain)
+                } else {
+                    summaryHeader
                 }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
 
             if isExpanded {
                 Divider().padding(.vertical, 12)
@@ -297,23 +237,90 @@ private struct CaseCardView: View {
                     .padding(.top, 8)
                 }
 
-                HStack(spacing: 10) {
-                    Button("by \(item.agentName)", action: onAgentFilter)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.muted)
-                    Spacer()
+                if isCollapsible {
                     Button("Open case", systemImage: "arrow.up.right.square", action: onOpen)
                         .font(.caption.weight(.semibold))
                         .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, 12)
                 }
-                .padding(.top, 12)
             }
         }
         .padding(14)
         .foregroundStyle(AppTheme.ink)
         .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AppTheme.border))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture {
+            if !isCollapsible {
+                onOpen()
+            }
+        }
         .animation(.easeInOut(duration: 0.22), value: isExpanded)
+    }
+
+    private var summaryHeader: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(item.patient.name)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                StatusChip(status: item.status)
+            }
+
+            HStack(spacing: 6) {
+                Text(item.reference)
+                Text("•")
+                Text(uploadedAge)
+                Spacer(minLength: 4)
+                if isCollapsible {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                }
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(AppTheme.muted)
+
+            HStack(spacing: 6) {
+                Image(systemName: "building.2")
+                Text(item.agencyName ?? "No agency")
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+                Text(item.agentName).lineLimit(1)
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(AppTheme.muted)
+
+            if let latestMessage {
+                Divider().padding(.vertical, 2)
+                LatestMessagePreview(
+                    author: latestMessage.author,
+                    text: latestMessage.text,
+                    createdAt: latestMessage.createdAt,
+                    hasPhoto: latestMessage.attachmentPhotoID != nil
+                )
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var uploadedAge: String {
+        let elapsed = max(0, Int(Date.now.timeIntervalSince(item.uploadedAt)))
+        let minutes = elapsed / 60
+        let hours = minutes / 60
+        let days = hours / 24
+
+        if days > 0 {
+            let remainingHours = hours % 24
+            let dayLabel = days == 1 ? "1 day" : "\(days) days"
+            return remainingHours == 0 ? dayLabel : "\(dayLabel), \(remainingHours) hr"
+        }
+        if hours > 0 {
+            let remainingMinutes = minutes % 60
+            return remainingMinutes == 0 ? "\(hours) hr" : "\(hours) hr, \(remainingMinutes) min"
+        }
+        return minutes == 0 ? "Now" : "\(minutes) min"
     }
 
     private var latestMessage: ConsultationMessage? {

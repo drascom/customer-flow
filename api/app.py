@@ -653,8 +653,9 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 f"SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
-                f"u.display_name agent_name FROM cases c JOIN patients p ON p.id=c.patient_id "
-                f"JOIN users u ON u.id=c.agent_id {where} ORDER BY c.uploaded_at ASC",
+                f"u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
+                f"JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id "
+                f"{where} ORDER BY c.uploaded_at ASC",
                 params,
             ).fetchall()
             return [self._case_json(conn, row) for row in rows]
@@ -1501,8 +1502,8 @@ class Database:
     def _case_row(conn: sqlite3.Connection, case_id: str) -> sqlite3.Row:
         row = conn.execute(
             "SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
-            "u.display_name agent_name FROM cases c JOIN patients p ON p.id=c.patient_id "
-            "JOIN users u ON u.id=c.agent_id WHERE c.id=?", (case_id,),
+            "u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
+            "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id WHERE c.id=?", (case_id,),
         ).fetchone()
         if not row:
             raise APIError(404, "case_not_found", "The case could not be found.")
@@ -1523,7 +1524,8 @@ class Database:
             "id": row["id"], "reference": row["reference"],
             "patient": {"id": row["patient_id"], "name": row["patient_name"],
                         "assignedDoctorID": row["patient_doctor"], "lastUpdated": row["last_updated"]},
-            "agentName": row["agent_name"], "assignedDoctorID": row["assigned_doctor_id"],
+            "agentName": row["agent_name"], "agencyName": row["agency_name"],
+            "assignedDoctorID": row["assigned_doctor_id"],
             "uploadedAt": row["uploaded_at"], "status": row["status"], "photoCount": len(photos),
             "agentNote": row["agent_note"], "agentGrafts": row["agent_grafts"],
             "currency": row["currency"], "agentPrice": row["agent_price"],

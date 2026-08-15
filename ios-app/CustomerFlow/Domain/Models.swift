@@ -106,6 +106,7 @@ struct ConsultationCase: Identifiable, Hashable, Codable, Sendable {
     let reference: String
     var patient: Patient
     let agentName: String
+    var agencyName: String? = nil
     var assignedDoctorID: String?
     let uploadedAt: Date
     var status: ConsultationStatus
