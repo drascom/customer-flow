@@ -1,6 +1,6 @@
 import SwiftUI
 import UIKit
-import QuickLook
+import PencilKit
 
 enum AppTheme {
     static let brand = adaptive(
@@ -173,7 +173,7 @@ struct NativePhotoPreviewRequest: Identifiable {
     ) throws -> NativePhotoPreviewRequest {
         guard !photoIDs.isEmpty else { throw PreviewError.noPhotos }
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("CustomerFlowQuickLook", isDirectory: true)
+            .appendingPathComponent("CustomerFlowPhotoPreview", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let fileURLs = try photoIDs.map { photoID in
             guard let data = photoData[photoID] else { throw PreviewError.missingPhoto }
@@ -207,102 +207,429 @@ struct NativePhotoPreviewRequest: Identifiable {
     enum PreviewError: Error { case noPhotos, missingPhoto }
 }
 
-private final class NumberedPhotoPreviewItem: NSObject, QLPreviewItem {
-    let previewItemURL: URL?
-    let previewItemTitle: String?
-
-    init(url: URL, position: Int) {
-        previewItemURL = url
-        previewItemTitle = "\(position + 1)"
-    }
+private struct PhotoEditorRequest: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let position: Int
 }
 
-struct NativePhotoPreview: UIViewControllerRepresentable {
+struct NativePhotoPreview: View {
     let request: NativePhotoPreviewRequest
     let onEdited: (Data, String) -> Void
     let onClose: () -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(request: request, onEdited: onEdited, onClose: onClose)
+    @State private var selectedIndex: Int
+    @State private var showsThumbnails = false
+    @State private var editorRequest: PhotoEditorRequest?
+
+    init(
+        request: NativePhotoPreviewRequest,
+        onEdited: @escaping (Data, String) -> Void,
+        onClose: @escaping () -> Void
+    ) {
+        self.request = request
+        self.onEdited = onEdited
+        self.onClose = onClose
+        _selectedIndex = State(initialValue: request.initialIndex)
     }
 
+    var body: some View {
+        VStack(spacing: 0) {
+            previewHeader
+            if showsThumbnails { thumbnailStrip }
+            TabView(selection: $selectedIndex) {
+                ForEach(request.fileURLs.indices, id: \.self) { index in
+                    PreviewPhotoPage(url: request.fileURLs[index])
+                        .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .background(Color.black)
+            previewActions
+        }
+        .background(Color.black.ignoresSafeArea())
+        .statusBarHidden()
+        .fullScreenCover(item: $editorRequest) { item in
+            PhotoMarkupEditor(
+                image: item.image,
+                position: item.position,
+                onSend: { data, contentType in
+                    onEdited(data, contentType)
+                    editorRequest = nil
+                },
+                onCancel: { editorRequest = nil }
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private var previewHeader: some View {
+        HStack {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showsThumbnails.toggle() }
+            } label: {
+                Image(systemName: "list.bullet")
+                    .frame(width: 44, height: 44)
+                    .background(.white.opacity(0.12), in: Circle())
+            }
+            Spacer()
+            Text("\(selectedIndex + 1) / \(request.fileURLs.count)")
+                .font(.headline.monospacedDigit())
+            Spacer()
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .frame(width: 44, height: 44)
+                    .background(.white.opacity(0.12), in: Circle())
+            }
+        }
+        .font(.headline)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.black.opacity(0.94))
+    }
+
+    private var thumbnailStrip: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 10) {
+                ForEach(request.fileURLs.indices, id: \.self) { index in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { selectedIndex = index }
+                    } label: {
+                        if let image = UIImage(contentsOfFile: request.fileURLs[index].path) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 68, height: 54)
+                                .clipShape(RoundedRectangle(cornerRadius: 9))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 9)
+                                        .stroke(index == selectedIndex ? Color.orange : .clear, lineWidth: 3)
+                                }
+                                .overlay(alignment: .topLeading) {
+                                    Text("\(index + 1)")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.white)
+                                        .padding(4)
+                                        .background(.black.opacity(0.65), in: Circle())
+                                        .padding(4)
+                                }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .contentMargins(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(.black.opacity(0.88))
+    }
+
+    private var previewActions: some View {
+        HStack(spacing: 12) {
+            if request.allowsEditing {
+                Button {
+                    guard request.fileURLs.indices.contains(selectedIndex),
+                          let image = UIImage(contentsOfFile: request.fileURLs[selectedIndex].path) else { return }
+                    editorRequest = PhotoEditorRequest(image: image, position: selectedIndex)
+                } label: {
+                    Label("Edit Photo", systemImage: "pencil.and.outline")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            if request.fileURLs.indices.contains(selectedIndex) {
+                ShareLink(item: request.fileURLs[selectedIndex]) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .font(.headline)
+        .tint(.orange)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .background(.black.opacity(0.94))
+    }
+}
+
+private struct PreviewPhotoPage: View {
+    let url: URL
+    @State private var scale: CGFloat = 1
+    @State private var baseScale: CGFloat = 1
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let image = UIImage(contentsOfFile: url.path) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .scaleEffect(scale)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in scale = min(max(baseScale * value, 1), 5) }
+                            .onEnded { _ in baseScale = scale }
+                    )
+                    .onTapGesture(count: 2) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            scale = scale > 1 ? 1 : 2
+                            baseScale = scale
+                        }
+                    }
+            }
+        }
+        .clipped()
+        .background(Color.black)
+    }
+}
+
+private struct PhotoMarkupEditor: UIViewControllerRepresentable {
+    let image: UIImage
+    let position: Int
+    let onSend: (Data, String) -> Void
+    let onCancel: () -> Void
+
     func makeUIViewController(context: Context) -> UINavigationController {
-        let controller = QLPreviewController()
-        controller.dataSource = context.coordinator
-        controller.delegate = context.coordinator
-        controller.currentPreviewItemIndex = request.initialIndex
-        context.coordinator.previewController = controller
-        controller.navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close,
-            target: context.coordinator,
-            action: #selector(Coordinator.closePreview)
+        let editor = PhotoMarkupViewController(
+            image: image,
+            position: position,
+            onSend: onSend,
+            onCancel: onCancel
         )
-        let navigationController = UINavigationController(rootViewController: controller)
+        let navigationController = UINavigationController(rootViewController: editor)
         navigationController.navigationBar.prefersLargeTitles = false
         return navigationController
     }
 
     func updateUIViewController(_ controller: UINavigationController, context: Context) {}
+}
 
-    final class Coordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
-        let request: NativePhotoPreviewRequest
-        let onEdited: (Data, String) -> Void
-        let onClose: () -> Void
-        private var sentEditedFiles: Set<URL> = []
-        weak var previewController: QLPreviewController?
+private final class PhotoMarkupViewController: UIViewController {
+    private let sourceImage: UIImage
+    private let position: Int
+    private let onSend: (Data, String) -> Void
+    private let onCancel: () -> Void
+    private let imageView = UIImageView()
+    private let canvasView = PKCanvasView()
+    private let toolPicker = PKToolPicker()
+    private var textLabels: [UILabel] = []
 
-        init(
-            request: NativePhotoPreviewRequest,
-            onEdited: @escaping (Data, String) -> Void,
-            onClose: @escaping () -> Void
-        ) {
-            self.request = request
-            self.onEdited = onEdited
-            self.onClose = onClose
+    init(
+        image: UIImage,
+        position: Int,
+        onSend: @escaping (Data, String) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        sourceImage = image
+        self.position = position
+        self.onSend = onSend
+        self.onCancel = onCancel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "Photo \(position + 1)"
+        view.backgroundColor = .black
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .cancel,
+            target: self,
+            action: #selector(cancel)
+        )
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: "Send",
+            style: .done,
+            target: self,
+            action: #selector(send)
+        )
+
+        let textButton = controlButton(
+            title: "Text",
+            image: "textformat",
+            action: #selector(addText)
+        )
+        let undoButton = controlButton(
+            title: "Undo",
+            image: "arrow.uturn.backward",
+            action: #selector(undoDrawing)
+        )
+        let markupLabel = controlButton(
+            title: "Pen & Color",
+            image: "pencil.tip.crop.circle",
+            action: #selector(focusCanvas)
+        )
+        markupLabel.configuration?.baseBackgroundColor = .systemOrange.withAlphaComponent(0.18)
+
+        let controls = UIStackView(arrangedSubviews: [textButton, undoButton, markupLabel])
+        controls.axis = .horizontal
+        controls.distribution = .fillEqually
+        controls.spacing = 8
+        controls.layoutMargins = UIEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)
+        controls.isLayoutMarginsRelativeArrangement = true
+        controls.backgroundColor = .secondarySystemBackground
+        controls.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(controls)
+
+        imageView.image = sourceImage
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(imageView)
+
+        canvasView.backgroundColor = .clear
+        canvasView.isOpaque = false
+        canvasView.drawingPolicy = .anyInput
+        canvasView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(canvasView)
+
+        NSLayoutConstraint.activate([
+            controls.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            controls.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+            imageView.topAnchor.constraint(equalTo: controls.bottomAnchor),
+            imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            canvasView.topAnchor.constraint(equalTo: imageView.topAnchor),
+            canvasView.leadingAnchor.constraint(equalTo: imageView.leadingAnchor),
+            canvasView.trailingAnchor.constraint(equalTo: imageView.trailingAnchor),
+            canvasView.bottomAnchor.constraint(equalTo: imageView.bottomAnchor)
+        ])
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        toolPicker.addObserver(canvasView)
+        toolPicker.setVisible(true, forFirstResponder: canvasView)
+        canvasView.becomeFirstResponder()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        toolPicker.removeObserver(canvasView)
+        super.viewWillDisappear(animated)
+    }
+
+    private func controlButton(title: String, image: String, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = title
+        configuration.image = UIImage(systemName: image)
+        configuration.imagePadding = 6
+        configuration.cornerStyle = .capsule
+        button.configuration = configuration
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+
+    @objc private func undoDrawing() {
+        canvasView.undoManager?.undo()
+        canvasView.becomeFirstResponder()
+    }
+
+    @objc private func focusCanvas() {
+        canvasView.becomeFirstResponder()
+        toolPicker.setVisible(true, forFirstResponder: canvasView)
+    }
+
+    @objc private func addText() {
+        let alert = UIAlertController(title: "Add Text", message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "Type a note"
+            field.autocapitalizationType = .sentences
         }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
+            guard let self,
+                  let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return }
+            addTextLabel(text)
+        })
+        present(alert, animated: true)
+    }
 
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { request.fileURLs.count }
-
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-            NumberedPhotoPreviewItem(url: request.fileURLs[index], position: index)
+    private func addTextLabel(_ text: String) {
+        view.layoutIfNeeded()
+        let label = UILabel()
+        label.text = text
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 26, weight: .semibold)
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.58)
+        label.layer.cornerRadius = 10
+        label.clipsToBounds = true
+        label.sizeToFit()
+        label.frame.size.width = min(label.frame.width + 28, canvasView.bounds.width * 0.82)
+        label.frame.size.height += 18
+        label.center = CGPoint(x: canvasView.bounds.midX, y: canvasView.bounds.midY)
+        label.isUserInteractionEnabled = true
+        label.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(moveText(_:))))
+        canvasView.addSubview(label)
+        textLabels.append(label)
+        canvasView.undoManager?.registerUndo(withTarget: self) { target in
+            target.removeTextLabel(label)
         }
+    }
 
-        func previewController(
-            _ controller: QLPreviewController,
-            editingModeFor previewItem: QLPreviewItem
-        ) -> QLPreviewItemEditingMode {
-            request.allowsEditing ? .updateContents : .disabled
-        }
+    private func removeTextLabel(_ label: UILabel) {
+        textLabels.removeAll { $0 === label }
+        label.removeFromSuperview()
+    }
 
-        func previewController(_ controller: QLPreviewController, didUpdateContentsOf previewItem: QLPreviewItem) {
-            guard let fileURL = previewItem.previewItemURL else { return }
-            sendEditedFile(at: fileURL)
-        }
+    @objc private func moveText(_ gesture: UIPanGestureRecognizer) {
+        guard let label = gesture.view else { return }
+        let translation = gesture.translation(in: canvasView)
+        label.center = CGPoint(x: label.center.x + translation.x, y: label.center.y + translation.y)
+        gesture.setTranslation(.zero, in: canvasView)
+    }
 
-        func previewController(
-            _ controller: QLPreviewController,
-            didSaveEditedCopyOf previewItem: QLPreviewItem,
-            at modifiedContentsURL: URL
-        ) {
-            sendEditedFile(at: modifiedContentsURL)
-        }
+    @objc private func cancel() {
+        onCancel()
+    }
 
-        @objc func closePreview() {
-            onClose()
-        }
-
-        private func sendEditedFile(at fileURL: URL) {
-            let normalizedURL = fileURL.standardizedFileURL
-            guard !sentEditedFiles.contains(normalizedURL), let data = try? Data(contentsOf: fileURL) else { return }
-            sentEditedFiles.insert(normalizedURL)
-            let contentType: String
-            switch fileURL.pathExtension.lowercased() {
-            case "png": contentType = "image/png"
-            case "heic", "heif": contentType = "image/heic"
-            default: contentType = "image/jpeg"
+    @objc private func send() {
+        view.layoutIfNeeded()
+        let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
+        guard imageRect.width > 0, imageRect.height > 0 else { return }
+        let drawingScale = sourceImage.size.width / imageRect.width
+        let drawingImage = canvasView.drawing.image(from: imageRect, scale: drawingScale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: sourceImage.size, format: format)
+        let markedImage = renderer.image { _ in
+            sourceImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
+            drawingImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
+            for label in textLabels {
+                let frame = CGRect(
+                    x: (label.frame.minX - imageRect.minX) * drawingScale,
+                    y: (label.frame.minY - imageRect.minY) * drawingScale,
+                    width: label.frame.width * drawingScale,
+                    height: label.frame.height * drawingScale
+                )
+                label.drawHierarchy(in: frame, afterScreenUpdates: true)
             }
-            onEdited(data, contentType)
         }
+        guard let data = markedImage.jpegData(compressionQuality: 0.92) else { return }
+        onSend(data, "image/jpeg")
+    }
+
+    private func aspectFitRect(for imageSize: CGSize, in bounds: CGRect) -> CGRect {
+        let scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: bounds.midX - size.width / 2,
+            y: bounds.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 }
 
