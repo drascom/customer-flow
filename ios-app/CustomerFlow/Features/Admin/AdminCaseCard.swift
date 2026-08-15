@@ -130,7 +130,7 @@ struct AdminCaseCard: View {
         }
         .sheet(isPresented: $showsConversation) {
             AdminConversationSheet(item: item)
-                .presentationDetents([.fraction(0.92)])
+                .presentationDetents([.fraction(0.97)])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(28)
                 .presentationContentInteraction(.scrolls)
