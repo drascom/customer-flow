@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     @Published private(set) var currentUser: AuthenticatedUser?
     @Published private(set) var connectedServerName = "Customer Flow Server"
     @Published private(set) var cases: [ConsultationCase] = []
+    @Published private(set) var liveRevision = 0
     @Published var errorMessage: String?
     @Published var isWorking = false
 
@@ -29,6 +30,7 @@ final class AppState: ObservableObject {
     private var repository: any CaseRepository = MockCaseRepository()
     private let notificationService: any NotificationService
     private var remoteClient: RemoteAPIClient?
+    private var liveUpdatesTask: Task<Void, Never>?
     private let photoCache = NSCache<NSString, NSData>()
     private let serverAddressKey = "customerFlow.serverAddress"
 
@@ -110,6 +112,8 @@ final class AppState: ObservableObject {
 
     func logout() async {
         isWorking = true
+        liveUpdatesTask?.cancel()
+        liveUpdatesTask = nil
         await remoteClient?.logout()
         SecureTokenStore.clear()
         currentUser = nil
@@ -181,6 +185,8 @@ final class AppState: ObservableObject {
     }
 
     func changeServer() async {
+        liveUpdatesTask?.cancel()
+        liveUpdatesTask = nil
         await remoteClient?.logout()
         SecureTokenStore.clear()
         UserDefaults.standard.removeObject(forKey: serverAddressKey)
@@ -196,7 +202,10 @@ final class AppState: ObservableObject {
     func load() async {
         guard phase == .authenticated else { return }
         do { cases = try await repository.fetchCases() }
-        catch { errorMessage = error.localizedDescription }
+        catch {
+            guard !Self.isCancellation(error) else { return }
+            errorMessage = error.localizedDescription
+        }
     }
 
     func createCase(patientName: String, grafts: String, currency: String, price: String, note: String,
@@ -371,6 +380,38 @@ final class AppState: ObservableObject {
             ? RemoteAdminRepository(client: client)
             : nil
         currentUser = user
+        startLiveUpdates(client: client)
+    }
+
+    private func startLiveUpdates(client: RemoteAPIClient) {
+        liveUpdatesTask?.cancel()
+        liveUpdatesTask = Task { [weak self] in
+            guard let self else { return }
+            var revision = 0
+
+            while !Task.isCancelled {
+                do {
+                    let update = try await client.waitForChanges(since: revision)
+                    guard !Task.isCancelled else { return }
+                    revision = update.revision
+                    guard update.changed else { continue }
+                    await load()
+                    liveRevision &+= 1
+                } catch {
+                    if Task.isCancelled || Self.isCancellation(error) { return }
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            }
+        }
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        let cocoaError = error as NSError
+        return cocoaError.domain == NSURLErrorDomain && cocoaError.code == NSURLErrorCancelled
     }
 
     private func replace(_ updated: ConsultationCase) {

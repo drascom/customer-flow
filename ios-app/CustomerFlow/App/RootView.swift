@@ -20,7 +20,8 @@ struct RootView: View {
                                 AdminDashboardView(
                                     repository: repository,
                                     currentUserID: user.id,
-                                    isReadOnly: user.role == .manager
+                                    isReadOnly: user.role == .manager,
+                                    liveRevision: state.liveRevision
                                 )
                             } else {
                                 ProgressView()

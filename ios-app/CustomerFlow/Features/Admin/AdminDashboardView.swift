@@ -9,6 +9,7 @@ struct AdminDashboardView: View {
 
     @State private var model: AdminDashboardModel
     private let isReadOnly: Bool
+    private let liveRevision: Int
     @State private var showsFilters = false
     @State private var showsNewUser = false
     @State private var showsAgencyManagement = false
@@ -24,8 +25,14 @@ struct AdminDashboardView: View {
     @State private var assignmentReason = ""
     @State private var showsAssignmentPrompt = false
 
-    init(repository: any AdminRepository, currentUserID: String, isReadOnly: Bool = false) {
+    init(
+        repository: any AdminRepository,
+        currentUserID: String,
+        isReadOnly: Bool = false,
+        liveRevision: Int = 0
+    ) {
         self.isReadOnly = isReadOnly
+        self.liveRevision = liveRevision
         _model = State(initialValue: AdminDashboardModel(repository: repository, currentUserID: currentUserID))
     }
 
@@ -49,6 +56,9 @@ struct AdminDashboardView: View {
         .background(AppTheme.background.ignoresSafeArea())
         .refreshable { await model.load() }
         .task { await model.load() }
+        .onChange(of: liveRevision) {
+            Task { await model.load() }
+        }
         .sheet(isPresented: $showsNewUser) {
             AdminCreateUserSheet(agencies: model.agencies) { username, displayName, role, password, agencyID in
                 await model.createUser(

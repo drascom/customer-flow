@@ -24,6 +24,19 @@ struct ServerHealth: Codable, Sendable {
     let capabilities: [String]
 }
 
+struct LiveUpdateEvent: Codable, Sendable {
+    let kind: String
+    let entityID: String?
+    let actorID: String
+    let occurredAt: Date
+}
+
+struct LiveUpdateResponse: Codable, Sendable {
+    let revision: Int
+    let changed: Bool
+    let event: LiveUpdateEvent?
+}
+
 enum RemoteServiceError: LocalizedError {
     case invalidServerAddress
     case insecureServerAddress
@@ -74,6 +87,15 @@ actor RemoteAPIClient {
         struct Envelope: Decodable, Sendable { let user: AuthenticatedUser }
         let envelope: Envelope = try await get("auth/me")
         return envelope.user
+    }
+
+    func waitForChanges(since revision: Int) async throws -> LiveUpdateResponse {
+        try await request(
+            method: "GET",
+            path: "events?since=\(revision)",
+            body: nil,
+            timeoutInterval: 25
+        )
     }
 
     func updateProfile(displayName: String, email: String, phone: String) async throws -> AuthenticatedUser {
@@ -158,7 +180,8 @@ actor RemoteAPIClient {
         method: String,
         path: String,
         body: Data?,
-        contentType: String = "application/json"
+        contentType: String = "application/json",
+        timeoutInterval: TimeInterval = 20
     ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw RemoteServiceError.invalidServerAddress
@@ -166,7 +189,7 @@ actor RemoteAPIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
-        request.timeoutInterval = 20
+        request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }

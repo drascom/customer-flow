@@ -80,6 +80,36 @@ class APIError(Exception):
         self.details = details
 
 
+class ChangeBroker:
+    """Process-local change signal used by authenticated long-poll clients."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._revision = 0
+        self._latest_event: dict | None = None
+
+    def publish(self, kind: str, entity_id: str | None, actor_id: str) -> None:
+        with self._condition:
+            self._revision += 1
+            self._latest_event = {
+                "kind": kind,
+                "entityID": entity_id,
+                "actorID": actor_id,
+                "occurredAt": iso(utc_now()),
+            }
+            self._condition.notify_all()
+
+    def wait(self, since: int, timeout: float = 15.0) -> dict:
+        with self._condition:
+            self._condition.wait_for(lambda: self._revision != since, timeout=timeout)
+            changed = self._revision != since
+            return {
+                "revision": self._revision,
+                "changed": changed,
+                "event": self._latest_event if changed else None,
+            }
+
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS agencies (
@@ -1499,6 +1529,7 @@ class APIServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], database: Database):
         super().__init__(address, APIHandler)
         self.database = database
+        self.changes = ChangeBroker()
 
 
 class APIHandler(BaseHTTPRequestHandler):
@@ -1527,7 +1558,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "patient-matching", "photos", "photo-messages", "role-auth", "profile", "password-reset"]})
+                                        "capabilities": ["cases", "patient-matching", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates"]})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
                 payload = self._read_json()
                 return self._json(200, self.server.database.login(str(payload.get("username", "")), str(payload.get("password", ""))))
@@ -1536,6 +1567,13 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and path == f"{API_PREFIX}/auth/password-reset/confirm":
                 return self._json(200, self.server.database.reset_password(self._read_json()))
             token, user = self._authenticated_user()
+            if method == "GET" and path == f"{API_PREFIX}/events":
+                raw_since = parse_qs(parsed.query).get("since", ["0"])[0]
+                try:
+                    since = int(raw_since)
+                except ValueError:
+                    raise APIError(422, "invalid_revision", "The event revision must be a number.")
+                return self._json(200, self.server.changes.wait(since))
             if method == "GET" and path == f"{API_PREFIX}/auth/me":
                 return self._json(200, {"user": self.server.database._public_user(user)})
             if method == "POST" and path == f"{API_PREFIX}/auth/logout":
@@ -1543,48 +1581,54 @@ class APIHandler(BaseHTTPRequestHandler):
                 self.server.database.logout(token)
                 return self._json(200, {"ok": True})
             if method == "PATCH" and path == f"{API_PREFIX}/auth/profile":
-                return self._json(200, {"user": self.server.database.update_profile(self._read_json(), user)})
+                updated = self.server.database.update_profile(self._read_json(), user)
+                return self._changed(200, {"user": updated}, "user.updated", updated["id"], user)
             if method == "POST" and path == f"{API_PREFIX}/auth/change-password":
                 return self._json(200, self.server.database.change_password(self._read_json(), user, token))
             if method == "GET" and path == f"{API_PREFIX}/admin/users":
                 return self._json(200, {"users": self.server.database.admin_users(user)})
             if method == "POST" and path == f"{API_PREFIX}/admin/users":
-                return self._json(201, {"user": self.server.database.admin_create_user(self._read_json(), user)})
+                created = self.server.database.admin_create_user(self._read_json(), user)
+                return self._changed(201, {"user": created}, "user.created", created["id"], user)
             if method == "GET" and path == f"{API_PREFIX}/admin/agencies":
                 return self._json(200, {"agencies": self.server.database.admin_agencies(user)})
             if method == "POST" and path == f"{API_PREFIX}/admin/agencies":
-                return self._json(201, {"agency": self.server.database.admin_create_agency(self._read_json(), user)})
+                created = self.server.database.admin_create_agency(self._read_json(), user)
+                return self._changed(201, {"agency": created}, "agency.created", created["id"], user)
             if method == "GET" and path == f"{API_PREFIX}/admin/cases":
                 return self._json(200, {"cases": self.server.database.admin_cases(user)})
             admin_parts = path.removeprefix(f"{API_PREFIX}/admin/").split("/")
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "users":
                 self._read_json()
-                return self._json(200, {"user": self.server.database.admin_delete_user(admin_parts[1], user)})
+                deleted = self.server.database.admin_delete_user(admin_parts[1], user)
+                return self._changed(200, {"user": deleted}, "user.deleted", admin_parts[1], user)
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "photos":
                 self._read_json()
-                return self._json(200, {"photo": self.server.database.admin_purge_photo(admin_parts[1], user)})
+                purged = self.server.database.admin_purge_photo(admin_parts[1], user)
+                return self._changed(200, {"photo": purged}, "photo.purged", admin_parts[1], user)
             if path.startswith(f"{API_PREFIX}/admin/") and method == "PATCH" and len(admin_parts) == 2:
                 if admin_parts[0] == "users":
                     payload = self._read_json()
                     if "active" in payload and len(payload) == 1:
-                        return self._json(200, {"user": self.server.database.admin_set_user_active(
+                        updated = self.server.database.admin_set_user_active(
                             admin_parts[1], bool(payload.get("active")), user
-                        )})
-                    return self._json(200, {"user": self.server.database.admin_update_user(
-                        admin_parts[1], payload, user
-                    )})
+                        )
+                    else:
+                        updated = self.server.database.admin_update_user(admin_parts[1], payload, user)
+                    return self._changed(200, {"user": updated}, "user.updated", admin_parts[1], user)
                 if admin_parts[0] == "patients":
-                    return self._json(200, {"assignment": self.server.database.admin_assign_doctor(
-                        admin_parts[1], self._read_json(), user
-                    )})
+                    assignment = self.server.database.admin_assign_doctor(admin_parts[1], self._read_json(), user)
+                    return self._changed(
+                        200, {"assignment": assignment}, "doctor.assigned", admin_parts[1], user
+                    )
                 if admin_parts[0] == "agencies":
-                    return self._json(200, {"agency": self.server.database.admin_update_agency(
-                        admin_parts[1], self._read_json(), user
-                    )})
+                    updated = self.server.database.admin_update_agency(admin_parts[1], self._read_json(), user)
+                    return self._changed(200, {"agency": updated}, "agency.updated", admin_parts[1], user)
             if method == "GET" and path == f"{API_PREFIX}/cases":
                 return self._json(200, {"cases": self.server.database.fetch_cases(user)})
             if method == "POST" and path == f"{API_PREFIX}/cases":
-                return self._json(201, {"case": self.server.database.create_case(self._read_json(), user)})
+                created = self.server.database.create_case(self._read_json(), user)
+                return self._changed(201, {"case": created}, "case.created", created["id"], user)
             if method == "GET" and path == f"{API_PREFIX}/patients/matches":
                 name = parse_qs(parsed.query).get("name", [""])[0]
                 return self._json(200, {"matches": self.server.database.find_matches(name, user)})
@@ -1608,33 +1652,35 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._json(200, {"case": self.server.database.get_case(case_id, user)})
             action = parts[1] if len(parts) > 1 else ""
             if method == "POST" and action == "recommendations":
-                return self._json(200, {"case": self.server.database.send_recommendation(case_id, self._read_json(), user)})
+                updated = self.server.database.send_recommendation(case_id, self._read_json(), user)
+                return self._changed(200, {"case": updated}, "recommendation.created", case_id, user)
             if method == "PATCH" and action == "agent-values":
-                return self._json(200, {"case": self.server.database.save_agent_values(case_id, self._read_json(), user)})
+                updated = self.server.database.save_agent_values(case_id, self._read_json(), user)
+                return self._changed(200, {"case": updated}, "case.updated", case_id, user)
             if method == "POST" and action == "agent-updates":
-                return self._json(200, {"case": self.server.database.add_agent_update(case_id, self._read_json(), user)})
+                updated = self.server.database.add_agent_update(case_id, self._read_json(), user)
+                return self._changed(200, {"case": updated}, "message.created", case_id, user)
             if method == "POST" and action == "close":
-                return self._json(200, {"case": self.server.database.close_case(
-                    case_id, self._read_json(), user
-                )})
+                updated = self.server.database.close_case(case_id, self._read_json(), user)
+                return self._changed(200, {"case": updated}, "case.closed", case_id, user)
             if method == "POST" and action == "photos":
                 body = self.rfile.read(self._content_length())
                 content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
-                return self._json(201, {"case": self.server.database.add_photo(case_id, body, content_type, user)})
+                updated = self.server.database.add_photo(case_id, body, content_type, user)
+                return self._changed(201, {"case": updated}, "photo.created", case_id, user)
             if method == "POST" and action == "message-photos":
                 body = self.rfile.read(self._content_length())
                 content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
-                return self._json(201, {"case": self.server.database.add_message_photo(case_id, body, content_type, user)})
+                updated = self.server.database.add_message_photo(case_id, body, content_type, user)
+                return self._changed(201, {"case": updated}, "message.created", case_id, user)
             if method == "DELETE" and action == "photos" and len(parts) == 3:
                 self._read_json()
-                return self._json(200, {"case": self.server.database.delete_photo(
-                    case_id, parts[2], user
-                )})
+                updated = self.server.database.delete_photo(case_id, parts[2], user)
+                return self._changed(200, {"case": updated}, "photo.deleted", case_id, user)
             if method == "DELETE" and action == "messages" and len(parts) == 3:
                 self._read_json()
-                return self._json(200, {"case": self.server.database.delete_message(
-                    case_id, parts[2], user
-                )})
+                updated = self.server.database.delete_message(case_id, parts[2], user)
+                return self._changed(200, {"case": updated}, "message.deleted", case_id, user)
             raise APIError(404, "not_found", "Endpoint not found.")
         except APIError as exc:
             self._json(exc.status, {"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
@@ -1708,6 +1754,17 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _changed(
+        self,
+        status: int,
+        payload: dict,
+        kind: str,
+        entity_id: str | None,
+        user: sqlite3.Row,
+    ) -> None:
+        self.server.changes.publish(kind, entity_id, user["id"])
+        self._json(status, payload)
 
     def _binary(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)

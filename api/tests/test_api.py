@@ -66,8 +66,27 @@ class APITestCase(unittest.TestCase):
     def test_health_and_login(self):
         health = self.request("GET", "/health")
         self.assertEqual("ok", health["status"])
+        self.assertIn("live-updates", health["capabilities"])
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
+
+    def test_authenticated_clients_receive_live_change_events(self):
+        admin = self.login("admin", "demo123")
+        agent = self.login("user1", "demo123")
+        current = self.request("GET", "/events?since=-1", token=admin)
+
+        created = self.request("POST", "/cases", {
+            "patientName": "Live Event Patient " + uuid.uuid4().hex[:6],
+            "grafts": "2200", "currency": "GBP", "price": "2100",
+            "note": "Live update test", "photoCount": 0,
+        }, token=agent, expected=201)["case"]
+
+        update = self.request("GET", f"/events?since={current['revision']}", token=admin)
+        self.assertTrue(update["changed"])
+        self.assertGreater(update["revision"], current["revision"])
+        self.assertEqual("case.created", update["event"]["kind"])
+        self.assertEqual(created["id"], update["event"]["entityID"])
+        self.request("GET", "/events?since=-1", expected=401)
 
     def test_logout_consumes_body_before_next_login_on_same_connection(self):
         connection = HTTPConnection("127.0.0.1", self.server.server_port)

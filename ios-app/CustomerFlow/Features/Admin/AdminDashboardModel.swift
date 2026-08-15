@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class AdminDashboardModel {
     private let repository: any AdminRepository
+    private var reloadRequested = false
 
     let currentUserID: String
     var users: [AdminUser] = []
@@ -73,18 +74,24 @@ final class AdminDashboardModel {
     }
 
     func load() async {
-        guard !isLoading else { return }
+        guard !isLoading else {
+            reloadRequested = true
+            return
+        }
         isLoading = true
         defer { isLoading = false }
-        do {
-            async let usersRequest = repository.fetchUsers()
-            async let casesRequest = repository.fetchCases()
-            async let agenciesRequest = repository.fetchAgencies()
-            (users, cases, agencies) = try await (usersRequest, casesRequest, agenciesRequest)
-        } catch {
-            guard !Self.isCancellation(error) else { return }
-            errorMessage = error.localizedDescription
-        }
+        repeat {
+            reloadRequested = false
+            do {
+                async let usersRequest = repository.fetchUsers()
+                async let casesRequest = repository.fetchCases()
+                async let agenciesRequest = repository.fetchAgencies()
+                (users, cases, agencies) = try await (usersRequest, casesRequest, agenciesRequest)
+            } catch {
+                guard !Self.isCancellation(error) else { return }
+                errorMessage = error.localizedDescription
+            }
+        } while reloadRequested
     }
 
     private static func isCancellation(_ error: Error) -> Bool {
