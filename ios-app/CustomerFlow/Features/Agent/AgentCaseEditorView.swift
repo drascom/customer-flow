@@ -1344,7 +1344,7 @@ private struct MessagePreview: View {
                     .foregroundStyle(.red)
                     .accessibilityLabel("Remove comment")
                 }
-                Text(message.createdAt, style: .relative).font(.caption2).foregroundStyle(AppTheme.muted)
+                Text(message.createdAt.compactRelativeText).font(.caption2).foregroundStyle(AppTheme.muted)
             }
             Text(message.text).font(.body)
             if let attachmentPhotoID = message.attachmentPhotoID {

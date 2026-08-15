@@ -273,7 +273,7 @@ private struct CaseCardView: View {
             HStack(spacing: 6) {
                 Text(item.reference)
                 Text("•")
-                Text(uploadedAge)
+                Text(item.uploadedAt.compactRelativeText)
                 Spacer(minLength: 4)
                 if isCollapsible {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -303,24 +303,6 @@ private struct CaseCardView: View {
             }
         }
         .contentShape(Rectangle())
-    }
-
-    private var uploadedAge: String {
-        let elapsed = max(0, Int(Date.now.timeIntervalSince(item.uploadedAt)))
-        let minutes = elapsed / 60
-        let hours = minutes / 60
-        let days = hours / 24
-
-        if days > 0 {
-            let remainingHours = hours % 24
-            let dayLabel = days == 1 ? "1 day" : "\(days) days"
-            return remainingHours == 0 ? dayLabel : "\(dayLabel), \(remainingHours) hr"
-        }
-        if hours > 0 {
-            let remainingMinutes = minutes % 60
-            return remainingMinutes == 0 ? "\(hours) hr" : "\(hours) hr, \(remainingMinutes) min"
-        }
-        return minutes == 0 ? "Now" : "\(minutes) min"
     }
 
     private var latestMessage: ConsultationMessage? {

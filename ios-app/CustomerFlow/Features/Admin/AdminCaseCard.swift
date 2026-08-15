@@ -31,7 +31,7 @@ struct AdminCaseCard: View {
                     HStack(spacing: 6) {
                         Text(item.reference)
                         Text("•")
-                        Text(item.uploadedAt, style: .relative)
+                        Text(item.uploadedAt.compactRelativeText)
                         Spacer(minLength: 4)
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     }

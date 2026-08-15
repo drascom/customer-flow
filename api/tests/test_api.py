@@ -363,7 +363,7 @@ class APITestCase(unittest.TestCase):
             token=doctor, expected=403,
         )
         after_agent_delete = self.request(
-            "DELETE", f"/cases/{created['id']}/messages/{agent_message['id']}", {}, token=agent,
+            "DELETE", f"/cases/{created['id']}/messages/{agent_message['id'].upper()}", {}, token=agent,
         )["case"]
         self.assertFalse(any(message["id"] == agent_message["id"] for message in after_agent_delete["messages"]))
 

@@ -1049,6 +1049,7 @@ class Database:
 
     def delete_message(self, case_id: str, message_id: str, user: sqlite3.Row) -> dict:
         self._require_any_role(user, "agent", "doctor")
+        message_id = message_id.lower()
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
