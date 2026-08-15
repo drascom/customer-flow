@@ -4,7 +4,7 @@ struct OnboardingView: View {
     @EnvironmentObject private var state: AppState
     @State private var serverAddress = ""
     @State private var username = ""
-    @State private var password = ""
+    @State private var password = "demo123"
     @State private var showsPasswordReset = false
     @FocusState private var focusedField: Field?
 
@@ -179,9 +179,7 @@ struct OnboardingView: View {
         guard !state.isWorking else { return }
         focusedField = nil
         Task {
-            if await state.login(username: username, password: password) {
-                password = ""
-            }
+            _ = await state.login(username: username, password: password)
         }
     }
 }
