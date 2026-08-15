@@ -255,6 +255,15 @@ final class RemoteCaseRepository: CaseRepository {
         try await client.download("message-photos/\(messageID)")
     }
 
+    func deleteMessage(caseID: UUID, messageID: UUID) async throws -> ConsultationCase {
+        struct Empty: Encodable, Sendable {}
+        struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
+        let envelope: Envelope = try await client.send(
+            "DELETE", path: "cases/\(caseID)/messages/\(messageID)", body: Empty()
+        )
+        return envelope.case
+    }
+
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase {
         struct Body: Encodable, Sendable {
             let approximateGrafts: String

@@ -9,6 +9,19 @@ struct AdminCasePhoto: Identifiable, Decodable, Sendable {
     let deletedByName: String?
 }
 
+struct AdminCaseMessage: Identifiable, Decodable, Sendable {
+    let id: String
+    let author: String
+    let role: ConsultationMessage.AuthorRole
+    let createdAt: Date
+    let text: String
+    let approximateGrafts: String?
+    let recommendedPrice: String?
+    let attachmentPhotoID: String?
+    let deletedAt: Date?
+    let deletedByName: String?
+}
+
 struct AdminCase: Identifiable, Decodable, Sendable {
     let id: String
     let reference: String
@@ -23,7 +36,9 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let photoCount: Int
     let deletedPhotoCount: Int
     let photos: [AdminCasePhoto]
+    let messages: [AdminCaseMessage]
     let messageCount: Int
+    let deletedMessageCount: Int
     let latestMessageAuthor: String?
     let latestMessageText: String?
     let latestMessageAt: Date?

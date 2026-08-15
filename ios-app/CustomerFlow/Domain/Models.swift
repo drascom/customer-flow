@@ -69,6 +69,7 @@ struct ConsultationMessage: Identifiable, Hashable, Codable, Sendable {
     enum AuthorRole: String, Codable, Sendable { case agent, doctor, admin, system }
 
     let id: UUID
+    let authorID: String?
     let author: String
     let role: AuthorRole
     let createdAt: Date
@@ -79,6 +80,7 @@ struct ConsultationMessage: Identifiable, Hashable, Codable, Sendable {
 
     init(
         id: UUID = UUID(),
+        authorID: String? = nil,
         author: String,
         role: AuthorRole,
         createdAt: Date = .now,
@@ -88,6 +90,7 @@ struct ConsultationMessage: Identifiable, Hashable, Codable, Sendable {
         attachmentPhotoID: String? = nil
     ) {
         self.id = id
+        self.authorID = authorID
         self.author = author
         self.role = role
         self.createdAt = createdAt

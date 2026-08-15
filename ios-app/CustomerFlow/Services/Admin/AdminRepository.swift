@@ -11,4 +11,5 @@ protocol AdminRepository: Sendable {
     func createAgency(name: String) async throws -> AdminAgency
     func updateAgency(id: String, name: String) async throws -> AdminAgency
     func assignDoctor(patientID: String, doctorID: String?, reason: String) async throws
+    func purgePhoto(id: String) async throws
 }

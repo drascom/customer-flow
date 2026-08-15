@@ -271,6 +271,7 @@ struct AgentCaseEditorView: View {
     @State private var isImportingPhotos = false
     @State private var photoReloadToken = 0
     @State private var pendingPhotoDeletionID: String?
+    @State private var pendingMessageDeletion: ConsultationMessage?
     @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var matchCandidate: PatientMatchCandidate?
     @State private var duplicateResolution: DuplicateResolution?
@@ -390,6 +391,23 @@ struct AgentCaseEditorView: View {
             Button("Cancel", role: .cancel) { pendingPhotoDeletionID = nil }
         } message: {
             Text("The photo will disappear for agents and doctors, but administrators will retain access to the original file.")
+        }
+        .confirmationDialog(
+            "Remove this comment?",
+            isPresented: Binding(
+                get: { pendingMessageDeletion != nil },
+                set: { if !$0 { pendingMessageDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove comment", role: .destructive) {
+                guard let message = pendingMessageDeletion, let caseID = editingCaseID else { return }
+                pendingMessageDeletion = nil
+                Task { _ = await state.deleteMessage(caseID: caseID, messageID: message.id) }
+            }
+            Button("Cancel", role: .cancel) { pendingMessageDeletion = nil }
+        } message: {
+            Text("The comment will disappear from the conversation, but administrators will retain the record.")
         }
     }
 
@@ -676,7 +694,13 @@ struct AgentCaseEditorView: View {
             if isEditMode, let editCase {
                 Divider()
                 Text("Conversation").font(.headline)
-                ForEach(editCase.messages) { MessagePreview(message: $0) }
+                ForEach(editCase.messages) { message in
+                    MessagePreview(
+                        message: message,
+                        canDelete: message.authorID == state.currentUser?.id,
+                        onDelete: { pendingMessageDeletion = message }
+                    )
+                }
                 labeledField("Add an update or question", required: false) {
                     TextField("Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
                         .lineLimit(3...6)
@@ -1009,12 +1033,22 @@ private struct PendingPhotoThumbnail: View {
 
 private struct MessagePreview: View {
     let message: ConsultationMessage
+    let canDelete: Bool
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(message.author).font(.caption.bold())
                 Spacer()
+                if canDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Remove comment")
+                }
                 Text(message.createdAt, style: .relative).font(.caption2).foregroundStyle(AppTheme.muted)
             }
             Text(message.text).font(.body)

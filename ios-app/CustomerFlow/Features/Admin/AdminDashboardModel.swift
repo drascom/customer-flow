@@ -213,4 +213,13 @@ final class AdminDashboardModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    func purgePhoto(id: String) async {
+        do {
+            try await repository.purgePhoto(id: id)
+            await load()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }

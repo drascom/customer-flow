@@ -302,7 +302,8 @@ struct AdminDashboardView: View {
                         isReadOnly: isReadOnly,
                         isExpanded: expandedCaseID == item.id,
                         onToggle: { withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id } },
-                        onAssign: { requestAssignment(for: item, doctorID: $0) }
+                        onAssign: { requestAssignment(for: item, doctorID: $0) },
+                        onPurgePhoto: { photoID in Task { await model.purgePhoto(id: photoID) } }
                     )
                 }
             }

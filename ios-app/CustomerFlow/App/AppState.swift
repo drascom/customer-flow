@@ -296,6 +296,20 @@ final class AppState: ObservableObject {
         return data
     }
 
+    func deleteMessage(caseID: UUID, messageID: UUID) async -> Bool {
+        do {
+            let updated = try await repository.deleteMessage(caseID: caseID, messageID: messageID)
+            photoCache.removeObject(forKey: messageID.uuidString as NSString)
+            replace(updated)
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            await load()
+            return false
+        }
+    }
+
     func sendRecommendation(caseID: UUID, recommendation: DoctorRecommendation) async -> Bool {
         do {
             let updated = try await repository.sendRecommendation(caseID: caseID, doctorID: currentDoctorID, recommendation: recommendation)

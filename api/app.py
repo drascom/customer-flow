@@ -155,7 +155,9 @@ CREATE TABLE IF NOT EXISTS messages (
   approximate_grafts TEXT,
   recommended_price TEXT,
   attachment_path TEXT,
-  attachment_content_type TEXT
+  attachment_content_type TEXT,
+  deleted_at TEXT,
+  deleted_by TEXT REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_messages_case_time ON messages(case_id, created_at);
 CREATE TABLE IF NOT EXISTS photos (
@@ -224,6 +226,10 @@ class Database:
                     conn.execute("ALTER TABLE messages ADD COLUMN attachment_path TEXT")
                 if "attachment_content_type" not in message_columns:
                     conn.execute("ALTER TABLE messages ADD COLUMN attachment_content_type TEXT")
+                if "deleted_at" not in message_columns:
+                    conn.execute("ALTER TABLE messages ADD COLUMN deleted_at TEXT")
+                if "deleted_by" not in message_columns:
+                    conn.execute("ALTER TABLE messages ADD COLUMN deleted_by TEXT REFERENCES users(id)")
                 conn.execute("UPDATE cases SET currency='GBP' WHERE currency <> 'GBP'")
                 conn.execute(
                     "UPDATE messages SET recommended_price = CASE "
@@ -293,12 +299,13 @@ class Database:
                 "author_id TEXT NOT NULL REFERENCES users(id), author_name TEXT NOT NULL, "
                 "role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','system')), "
                 "created_at TEXT NOT NULL, text TEXT NOT NULL, approximate_grafts TEXT, "
-                "recommended_price TEXT, attachment_path TEXT, attachment_content_type TEXT)"
+                "recommended_price TEXT, attachment_path TEXT, attachment_content_type TEXT, "
+                "deleted_at TEXT, deleted_by TEXT REFERENCES users(id))"
             )
             conn.execute(
                 "INSERT INTO messages_migrated "
                 "SELECT id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,"
-                "recommended_price,attachment_path,attachment_content_type FROM messages"
+                "recommended_price,attachment_path,attachment_content_type,deleted_at,deleted_by FROM messages"
             )
             conn.execute("DROP TABLE messages")
             conn.execute("ALTER TABLE messages_migrated RENAME TO messages")
@@ -863,6 +870,39 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def admin_purge_photo(self, photo_id: str, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                photo = conn.execute("SELECT * FROM photos WHERE id=?", (photo_id,)).fetchone()
+                if not photo:
+                    raise APIError(404, "photo_not_found", "The photo could not be found.")
+                if not photo["deleted_at"]:
+                    raise APIError(409, "photo_not_deleted", "Only previously removed photos can be permanently deleted.")
+
+                file_path = None
+                if photo["file_path"]:
+                    media_root = self.media_root.resolve()
+                    candidate = (media_root / photo["file_path"]).resolve()
+                    if media_root not in candidate.parents:
+                        raise APIError(409, "invalid_photo_path", "The stored photo path is invalid.")
+                    file_path = candidate
+
+                conn.execute("DELETE FROM photos WHERE id=?", (photo_id,))
+                self._audit(conn, user["id"], "case.photo_purged", "photo", photo_id,
+                            {"caseID": photo["case_id"], "softDeletedAt": photo["deleted_at"]})
+                conn.execute("COMMIT")
+                if file_path and file_path.is_file():
+                    try:
+                        file_path.unlink()
+                    except OSError:
+                        pass
+                return {"id": photo_id, "purged": True}
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def get_photo(self, photo_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
         with self.connect() as conn:
             photo = conn.execute(
@@ -933,16 +973,68 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def delete_message(self, case_id: str, message_id: str, user: sqlite3.Row) -> dict:
+        self._require_any_role(user, "agent", "doctor")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                case = self._case_row(conn, case_id)
+                self._assert_case_visible(case, user)
+                if user["role"] == "agent":
+                    self._assert_owner(case, user)
+                message = conn.execute(
+                    "SELECT * FROM messages WHERE id=? AND case_id=?",
+                    (message_id, case_id),
+                ).fetchone()
+                if not message:
+                    raise APIError(404, "message_not_found", "The message could not be found.")
+                if message["author_id"] != user["id"]:
+                    raise APIError(403, "forbidden", "You can only remove messages written by your account.")
+                if message["role"] not in {"agent", "doctor"}:
+                    raise APIError(403, "forbidden", "This message cannot be removed.")
+
+                if not message["deleted_at"]:
+                    now = iso(utc_now())
+                    conn.execute(
+                        "UPDATE messages SET deleted_at=?,deleted_by=? WHERE id=?",
+                        (now, user["id"], message_id),
+                    )
+                    if message["role"] == "doctor" and (
+                        message["approximate_grafts"] is not None
+                        or message["recommended_price"] is not None
+                    ):
+                        active_recommendations = conn.execute(
+                            "SELECT COUNT(*) FROM messages WHERE case_id=? AND role='doctor' "
+                            "AND deleted_at IS NULL AND (approximate_grafts IS NOT NULL OR recommended_price IS NOT NULL)",
+                            (case_id,),
+                        ).fetchone()[0]
+                        if not active_recommendations and case["status"] == "answered":
+                            conn.execute(
+                                "UPDATE cases SET status='waiting',version=version+1 WHERE id=?",
+                                (case_id,),
+                            )
+                    self._audit(conn, user["id"], "case.message_removed", "message", message_id,
+                                {"caseID": case_id, "contentRetained": True})
+
+                result = self._case_json(conn, self._case_row(conn, case_id))
+                conn.execute("COMMIT")
+                return result
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def get_message_photo(self, message_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
         with self.connect() as conn:
             message = conn.execute(
-                "SELECT m.attachment_path,m.attachment_content_type,c.agent_id,c.assigned_doctor_id "
+                "SELECT m.attachment_path,m.attachment_content_type,m.deleted_at,c.agent_id,c.assigned_doctor_id "
                 "FROM messages m JOIN cases c ON c.id=m.case_id WHERE m.id=?",
                 (message_id,),
             ).fetchone()
             if not message or not message["attachment_path"] or not message["attachment_content_type"]:
                 raise APIError(404, "message_photo_not_found", "The message photo could not be found.")
             self._assert_case_visible(message, user)
+            if message["deleted_at"] and user["role"] not in {"admin", "manager"}:
+                raise APIError(404, "message_photo_not_found", "The message photo could not be found.")
             media_root = self.media_root.resolve()
             file_path = (media_root / message["attachment_path"]).resolve()
             if media_root not in file_path.parents or not file_path.is_file():
@@ -1204,7 +1296,8 @@ class Database:
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_grafts,c.currency,c.agent_price,"
                 "p.id patient_id,p.name patient_name,p.assigned_doctor_id,"
                 "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
-                "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id) message_count "
+                "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NULL) message_count,"
+                "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NOT NULL) deleted_message_count "
                 "FROM cases c JOIN patients p ON p.id=c.patient_id "
                 "JOIN users a ON a.id=c.agent_id LEFT JOIN agencies ag ON ag.id=a.agency_id "
                 "LEFT JOIN users d ON d.id=p.assigned_doctor_id "
@@ -1217,9 +1310,15 @@ class Database:
                     "FROM photos p LEFT JOIN users u ON u.id=p.deleted_by WHERE p.case_id=? ORDER BY p.position",
                     (row["id"],),
                 ).fetchall()
+                messages = conn.execute(
+                    "SELECT m.*,u.display_name deleted_by_name FROM messages m "
+                    "LEFT JOIN users u ON u.id=m.deleted_by WHERE m.case_id=? ORDER BY m.created_at,m.rowid",
+                    (row["id"],),
+                ).fetchall()
                 latest_message = conn.execute(
                     "SELECT author_name,text,created_at,attachment_path FROM messages "
-                    "WHERE case_id=? AND role <> 'system' ORDER BY created_at DESC,rowid DESC LIMIT 1",
+                    "WHERE case_id=? AND role <> 'system' AND deleted_at IS NULL "
+                    "ORDER BY created_at DESC,rowid DESC LIMIT 1",
                     (row["id"],),
                 ).fetchone()
                 result.append({
@@ -1235,7 +1334,16 @@ class Database:
                         "available": bool(photo["file_path"]), "deleted": bool(photo["deleted_at"]),
                         "deletedAt": photo["deleted_at"], "deletedByName": photo["deleted_by_name"],
                     } for photo in photos],
+                    "messages": [{
+                        "id": message["id"], "author": message["author_name"], "role": message["role"],
+                        "createdAt": message["created_at"], "text": message["text"],
+                        "approximateGrafts": message["approximate_grafts"],
+                        "recommendedPrice": message["recommended_price"],
+                        "attachmentPhotoID": message["id"] if message["attachment_path"] else None,
+                        "deletedAt": message["deleted_at"], "deletedByName": message["deleted_by_name"],
+                    } for message in messages],
                     "messageCount": row["message_count"],
+                    "deletedMessageCount": row["deleted_message_count"],
                     "latestMessageAuthor": latest_message["author_name"] if latest_message else None,
                     "latestMessageText": latest_message["text"] if latest_message else None,
                     "latestMessageAt": latest_message["created_at"] if latest_message else None,
@@ -1320,7 +1428,7 @@ class Database:
     @staticmethod
     def _case_json(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         messages = conn.execute(
-            "SELECT * FROM messages WHERE case_id=? ORDER BY created_at,rowid",
+            "SELECT * FROM messages WHERE case_id=? AND deleted_at IS NULL ORDER BY created_at,rowid",
             (row["id"],),
         ).fetchall()
         photos = conn.execute(
@@ -1335,7 +1443,8 @@ class Database:
             "uploadedAt": row["uploaded_at"], "status": row["status"], "photoCount": len(photos),
             "agentNote": row["agent_note"], "agentGrafts": row["agent_grafts"],
             "currency": row["currency"], "agentPrice": row["agent_price"],
-            "messages": [{"id": m["id"], "author": m["author_name"], "role": m["role"],
+            "messages": [{"id": m["id"], "authorID": m["author_id"],
+                          "author": m["author_name"], "role": m["role"],
                           "createdAt": m["created_at"], "text": m["text"],
                           "approximateGrafts": m["approximate_grafts"], "recommendedPrice": m["recommended_price"],
                           "attachmentPhotoID": m["id"] if m["attachment_path"] else None}
@@ -1411,6 +1520,9 @@ class APIHandler(BaseHTTPRequestHandler):
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "users":
                 self._read_json()
                 return self._json(200, {"user": self.server.database.admin_delete_user(admin_parts[1], user)})
+            if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "photos":
+                self._read_json()
+                return self._json(200, {"photo": self.server.database.admin_purge_photo(admin_parts[1], user)})
             if path.startswith(f"{API_PREFIX}/admin/") and method == "PATCH" and len(admin_parts) == 2:
                 if admin_parts[0] == "users":
                     payload = self._read_json()
@@ -1475,6 +1587,11 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "DELETE" and action == "photos" and len(parts) == 3:
                 self._read_json()
                 return self._json(200, {"case": self.server.database.delete_photo(
+                    case_id, parts[2], user
+                )})
+            if method == "DELETE" and action == "messages" and len(parts) == 3:
+                self._read_json()
+                return self._json(200, {"case": self.server.database.delete_message(
                     case_id, parts[2], user
                 )})
             raise APIError(404, "not_found", "Endpoint not found.")

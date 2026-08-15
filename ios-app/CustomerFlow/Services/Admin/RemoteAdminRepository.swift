@@ -113,4 +113,11 @@ actor RemoteAdminRepository: AdminRepository {
             reason: reason
         ))
     }
+
+    func purgePhoto(id: String) async throws {
+        struct Empty: Encodable, Sendable {}
+        struct Mutation: Decodable, Sendable { let id: String; let purged: Bool }
+        struct Envelope: Decodable, Sendable { let photo: Mutation }
+        let _: Envelope = try await client.send("DELETE", path: "admin/photos/\(id)", body: Empty())
+    }
 }

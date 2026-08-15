@@ -66,6 +66,12 @@ final class MockCaseRepository: CaseRepository {
         throw MockError.notFound
     }
 
+    func deleteMessage(caseID: UUID, messageID: UUID) async throws -> ConsultationCase {
+        guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
+        cases[index].messages.removeAll { $0.id == messageID }
+        return cases[index]
+    }
+
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
         guard cases[index].status == .waiting else { throw MockError.caseChanged }

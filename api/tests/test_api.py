@@ -219,6 +219,7 @@ class APITestCase(unittest.TestCase):
         other_agent = self.login("user2", "demo123")
         doctor = self.login("doctor1", "demo123")
         admin = self.login("admin", "demo123")
+        manager = self.login("manager", "demo123")
         created = self.request("POST", "/cases", {
             "patientName": "Soft Delete Patient", "grafts": "2000", "currency": "GBP",
             "price": "1900", "note": "Photo retention test", "photoCount": 1,
@@ -231,6 +232,7 @@ class APITestCase(unittest.TestCase):
         uploaded = json.loads(uploaded_body)["case"]
         photo_id = uploaded["photoIDs"][0]
         self.assertEqual(photo, self.raw_request("GET", f"/photos/{photo_id}", token=doctor)[0])
+        self.request("DELETE", f"/admin/photos/{photo_id}", {}, token=admin, expected=409)
 
         blocked = self.request(
             "DELETE", f"/cases/{created['id'].upper()}/photos/{photo_id}", {},
@@ -255,6 +257,67 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("Selin Arslan", deleted_photo["deletedByName"])
         self.assertEqual(1, admin_case["deletedPhotoCount"])
         self.assertEqual(photo, self.raw_request("GET", f"/photos/{photo_id}", token=admin)[0])
+        self.request("DELETE", f"/admin/photos/{photo_id}", {}, token=manager, expected=403)
+        purged = self.request("DELETE", f"/admin/photos/{photo_id}", {}, token=admin)["photo"]
+        self.assertTrue(purged["purged"])
+        self.raw_request("GET", f"/photos/{photo_id}", token=admin, expected=404)
+        refreshed = next(
+            item for item in self.request("GET", "/admin/cases", token=admin)["cases"]
+            if item["id"] == created["id"]
+        )
+        self.assertFalse(any(item["id"] == photo_id for item in refreshed["photos"]))
+
+    def test_agents_and_doctors_soft_delete_only_their_own_messages(self):
+        agent = self.login("user1", "demo123")
+        other_agent = self.login("user2", "demo123")
+        doctor = self.login("doctor1", "demo123")
+        admin = self.login("admin", "demo123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Message Retention Patient", "grafts": "2100", "currency": "GBP",
+            "price": "2050", "note": "Message retention test", "photoCount": 2,
+        }, token=agent, expected=201)["case"]
+
+        updated = self.request(
+            "POST", f"/cases/{created['id']}/agent-updates", {"text": "Please review this update"},
+            token=agent,
+        )["case"]
+        agent_message = next(message for message in updated["messages"] if message["text"] == "Please review this update")
+        self.request(
+            "DELETE", f"/cases/{created['id']}/messages/{agent_message['id']}", {},
+            token=other_agent, expected=403,
+        )
+        self.request(
+            "DELETE", f"/cases/{created['id']}/messages/{agent_message['id']}", {},
+            token=doctor, expected=403,
+        )
+        after_agent_delete = self.request(
+            "DELETE", f"/cases/{created['id']}/messages/{agent_message['id']}", {}, token=agent,
+        )["case"]
+        self.assertFalse(any(message["id"] == agent_message["id"] for message in after_agent_delete["messages"]))
+
+        answered = self.request(
+            "POST", f"/cases/{created['id']}/recommendations",
+            {"approximateGrafts": "2150", "recommendedPrice": "£2200", "text": "Doctor reply"},
+            token=doctor,
+        )["case"]
+        doctor_message = next(message for message in answered["messages"] if message["text"] == "Doctor reply")
+        self.request(
+            "DELETE", f"/cases/{created['id']}/messages/{doctor_message['id']}", {},
+            token=agent, expected=403,
+        )
+        after_doctor_delete = self.request(
+            "DELETE", f"/cases/{created['id']}/messages/{doctor_message['id']}", {}, token=doctor,
+        )["case"]
+        self.assertEqual("waiting", after_doctor_delete["status"])
+        self.assertFalse(any(message["id"] == doctor_message["id"] for message in after_doctor_delete["messages"]))
+
+        admin_case = next(
+            item for item in self.request("GET", "/admin/cases", token=admin)["cases"]
+            if item["id"] == created["id"]
+        )
+        self.assertEqual(2, admin_case["deletedMessageCount"])
+        deleted_ids = {message["id"] for message in admin_case["messages"] if message["deletedAt"]}
+        self.assertEqual({agent_message["id"], doctor_message["id"]}, deleted_ids)
 
     def test_quick_look_edit_is_saved_as_a_photo_message(self):
         agent = self.login("user1", "demo123")

@@ -9,8 +9,10 @@ struct AdminCaseCard: View {
     let isExpanded: Bool
     let onToggle: () -> Void
     let onAssign: (String?) -> Void
+    let onPurgePhoto: (String) -> Void
 
     @State private var photoPreview: NativePhotoPreviewRequest?
+    @State private var pendingPurgePhotoID: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,6 +78,11 @@ struct AdminCaseCard: View {
                         .padding(.top, 12)
                 }
 
+                if !item.messages.isEmpty {
+                    adminMessages
+                        .padding(.top, 12)
+                }
+
                 Group {
                     if isReadOnly {
                         assignmentLabel
@@ -109,18 +116,26 @@ struct AdminCaseCard: View {
                 .stroke(AppTheme.border, lineWidth: 1)
         }
         .fullScreenCover(item: $photoPreview) { request in
-            NativePhotoPreview(request: request) { data, contentType in
-                guard !isReadOnly else { return }
-                Task {
-                    await state.sendPhotoMessage(
-                        caseID: request.caseID,
-                        data: data,
-                        contentType: contentType
-                    )
-                }
-            } onClose: {
+            NativePhotoPreview(request: request) { _, _ in } onClose: {
                 photoPreview = nil
             }
+        }
+        .confirmationDialog(
+            "Permanently delete this photo?",
+            isPresented: Binding(
+                get: { pendingPurgePhotoID != nil },
+                set: { if !$0 { pendingPurgePhotoID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete permanently", role: .destructive) {
+                guard let photoID = pendingPurgePhotoID else { return }
+                pendingPurgePhotoID = nil
+                onPurgePhoto(photoID)
+            }
+            Button("Cancel", role: .cancel) { pendingPurgePhotoID = nil }
+        } message: {
+            Text("This removes the retained file from the server and cannot be undone.")
         }
     }
 
@@ -196,6 +211,71 @@ struct AdminCaseCard: View {
                                 .allowsHitTesting(false)
                             }
                         }
+                        .overlay(alignment: .bottomTrailing) {
+                            if photo.deleted && !isReadOnly {
+                                Button {
+                                    pendingPurgePhotoID = photo.id
+                                } label: {
+                                    Image(systemName: "trash.fill")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.white)
+                                        .frame(width: 30, height: 30)
+                                        .background(.red, in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(5)
+                                .accessibilityLabel("Delete photo permanently")
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    private var adminMessages: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Conversation")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                if item.deletedMessageCount > 0 {
+                    Text("\(item.deletedMessageCount) deleted")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
+            }
+
+            ForEach(item.messages) { message in
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text(message.author).font(.caption.bold())
+                        Spacer()
+                        Text(message.createdAt, style: .date)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.muted)
+                    }
+                    Text(message.text)
+                        .font(.subheadline)
+                    if let attachmentPhotoID = message.attachmentPhotoID {
+                        MessagePhotoView(messageID: attachmentPhotoID)
+                    }
+                    if message.deletedAt != nil {
+                        Label(
+                            "Deleted by \(message.deletedByName ?? message.author)",
+                            systemImage: "trash"
+                        )
+                        .font(.caption2.bold())
+                        .foregroundStyle(.red)
+                    }
+                }
+                .foregroundStyle(message.deletedAt == nil ? AppTheme.ink : AppTheme.muted)
+                .padding(10)
+                .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    if message.deletedAt != nil {
+                        RoundedRectangle(cornerRadius: 12).stroke(.red.opacity(0.35))
+                    }
                 }
             }
         }
@@ -215,7 +295,7 @@ struct AdminCaseCard: View {
                 photoIDs: photoIDs,
                 photoData: photoData,
                 initialIndex: photoIDs.firstIndex(of: photoID) ?? 0,
-                allowsEditing: !isReadOnly
+                allowsEditing: false
             )
         } catch {
             state.errorMessage = "The photo could not be opened."

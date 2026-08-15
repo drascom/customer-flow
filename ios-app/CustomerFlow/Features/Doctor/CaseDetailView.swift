@@ -11,6 +11,7 @@ struct CaseDetailView: View {
     @State private var response = ""
     @State private var isSending = false
     @State private var photoPreview: NativePhotoPreviewRequest?
+    @State private var pendingMessageDeletion: ConsultationMessage?
 
     private var item: ConsultationCase? { state.cases.first { $0.id == caseID } }
     private var responseStarted: Bool {
@@ -73,7 +74,13 @@ struct CaseDetailView: View {
 
                             detailSection("Case conversation") {
                                 VStack(spacing: 10) {
-                                    ForEach(item.messages) { message in MessageBubble(message: message) }
+                                    ForEach(item.messages) { message in
+                                        MessageBubble(
+                                            message: message,
+                                            canDelete: message.authorID == state.currentUser?.id,
+                                            onDelete: { pendingMessageDeletion = message }
+                                        )
+                                    }
                                 }
                             }
 
@@ -99,6 +106,23 @@ struct CaseDetailView: View {
                 } onClose: {
                     photoPreview = nil
                 }
+            }
+            .confirmationDialog(
+                "Remove this comment?",
+                isPresented: Binding(
+                    get: { pendingMessageDeletion != nil },
+                    set: { if !$0 { pendingMessageDeletion = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove comment", role: .destructive) {
+                    guard let message = pendingMessageDeletion else { return }
+                    pendingMessageDeletion = nil
+                    Task { _ = await state.deleteMessage(caseID: caseID, messageID: message.id) }
+                }
+                Button("Cancel", role: .cancel) { pendingMessageDeletion = nil }
+            } message: {
+                Text("The comment will disappear from the conversation, but administrators will retain the record.")
             }
         }
     }
@@ -206,6 +230,8 @@ struct CaseDetailView: View {
 
 private struct MessageBubble: View {
     let message: ConsultationMessage
+    let canDelete: Bool
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
@@ -217,6 +243,14 @@ private struct MessageBubble: View {
                 HStack {
                     Text(message.author).font(.caption.bold())
                     Spacer()
+                    if canDelete {
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Remove comment")
+                    }
                     Text(message.createdAt, style: .relative).font(.caption2).foregroundStyle(AppTheme.muted)
                 }
                 Text(message.text).font(.body)
