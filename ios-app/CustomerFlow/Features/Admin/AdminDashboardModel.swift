@@ -82,8 +82,18 @@ final class AdminDashboardModel {
             async let agenciesRequest = repository.fetchAgencies()
             (users, cases, agencies) = try await (usersRequest, casesRequest, agenciesRequest)
         } catch {
+            guard !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        let cocoaError = error as NSError
+        return cocoaError.domain == NSURLErrorDomain && cocoaError.code == NSURLErrorCancelled
     }
 
     func clearFilters() {
