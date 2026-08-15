@@ -441,20 +441,15 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Photo \(position + 1)"
         view.backgroundColor = .black
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .cancel,
-            target: self,
+
+        let closeButton = controlButton(
+            title: "",
+            image: "xmark",
             action: #selector(cancel)
         )
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Send",
-            style: .done,
-            target: self,
-            action: #selector(send)
-        )
-
+        closeButton.configuration?.title = nil
+        closeButton.configuration?.imagePadding = 0
         let textButton = controlButton(
             title: "Text",
             image: "textformat",
@@ -465,16 +460,22 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
             image: "arrow.uturn.backward",
             action: #selector(undoDrawing)
         )
-        let controls = UIStackView(arrangedSubviews: [undoButton, textButton])
+        let controls = UIStackView(arrangedSubviews: [closeButton, undoButton, textButton])
         controls.axis = .horizontal
-        controls.distribution = .fillEqually
+        controls.distribution = .fill
         controls.spacing = 8
         controls.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.widthAnchor.constraint(equalToConstant: 46).isActive = true
+        undoButton.widthAnchor.constraint(equalTo: textButton.widthAnchor).isActive = true
 
         let controlsBackground = glassControlsBackground()
         controlsBackground.translatesAutoresizingMaskIntoConstraints = false
         controlsBackground.contentView.addSubview(controls)
         view.addSubview(controlsBackground)
+
+        let sendButton = makeSendButton()
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sendButton)
 
         imageView.image = sourceImage
         imageView.contentMode = .scaleAspectFit
@@ -490,9 +491,13 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
 
         NSLayoutConstraint.activate([
             controlsBackground.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            controlsBackground.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            controlsBackground.widthAnchor.constraint(equalToConstant: 220),
+            controlsBackground.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            controlsBackground.trailingAnchor.constraint(lessThanOrEqualTo: sendButton.leadingAnchor, constant: -8),
             controlsBackground.heightAnchor.constraint(equalToConstant: 58),
+            sendButton.centerYAnchor.constraint(equalTo: controlsBackground.centerYAnchor),
+            sendButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            sendButton.widthAnchor.constraint(equalToConstant: 88),
+            sendButton.heightAnchor.constraint(equalToConstant: 52),
             controls.topAnchor.constraint(equalTo: controlsBackground.contentView.topAnchor, constant: 6),
             controls.leadingAnchor.constraint(equalTo: controlsBackground.contentView.leadingAnchor, constant: 6),
             controls.trailingAnchor.constraint(equalTo: controlsBackground.contentView.trailingAnchor, constant: -6),
@@ -506,6 +511,14 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
             canvasView.trailingAnchor.constraint(equalTo: imageView.trailingAnchor),
             canvasView.bottomAnchor.constraint(equalTo: imageView.bottomAnchor)
         ])
+        let preferredControlsWidth = controlsBackground.widthAnchor.constraint(equalToConstant: 260)
+        preferredControlsWidth.priority = .defaultHigh
+        preferredControlsWidth.isActive = true
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: false)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -535,6 +548,24 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         configuration.baseForegroundColor = .label
         button.configuration = configuration
         button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+
+    private func makeSendButton() -> UIButton {
+        let button = UIButton(type: .system)
+        var configuration: UIButton.Configuration
+        if #available(iOS 26.0, *) {
+            configuration = .prominentGlass()
+        } else {
+            configuration = .filled()
+        }
+        configuration.title = "Send"
+        configuration.cornerStyle = .capsule
+        configuration.baseForegroundColor = .white
+        configuration.baseBackgroundColor = .systemTeal
+        button.configuration = configuration
+        button.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        button.addTarget(self, action: #selector(send), for: .touchUpInside)
         return button
     }
 
