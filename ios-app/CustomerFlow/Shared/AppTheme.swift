@@ -207,6 +207,16 @@ struct NativePhotoPreviewRequest: Identifiable {
     enum PreviewError: Error { case noPhotos, missingPhoto }
 }
 
+private final class NumberedPhotoPreviewItem: NSObject, QLPreviewItem {
+    let previewItemURL: URL?
+    let previewItemTitle: String?
+
+    init(url: URL, position: Int) {
+        previewItemURL = url
+        previewItemTitle = "\(position + 1)"
+    }
+}
+
 struct NativePhotoPreview: UIViewControllerRepresentable {
     let request: NativePhotoPreviewRequest
     let onEdited: (Data, String) -> Void
@@ -222,7 +232,7 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
         controller.delegate = context.coordinator
         controller.currentPreviewItemIndex = request.initialIndex
         context.coordinator.previewController = controller
-        controller.navigationItem.leftBarButtonItem = UIBarButtonItem(
+        controller.navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .close,
             target: context.coordinator,
             action: #selector(Coordinator.closePreview)
@@ -254,7 +264,7 @@ struct NativePhotoPreview: UIViewControllerRepresentable {
         func numberOfPreviewItems(in controller: QLPreviewController) -> Int { request.fileURLs.count }
 
         func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-            request.fileURLs[index] as NSURL
+            NumberedPhotoPreviewItem(url: request.fileURLs[index], position: index)
         }
 
         func previewController(
