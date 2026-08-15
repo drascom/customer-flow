@@ -408,7 +408,12 @@ private struct PhotoMarkupEditor: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UINavigationController, context: Context) {}
 }
 
-private final class PhotoMarkupViewController: UIViewController {
+private final class PhotoTextView: UITextView {
+    var currentFontSize: CGFloat = 32
+    var pinchStartFontSize: CGFloat = 32
+}
+
+private final class PhotoMarkupViewController: UIViewController, UITextViewDelegate, UIGestureRecognizerDelegate {
     private let sourceImage: UIImage
     private let position: Int
     private let onSend: (Data, String) -> Void
@@ -416,7 +421,7 @@ private final class PhotoMarkupViewController: UIViewController {
     private let imageView = UIImageView()
     private let canvasView = PKCanvasView()
     private let toolPicker = PKToolPicker()
-    private var textLabels: [UILabel] = []
+    private var textViews: [PhotoTextView] = []
 
     init(
         image: UIImage,
@@ -460,22 +465,16 @@ private final class PhotoMarkupViewController: UIViewController {
             image: "arrow.uturn.backward",
             action: #selector(undoDrawing)
         )
-        let markupLabel = controlButton(
-            title: "Pen & Color",
-            image: "pencil.tip.crop.circle",
-            action: #selector(focusCanvas)
-        )
-        markupLabel.configuration?.baseBackgroundColor = .systemOrange.withAlphaComponent(0.18)
-
-        let controls = UIStackView(arrangedSubviews: [textButton, undoButton, markupLabel])
+        let controls = UIStackView(arrangedSubviews: [undoButton, textButton])
         controls.axis = .horizontal
         controls.distribution = .fillEqually
         controls.spacing = 8
-        controls.layoutMargins = UIEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)
-        controls.isLayoutMarginsRelativeArrangement = true
-        controls.backgroundColor = .secondarySystemBackground
         controls.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(controls)
+
+        let controlsBackground = glassControlsBackground()
+        controlsBackground.translatesAutoresizingMaskIntoConstraints = false
+        controlsBackground.contentView.addSubview(controls)
+        view.addSubview(controlsBackground)
 
         imageView.image = sourceImage
         imageView.contentMode = .scaleAspectFit
@@ -487,13 +486,18 @@ private final class PhotoMarkupViewController: UIViewController {
         canvasView.drawingPolicy = .anyInput
         canvasView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(canvasView)
+        toolPicker.showsDrawingPolicyControls = false
 
         NSLayoutConstraint.activate([
-            controls.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            controls.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
-            imageView.topAnchor.constraint(equalTo: controls.bottomAnchor),
+            controlsBackground.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            controlsBackground.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            controlsBackground.widthAnchor.constraint(equalToConstant: 220),
+            controlsBackground.heightAnchor.constraint(equalToConstant: 58),
+            controls.topAnchor.constraint(equalTo: controlsBackground.contentView.topAnchor, constant: 6),
+            controls.leadingAnchor.constraint(equalTo: controlsBackground.contentView.leadingAnchor, constant: 6),
+            controls.trailingAnchor.constraint(equalTo: controlsBackground.contentView.trailingAnchor, constant: -6),
+            controls.bottomAnchor.constraint(equalTo: controlsBackground.contentView.bottomAnchor, constant: -6),
+            imageView.topAnchor.constraint(equalTo: controlsBackground.bottomAnchor, constant: 8),
             imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -518,14 +522,36 @@ private final class PhotoMarkupViewController: UIViewController {
 
     private func controlButton(title: String, image: String, action: Selector) -> UIButton {
         let button = UIButton(type: .system)
-        var configuration = UIButton.Configuration.tinted()
+        var configuration: UIButton.Configuration
+        if #available(iOS 26.0, *) {
+            configuration = .clearGlass()
+        } else {
+            configuration = .tinted()
+        }
         configuration.title = title
         configuration.image = UIImage(systemName: image)
         configuration.imagePadding = 6
         configuration.cornerStyle = .capsule
+        configuration.baseForegroundColor = .label
         button.configuration = configuration
         button.addTarget(self, action: action, for: .touchUpInside)
         return button
+    }
+
+    private func glassControlsBackground() -> UIVisualEffectView {
+        let effect: UIVisualEffect
+        if #available(iOS 26.0, *) {
+            let glass = UIGlassEffect(style: .regular)
+            glass.tintColor = UIColor.white.withAlphaComponent(0.2)
+            glass.isInteractive = true
+            effect = glass
+        } else {
+            effect = UIBlurEffect(style: .systemUltraThinMaterialLight)
+        }
+        let background = UIVisualEffectView(effect: effect)
+        background.layer.cornerRadius = 29
+        background.clipsToBounds = true
+        return background
     }
 
     @objc private func undoDrawing() {
@@ -539,55 +565,142 @@ private final class PhotoMarkupViewController: UIViewController {
     }
 
     @objc private func addText() {
-        let alert = UIAlertController(title: "Add Text", message: nil, preferredStyle: .alert)
-        alert.addTextField { field in
-            field.placeholder = "Type a note"
-            field.autocapitalizationType = .sentences
-        }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
-            guard let self,
-                  let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty else { return }
-            addTextLabel(text)
-        })
-        present(alert, animated: true)
-    }
-
-    private func addTextLabel(_ text: String) {
         view.layoutIfNeeded()
-        let label = UILabel()
-        label.text = text
-        label.textColor = .white
-        label.font = .systemFont(ofSize: 26, weight: .semibold)
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.backgroundColor = UIColor.black.withAlphaComponent(0.58)
-        label.layer.cornerRadius = 10
-        label.clipsToBounds = true
-        label.sizeToFit()
-        label.frame.size.width = min(label.frame.width + 28, canvasView.bounds.width * 0.82)
-        label.frame.size.height += 18
-        label.center = CGPoint(x: canvasView.bounds.midX, y: canvasView.bounds.midY)
-        label.isUserInteractionEnabled = true
-        label.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(moveText(_:))))
-        canvasView.addSubview(label)
-        textLabels.append(label)
+        let textView = PhotoTextView()
+        textView.delegate = self
+        textView.textColor = .white
+        textView.tintColor = .systemOrange
+        textView.font = .systemFont(ofSize: textView.currentFontSize, weight: .semibold)
+        textView.textAlignment = .center
+        textView.backgroundColor = UIColor.black.withAlphaComponent(0.58)
+        textView.layer.cornerRadius = 10
+        textView.layer.borderColor = UIColor.systemOrange.cgColor
+        textView.layer.borderWidth = 2
+        textView.clipsToBounds = true
+        textView.isScrollEnabled = false
+        textView.panGestureRecognizer.isEnabled = false
+        textView.keyboardAppearance = .dark
+        textView.autocapitalizationType = .sentences
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+        textView.textContainer.lineFragmentPadding = 0
+
+        let keyboardToolbar = UIToolbar()
+        keyboardToolbar.sizeToFit()
+        keyboardToolbar.items = [
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(finishTextEditing))
+        ]
+        textView.inputAccessoryView = keyboardToolbar
+
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(moveText(_:)))
+        pan.delegate = self
+        textView.addGestureRecognizer(pan)
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(resizeText(_:)))
+        pinch.delegate = self
+        textView.addGestureRecognizer(pinch)
+
+        textView.frame = CGRect(origin: .zero, size: CGSize(width: 160, height: 58))
+        let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
+        textView.center = CGPoint(x: imageRect.midX, y: imageRect.midY)
+        canvasView.addSubview(textView)
+        textViews.append(textView)
         canvasView.undoManager?.registerUndo(withTarget: self) { target in
-            target.removeTextLabel(label)
+            target.removeTextView(textView)
         }
+        textView.becomeFirstResponder()
     }
 
-    private func removeTextLabel(_ label: UILabel) {
-        textLabels.removeAll { $0 === label }
-        label.removeFromSuperview()
+    @objc private func finishTextEditing() {
+        view.endEditing(true)
+        focusCanvas()
+    }
+
+    private func removeTextView(_ textView: PhotoTextView) {
+        textViews.removeAll { $0 === textView }
+        textView.removeFromSuperview()
     }
 
     @objc private func moveText(_ gesture: UIPanGestureRecognizer) {
-        guard let label = gesture.view else { return }
+        guard let textView = gesture.view as? PhotoTextView else { return }
         let translation = gesture.translation(in: canvasView)
-        label.center = CGPoint(x: label.center.x + translation.x, y: label.center.y + translation.y)
+        textView.center = CGPoint(
+            x: textView.center.x + translation.x,
+            y: textView.center.y + translation.y
+        )
+        keepTextInsideImage(textView)
         gesture.setTranslation(.zero, in: canvasView)
+    }
+
+    @objc private func resizeText(_ gesture: UIPinchGestureRecognizer) {
+        guard let textView = gesture.view as? PhotoTextView else { return }
+        if gesture.state == .began {
+            textView.pinchStartFontSize = textView.currentFontSize
+        }
+        textView.currentFontSize = min(max(textView.pinchStartFontSize * gesture.scale, 16), 96)
+        textView.font = .systemFont(ofSize: textView.currentFontSize, weight: .semibold)
+        resizeTextViewToFit(textView)
+    }
+
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        textView.layer.borderWidth = 2
+        toolPicker.setVisible(false, forFirstResponder: canvasView)
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        guard let textView = textView as? PhotoTextView else { return }
+        resizeTextViewToFit(textView)
+    }
+
+    func textViewDidEndEditing(_ textView: UITextView) {
+        guard let textView = textView as? PhotoTextView else { return }
+        textView.layer.borderWidth = 0
+        if textView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            removeTextView(textView)
+        }
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let textView = gestureRecognizer.view as? PhotoTextView else { return true }
+        if gestureRecognizer is UIPanGestureRecognizer {
+            return !textView.isFirstResponder
+        }
+        return true
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer is UIPinchGestureRecognizer || otherGestureRecognizer is UIPinchGestureRecognizer
+    }
+
+    private func resizeTextViewToFit(_ textView: PhotoTextView) {
+        let center = textView.center
+        let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
+        let maximumWidth = max(imageRect.width * 0.86, 120)
+        let displayText = textView.text.isEmpty ? "Type here" : textView.text ?? ""
+        let textBounds = (displayText as NSString).boundingRect(
+            with: CGSize(width: maximumWidth - 20, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: textView.font as Any],
+            context: nil
+        )
+        textView.bounds.size = CGSize(
+            width: min(max(ceil(textBounds.width) + 20, 120), maximumWidth),
+            height: max(ceil(textBounds.height) + 16, 52)
+        )
+        textView.center = center
+        keepTextInsideImage(textView)
+    }
+
+    private func keepTextInsideImage(_ textView: PhotoTextView) {
+        let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
+        let horizontalInset = min(textView.bounds.width / 2, imageRect.width / 2)
+        let verticalInset = min(textView.bounds.height / 2, imageRect.height / 2)
+        textView.center = CGPoint(
+            x: min(max(textView.center.x, imageRect.minX + horizontalInset), imageRect.maxX - horizontalInset),
+            y: min(max(textView.center.y, imageRect.minY + verticalInset), imageRect.maxY - verticalInset)
+        )
     }
 
     @objc private func cancel() {
@@ -595,6 +708,7 @@ private final class PhotoMarkupViewController: UIViewController {
     }
 
     @objc private func send() {
+        view.endEditing(true)
         view.layoutIfNeeded()
         let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
         guard imageRect.width > 0, imageRect.height > 0 else { return }
@@ -607,14 +721,14 @@ private final class PhotoMarkupViewController: UIViewController {
         let markedImage = renderer.image { _ in
             sourceImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
             drawingImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
-            for label in textLabels {
+            for textView in textViews {
                 let frame = CGRect(
-                    x: (label.frame.minX - imageRect.minX) * drawingScale,
-                    y: (label.frame.minY - imageRect.minY) * drawingScale,
-                    width: label.frame.width * drawingScale,
-                    height: label.frame.height * drawingScale
+                    x: (textView.frame.minX - imageRect.minX) * drawingScale,
+                    y: (textView.frame.minY - imageRect.minY) * drawingScale,
+                    width: textView.frame.width * drawingScale,
+                    height: textView.frame.height * drawingScale
                 )
-                label.drawHierarchy(in: frame, afterScreenUpdates: true)
+                textView.drawHierarchy(in: frame, afterScreenUpdates: true)
             }
         }
         guard let data = markedImage.jpegData(compressionQuality: 0.92) else { return }
