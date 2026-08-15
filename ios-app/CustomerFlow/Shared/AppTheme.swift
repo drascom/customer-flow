@@ -460,6 +460,8 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
             image: "arrow.uturn.backward",
             action: #selector(undoDrawing)
         )
+        compactTitle(on: undoButton)
+        compactTitle(on: textButton)
         let controls = UIStackView(arrangedSubviews: [closeButton, undoButton, textButton])
         controls.axis = .horizontal
         controls.distribution = .fill
@@ -567,6 +569,19 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         button.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         button.addTarget(self, action: #selector(send), for: .touchUpInside)
         return button
+    }
+
+    private func compactTitle(on button: UIButton) {
+        button.configuration?.imagePadding = 3
+        button.configuration?.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            pointSize: 15,
+            weight: .medium
+        )
+        button.configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+            var attributes = attributes
+            attributes.font = .systemFont(ofSize: 13, weight: .semibold)
+            return attributes
+        }
     }
 
     private func glassControlsBackground() -> UIVisualEffectView {
