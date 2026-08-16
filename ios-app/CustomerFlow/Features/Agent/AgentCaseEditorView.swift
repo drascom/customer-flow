@@ -109,7 +109,7 @@ struct AgentCasesView: View {
                                 .accessibilityLabel("Close case details")
                             }
                         }
-                        .toolbarBackground(AppTheme.surfaceStrong, for: .navigationBar)
+                        .toolbarBackground(AppTheme.opaqueSurface, for: .navigationBar)
                         .toolbarBackground(.visible, for: .navigationBar)
                 }
                 .presentationDetents([.fraction(0.97)])
@@ -1073,6 +1073,8 @@ struct AgentCaseEditorView: View {
                         onTap: photoPreviewAction(for: photoID)
                     )
                         .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(AppTheme.border, lineWidth: 1)

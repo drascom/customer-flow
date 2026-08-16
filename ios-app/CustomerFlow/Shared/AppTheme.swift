@@ -31,6 +31,10 @@ enum AppTheme {
         light: UIColor(white: 1, alpha: 0.86),
         dark: UIColor(red: 20 / 255, green: 14 / 255, blue: 10 / 255, alpha: 0.9)
     )
+    static let opaqueSurface = adaptive(
+        light: UIColor(white: 1, alpha: 1),
+        dark: UIColor(red: 20 / 255, green: 14 / 255, blue: 10 / 255, alpha: 1)
+    )
     static let inset = adaptive(
         light: UIColor(red: 245 / 255, green: 239 / 255, blue: 231 / 255, alpha: 0.8),
         dark: UIColor(red: 31 / 255, green: 21 / 255, blue: 15 / 255, alpha: 0.84)
@@ -115,41 +119,45 @@ struct CasePhotoView: View {
     @State private var isLoading = true
 
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .accessibilityLabel("Patient photo \(index + 1)")
-            } else if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(AppTheme.inset)
-            } else {
-                PhotoUnavailableView()
+        GeometryReader { proxy in
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .accessibilityLabel("Patient photo \(index + 1)")
+                    } else if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(AppTheme.inset)
+                    } else {
+                        PhotoUnavailableView()
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+
+                if image != nil, let onDelete {
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(.red.opacity(0.88), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(8)
+                    .accessibilityLabel("Remove photo \(index + 1)")
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .onTapGesture {
             guard image != nil else { return }
             onTap?()
-        }
-        .overlay(alignment: .topTrailing) {
-            if image != nil, let onDelete {
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash.fill")
-                        .font(.caption.bold())
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .background(.red.opacity(0.88), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .padding(8)
-                .accessibilityLabel("Remove photo \(index + 1)")
-            }
         }
         .task(id: "\(photoID ?? "missing"):\(reloadToken)") {
             image = nil
