@@ -399,6 +399,7 @@ class APITestCase(unittest.TestCase):
         with urlopen(root + "/api/v1/admin") as response:
             self.assertEqual(200, response.status)
             self.assertEqual(root + "/admin", response.url)
+            self.assertIn("img-src 'self' data: blob:", response.headers["Content-Security-Policy"])
             body = response.read()
             self.assertIn(b"Welcome back", body)
             self.assertIn(b'id="loginForm"', body)
