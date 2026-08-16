@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "customer-flow-agency-mcp"
 version = "0.1.0"
 description = "Least-privilege MCP gateway for Customer Flow agencies"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
   "mcp==1.29.0",
 ]
