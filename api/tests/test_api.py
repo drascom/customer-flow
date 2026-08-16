@@ -6,6 +6,7 @@ import unittest
 import uuid
 from datetime import date
 from http.client import HTTPConnection
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -81,6 +82,62 @@ class APITestCase(unittest.TestCase):
         self.assertIn("agency-mcp", health["capabilities"])
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
+
+    def test_public_mcp_path_proxies_only_to_loopback_service(self):
+        received = {}
+
+        class MCPStub(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                size = int(self.headers.get("Content-Length", "0"))
+                received.update({
+                    "path": self.path,
+                    "authorization": self.headers.get("Authorization"),
+                    "protocol": self.headers.get("MCP-Protocol-Version"),
+                    "body": self.rfile.read(size),
+                })
+                payload = b'{"jsonrpc":"2.0","result":{"ok":true},"id":1}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("MCP-Session-Id", "test-session")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, _format, *_args):
+                return
+
+        upstream = ThreadingHTTPServer(("127.0.0.1", 0), MCPStub)
+        thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        thread.start()
+        previous = os.environ.get("CF_MCP_UPSTREAM_URL")
+        os.environ["CF_MCP_UPSTREAM_URL"] = f"http://127.0.0.1:{upstream.server_port}/mcp"
+        try:
+            origin = self.base.removesuffix("/api/v1")
+            request = Request(
+                origin + "/mcp?trace=1",
+                data=b"{}",
+                headers={
+                    "Authorization": "Bearer cfmcp_test-token",
+                    "Content-Type": "application/json",
+                    "MCP-Protocol-Version": "2025-11-25",
+                },
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(200, response.status)
+                self.assertEqual("test-session", response.headers["MCP-Session-Id"])
+                self.assertTrue(json.load(response)["result"]["ok"])
+            self.assertEqual("/mcp?trace=1", received["path"])
+            self.assertEqual("Bearer cfmcp_test-token", received["authorization"])
+            self.assertEqual("2025-11-25", received["protocol"])
+            self.assertEqual(b"{}", received["body"])
+        finally:
+            if previous is None:
+                os.environ.pop("CF_MCP_UPSTREAM_URL", None)
+            else:
+                os.environ["CF_MCP_UPSTREAM_URL"] = previous
+            upstream.shutdown()
+            upstream.server_close()
 
     def test_agency_mcp_token_is_admin_only_hashed_and_rotation_invalidates_old_token(self):
         admin = self.login("admin", "demo123")

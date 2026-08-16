@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import hmac
+import http.client
 import json
 import os
 import secrets
@@ -2115,6 +2116,8 @@ class APIHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
+            if path == "/mcp":
+                return self._proxy_mcp(method, parsed.query)
             self._enforce_mcp_route_scope(method, path)
             if method == "GET" and path in {"/", f"{API_PREFIX}/admin"}:
                 return self._redirect("/admin")
@@ -2282,6 +2285,50 @@ class APIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.log_error("Unhandled API error: %r", exc)
             self._json(500, {"error": {"code": "internal_error", "message": "The server could not complete the request."}})
+
+    def _proxy_mcp(self, method: str, query: str) -> None:
+        """Expose the loopback MCP service through the existing public API origin."""
+        if method not in {"GET", "POST", "DELETE"}:
+            raise APIError(405, "method_not_allowed", "This MCP method is not supported.")
+        length = self._content_length()
+        if length > 16 * 1024 * 1024:
+            raise APIError(413, "body_too_large", "The MCP request body is too large.")
+        body = self.rfile.read(length) if length else None
+        upstream = urlparse(os.getenv("CF_MCP_UPSTREAM_URL", "http://127.0.0.1:8091/mcp"))
+        if upstream.scheme != "http" or upstream.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise RuntimeError("CF_MCP_UPSTREAM_URL must use loopback HTTP.")
+        target = upstream.path or "/mcp"
+        if query:
+            target = f"{target}?{query}"
+        request_headers = {
+            name: value
+            for name in (
+                "Accept", "Authorization", "Content-Type", "Last-Event-ID",
+                "MCP-Protocol-Version", "Mcp-Session-Id",
+            )
+            if (value := self.headers.get(name))
+        }
+        connection = http.client.HTTPConnection(
+            upstream.hostname, upstream.port or 80, timeout=65
+        )
+        try:
+            connection.request(method, target, body=body, headers=request_headers)
+            response = connection.getresponse()
+            payload = response.read()
+            self.send_response(response.status)
+            for name in (
+                "Content-Type", "Allow", "MCP-Session-Id", "WWW-Authenticate",
+            ):
+                if value := response.getheader(name):
+                    self.send_header(name, value)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except (OSError, http.client.HTTPException):
+            raise APIError(503, "mcp_unavailable", "The MCP service is unavailable.") from None
+        finally:
+            connection.close()
 
     @staticmethod
     def _mcp_route_allowed(method: str, path: str) -> bool:
