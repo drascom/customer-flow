@@ -58,11 +58,10 @@ struct AgentCasesView: View {
                             } label: {
                                 Label("New", systemImage: "plus")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(AppTheme.ink)
+                                    .foregroundStyle(AppTheme.accentInk)
                                     .padding(.horizontal, 14)
                                     .frame(minHeight: 40)
-                                    .background(AppTheme.surfaceStrong, in: Capsule())
-                                    .overlay(Capsule().stroke(AppTheme.border))
+                                    .background(AppTheme.accent, in: Capsule())
                             }
                             .buttonStyle(.plain)
                         }
@@ -133,10 +132,11 @@ struct AgentCasesView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(AppTheme.accentInk)
+            .foregroundStyle(AppTheme.ink)
             .padding(.horizontal, 14)
             .frame(minWidth: 190, maxWidth: .infinity, minHeight: 40)
-            .background(AppTheme.accent, in: Capsule())
+            .background(AppTheme.surfaceStrong, in: Capsule())
+            .overlay(Capsule().stroke(AppTheme.border))
         }
         .buttonStyle(.plain)
     }
