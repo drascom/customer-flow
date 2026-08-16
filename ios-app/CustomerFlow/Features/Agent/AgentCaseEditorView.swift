@@ -551,33 +551,16 @@ struct AgentCaseEditorView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button("Cases", systemImage: "chevron.left") { dismiss() }
-                .font(.caption.weight(.semibold))
-
-            if isEditMode {
-                HStack(spacing: 10) {
-                    Text("Edit case")
+        Group {
+            if !isEditMode {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Create case")
                         .font(.headline)
                         .foregroundStyle(AppTheme.ink)
-                    Spacer()
-                    if let editCase {
-                        Text(editCase.reference)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(AppTheme.muted)
-                    }
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    createProgress
                 }
-
-                Label(statusText, systemImage: "circle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(returnedToDoctor ? .orange : .blue)
-            } else {
-                Text("Create case")
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                createProgress
             }
         }
     }
@@ -969,70 +952,109 @@ struct AgentCaseEditorView: View {
     }
 
     private var caseDetails: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(patientName)
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.ink)
-                Spacer()
-                if canEditCase {
-                    Button(detailsExpanded ? "Done" : "Edit", systemImage: detailsExpanded ? "checkmark" : "pencil") {
-                        withAnimation(.easeInOut(duration: 0.2)) { detailsExpanded.toggle() }
+        VStack(spacing: 0) {
+            caseStatusBand
+
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(patientName)
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.ink)
+                    Spacer()
+                    if canEditCase {
+                        Button(detailsExpanded ? "Done" : "Edit", systemImage: detailsExpanded ? "checkmark" : "pencil") {
+                            withAnimation(.easeInOut(duration: 0.2)) { detailsExpanded.toggle() }
+                        }
+                        .font(.caption.weight(.semibold))
                     }
-                    .font(.caption.weight(.semibold))
                 }
-            }
 
-            if let editCase {
-                Label("Added by \(editCase.agentName)", systemImage: "person.crop.circle")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.muted)
-            }
+                if let editCase, !canEditCase {
+                    Label("Added by \(editCase.agentName)", systemImage: "person.crop.circle")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
 
-            Text(agentNote)
-                .font(.body)
-                .foregroundStyle(AppTheme.ink.opacity(0.86))
-                .fixedSize(horizontal: false, vertical: true)
+                Text(agentNote)
+                    .font(.body)
+                    .foregroundStyle(AppTheme.ink.opacity(0.86))
+                    .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
-                summaryMetric("Estimated grafts", grafts)
-                summaryMetric("Estimated price", AppCurrency.amount(price))
-            }
+                HStack(spacing: 10) {
+                    summaryMetric("Estimated grafts", grafts)
+                    summaryMetric("Estimated price", AppCurrency.amount(price))
+                }
 
-            if detailsExpanded {
-                Divider()
-                VStack(spacing: 12) {
-                    labeledField("Patient name", required: true) {
-                        TextField("Patient name", text: $patientName)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    HStack(spacing: 10) {
-                        labeledField("Estimated grafts", required: true) {
-                            TextField("3,200", text: $grafts)
-                                .keyboardType(.numberPad)
+                if detailsExpanded {
+                    Divider()
+                    VStack(spacing: 12) {
+                        labeledField("Patient name", required: true) {
+                            TextField("Patient name", text: $patientName)
                                 .textFieldStyle(.roundedBorder)
                         }
-                        labeledField("Estimated price", required: true) {
-                            HStack(spacing: 6) {
-                                Text(AppCurrency.symbol)
-                                    .font(.headline)
-                                    .foregroundStyle(AppTheme.ink)
-                                TextField("2,850", text: $price)
-                                    .keyboardType(.decimalPad)
+                        HStack(spacing: 10) {
+                            labeledField("Estimated grafts", required: true) {
+                                TextField("3,200", text: $grafts)
+                                    .keyboardType(.numberPad)
                                     .textFieldStyle(.roundedBorder)
                             }
+                            labeledField("Estimated price", required: true) {
+                                HStack(spacing: 6) {
+                                    Text(AppCurrency.symbol)
+                                        .font(.headline)
+                                        .foregroundStyle(AppTheme.ink)
+                                    TextField("2,850", text: $price)
+                                        .keyboardType(.decimalPad)
+                                        .textFieldStyle(.roundedBorder)
+                                }
+                            }
                         }
+                        patientProfileFields
                     }
-                    patientProfileFields
+                } else if editCase?.patient.hasProfileDetails == true {
+                    Divider()
+                    compactPatientProfile
                 }
-            } else if editCase?.patient.hasProfileDetails == true {
-                Divider()
-                compactPatientProfile
             }
+            .padding(14)
         }
-        .padding(14)
-        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+    }
+
+    private var caseStatusBand: some View {
+        HStack(spacing: 8) {
+            Image(systemName: caseStatusIcon)
+            Text(editCase?.status.title ?? statusText)
+                .fontWeight(.bold)
+            Spacer(minLength: 8)
+        }
+        .font(.subheadline)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(caseStatusColor)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var caseStatusIcon: String {
+        switch editCase?.status {
+        case .waiting: "clock.fill"
+        case .answered: "exclamationmark.circle.fill"
+        case .closed: "checkmark.circle.fill"
+        case nil: "circle.fill"
+        }
+    }
+
+    private var caseStatusColor: Color {
+        switch editCase?.status {
+        case .waiting: AppTheme.accent
+        case .answered: Color(red: 0.78, green: 0.16, blue: 0.14)
+        case .closed: Color(red: 0.08, green: 0.52, blue: 0.32)
+        case nil: AppTheme.brand
+        }
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {
@@ -1078,7 +1100,7 @@ struct AgentCaseEditorView: View {
                     .font(.caption)
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 10)], spacing: 10) {
                 if photoCount == 0 {
                     if canEditCase {
                         PhotoSourceButton(
@@ -1088,10 +1110,10 @@ struct AgentCaseEditorView: View {
                             EmptyPhotoAddCard()
                         }
                         .buttonStyle(.plain)
-                        .frame(height: 92)
+                        .frame(height: 108)
                     } else {
                         NoPhotosView()
-                            .frame(maxWidth: .infinity, minHeight: 92)
+                            .frame(maxWidth: .infinity, minHeight: 108)
                     }
                 }
                 ForEach(0..<photoCount, id: \.self) { index in
@@ -1103,8 +1125,7 @@ struct AgentCaseEditorView: View {
                         onDelete: canEditCase ? photoDeleteAction(for: photoID) : nil,
                         onTap: photoPreviewAction(for: photoID)
                     )
-                        .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(maxWidth: .infinity, minHeight: 108, maxHeight: 108)
                         .overlay(alignment: .topLeading) {
                             Text("\(index + 1)")
                                 .font(.caption2.bold()).foregroundStyle(.white)

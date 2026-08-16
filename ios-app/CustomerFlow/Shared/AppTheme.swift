@@ -131,7 +131,8 @@ struct CasePhotoView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
-        .contentShape(Rectangle())
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .onTapGesture {
             guard image != nil else { return }
             onTap?()
@@ -142,11 +143,11 @@ struct CasePhotoView: View {
                     Image(systemName: "trash.fill")
                         .font(.caption.bold())
                         .foregroundStyle(.white)
-                        .padding(7)
+                        .frame(width: 36, height: 36)
                         .background(.red.opacity(0.88), in: Circle())
                 }
                 .buttonStyle(.plain)
-                .padding(6)
+                .padding(8)
                 .accessibilityLabel("Remove photo \(index + 1)")
             }
         }
