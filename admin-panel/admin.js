@@ -146,15 +146,9 @@ function renderCases() {
     const options = [`<option value="">Unassigned</option>`, ...doctors.map((doctor) =>
       `<option value="${escapeHTML(doctor.id)}" ${doctor.id === item.doctorID ? "selected" : ""}>${escapeHTML(doctor.displayName)}</option>`
     )].join("");
-    const profile = [
-      item.age != null ? `${item.age} years` : "",
-      item.gender ? String(item.gender).replaceAll("_", " ") : "",
-      item.occupation || "",
-      item.patientAddress || ""
-    ].filter(Boolean).join(" · ");
     return `<tr>
-      <td><div class="identity"><strong>${escapeHTML(item.patientName)}</strong><small>${escapeHTML(profile || item.patientID)}</small></div></td>
-      <td><div class="identity"><strong>${escapeHTML(item.reference)}</strong><small>${item.messageCount} messages</small></div></td>
+      <td><div class="identity"><strong>${escapeHTML(item.patientName)}</strong><small>${escapeHTML(item.reference)}</small></div></td>
+      <td>${item.messageCount}</td>
       <td><span class="status ${escapeHTML(item.status)}">${statusTitle(item.status)}</span></td>
       <td><div class="identity"><strong>${escapeHTML(item.agentName)}</strong><small>${escapeHTML(item.agencyName || "No agency")}</small></div></td>
       <td>${state.user.role === "manager"

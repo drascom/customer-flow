@@ -174,15 +174,6 @@ private struct AgentCaseListCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            statusBand
-                .onTapGesture {
-                    if isCollapsible {
-                        onToggle()
-                    } else {
-                        onOpen()
-                    }
-                }
-
             Group {
                 if isCollapsible {
                     Button(action: onToggle) { summaryHeader }
@@ -193,6 +184,15 @@ private struct AgentCaseListCard: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
+
+            statusBand
+                .onTapGesture {
+                    if isCollapsible {
+                        onToggle()
+                    } else {
+                        onOpen()
+                    }
+                }
 
             if isExpanded {
                 Group {
@@ -499,7 +499,7 @@ struct AgentCaseEditorView: View {
                         statusText = "Different patient confirmed · New Patient ID"
                     }
                 )
-                .presentationDetents([.medium])
+                .presentationDetents([.fraction(0.78)])
                 .presentationDragIndicator(.visible)
             }
         }
@@ -682,7 +682,13 @@ struct AgentCaseEditorView: View {
                         .font(.caption)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 12),
+                        GridItem(.flexible(), spacing: 12)
+                    ],
+                    spacing: 12
+                ) {
                     if pendingPhotos.isEmpty {
                         PhotoSourceButton(
                             selectedPhotos: $selectedPhotos,
@@ -691,15 +697,14 @@ struct AgentCaseEditorView: View {
                             EmptyPhotoAddCard()
                         }
                         .buttonStyle(.plain)
-                        .frame(height: 92)
+                        .frame(height: 140)
                     }
                     ForEach(Array(pendingPhotos.enumerated()), id: \.element.id) { index, photo in
                         PendingPhotoThumbnail(photo: photo, index: index) {
                             pendingPhotos.removeAll { $0.id == photo.id }
                             photoCount = pendingPhotos.count
                         }
-                            .frame(height: 92)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .frame(height: 140)
                     }
                 }
             }
@@ -1737,18 +1742,20 @@ private struct PendingPhotoThumbnail: View {
                 PhotoUnavailableView()
             }
         }
-        .clipped()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(alignment: .topTrailing) {
             Button(role: .destructive, action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.caption.bold())
+                    .font(.headline.bold())
                     .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 44)
                     .background(.red, in: Circle())
                     .shadow(radius: 2)
             }
             .buttonStyle(.plain)
-            .padding(6)
+            .contentShape(Circle())
+            .padding(8)
             .accessibilityLabel("Remove selected photo \(index + 1)")
         }
         .accessibilityLabel("Selected patient photo \(index + 1)")

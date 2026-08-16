@@ -172,15 +172,6 @@ private struct CaseCardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            statusBand
-                .onTapGesture {
-                    if isCollapsible {
-                        onToggle()
-                    } else {
-                        onOpen()
-                    }
-                }
-
             Group {
                 if isCollapsible {
                     Button(action: onToggle) {
@@ -193,6 +184,15 @@ private struct CaseCardView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
+
+            statusBand
+                .onTapGesture {
+                    if isCollapsible {
+                        onToggle()
+                    } else {
+                        onOpen()
+                    }
+                }
 
             if isExpanded {
                 Group {

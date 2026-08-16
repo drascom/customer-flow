@@ -24,16 +24,22 @@ struct PatientMatchSheet: View {
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
                 if screen != .existingConsultation {
-                    Button("Cancel") { dismiss() }
-                        .font(.subheadline.weight(.semibold))
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.subheadline.bold())
+                            .frame(width: 38, height: 38)
+                            .background(AppTheme.surface, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel")
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 22)
-            .padding(.bottom, 10)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
 
             ScrollView {
-                VStack(spacing: 18) {
+                VStack(spacing: 14) {
                     switch screen {
                     case .possibleMatch:
                         possibleMatch
@@ -44,7 +50,7 @@ struct PatientMatchSheet: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 28)
+                .padding(.bottom, 20)
             }
             .scrollIndicators(.hidden)
         }
@@ -66,14 +72,14 @@ struct PatientMatchSheet: View {
     }
 
     private var possibleMatch: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 14) {
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Image(systemName: "person.crop.square.fill")
                     .resizable()
                     .scaledToFit()
                     .foregroundStyle(AppTheme.brand.opacity(0.75))
-                    .frame(width: 64, height: 64)
-                    .background(AppTheme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                    .frame(width: 52, height: 52)
+                    .background(AppTheme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(candidate.name).font(.headline)
                     if candidate.createdByAnotherAgent {
@@ -88,19 +94,14 @@ struct PatientMatchSheet: View {
                 }
                 Spacer()
             }
-            .padding(14)
+            .padding(12)
             .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
 
             confidentialGallery
 
             if candidate.createdByAnotherAgent {
-                Text("This patient may already be registered and has previously received a consultation.")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text("Is this the same patient?")
+                Text("A previous consultation was found. Is this the same patient?")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -144,7 +145,7 @@ struct PatientMatchSheet: View {
                 photoCount: max(candidate.photoCount, 1)
             )
         }
-        .frame(height: 190)
+        .frame(height: 180)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(alignment: .bottomLeading) {
             Button {
