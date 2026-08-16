@@ -11,6 +11,7 @@ __pycache__/
 *.py[cod]
 .venv/
 *.egg-info/
+mcp-server/build/
 api/data/*.sqlite3*
 api/media/*
 !api/media/.gitkeep
