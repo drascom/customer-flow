@@ -12,6 +12,8 @@ struct CaseDetailView: View {
     @State private var isSending = false
     @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var pendingMessageDeletion: ConsultationMessage?
+    @State private var pendingSentMessageID: UUID?
+    @State private var messageScrollTarget: UUID?
 
     private var item: ConsultationCase? { state.cases.first { $0.id == caseID } }
     private var responseReady: Bool {
@@ -20,60 +22,73 @@ struct CaseDetailView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                if let item {
-                    VStack(alignment: .leading, spacing: 16) {
-                        caseHeader(item)
-                        photoGallery(item)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if let item {
+                        VStack(alignment: .leading, spacing: 16) {
+                            caseHeader(item)
+                            photoGallery(item)
 
-                        detailSection("Patient need") {
-                            Text(item.agentNote)
-                                .font(.body)
-                                .foregroundStyle(AppTheme.ink)
-                        }
+                            detailSection("Patient need") {
+                                Text(item.agentNote)
+                                    .font(.body)
+                                    .foregroundStyle(AppTheme.ink)
+                            }
 
-                        agentEstimate(item)
+                            agentEstimate(item)
 
-                        if item.patient.hasProfileDetails {
-                            patientDetails(item.patient)
-                        }
+                            if item.patient.hasProfileDetails {
+                                patientDetails(item.patient)
+                            }
 
-                        if let finalGrafts = item.finalGrafts,
-                           let finalPrice = item.finalPrice {
-                            detailSection("Final agreed plan") {
-                                HStack(spacing: 10) {
-                                    detailMetric("Final grafts", finalGrafts)
-                                    detailMetric("Final price", AppCurrency.amount(finalPrice))
+                            if let finalGrafts = item.finalGrafts,
+                               let finalPrice = item.finalPrice {
+                                detailSection("Final agreed plan") {
+                                    HStack(spacing: 10) {
+                                        detailMetric("Final grafts", finalGrafts)
+                                        detailMetric("Final price", AppCurrency.amount(finalPrice))
+                                    }
                                 }
                             }
-                        }
 
-                        detailSection("Conversation") {
-                            VStack(spacing: 10) {
-                                ForEach(item.messages) { message in
-                                    MessageBubble(
-                                        message: message,
-                                        canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
-                                        onDelete: { pendingMessageDeletion = message }
-                                    )
+                            detailSection("Conversation") {
+                                VStack(spacing: 10) {
+                                    ForEach(item.messages) { message in
+                                        MessageBubble(
+                                            message: message,
+                                            canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
+                                            onDelete: { pendingMessageDeletion = message }
+                                        )
+                                        .id(message.id)
+                                    }
                                 }
                             }
-                        }
 
-                        if item.status != .closed {
-                            Text("Reply below to send your assessment to the agent.")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.muted)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.bottom, 4)
-                        } else {
-                            detailSection("Current state") {
-                                Text("The agent confirmed and closed this case.")
+                            if item.status != .closed {
+                                Text("Reply below to send your assessment to the agent.")
+                                    .font(.caption)
                                     .foregroundStyle(AppTheme.muted)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.bottom, 4)
+                            } else {
+                                detailSection("Current state") {
+                                    Text("The agent confirmed and closed this case.")
+                                        .foregroundStyle(AppTheme.muted)
+                                }
                             }
                         }
+                        .padding()
                     }
-                    .padding()
+                }
+                .onChange(of: messageScrollTarget) { _, target in
+                    guard let target else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
+                        messageScrollTarget = nil
+                    }
                 }
             }
             .background(AppTheme.background)
@@ -105,9 +120,23 @@ struct CaseDetailView: View {
                         }
                 }
             }
-            .fullScreenCover(item: $photoPreview) { request in
-                NativePhotoPreview(request: request) { data, contentType in
-                    Task { await state.sendPhotoMessage(caseID: request.caseID, data: data, contentType: contentType) }
+            .fullScreenCover(item: $photoPreview, onDismiss: {
+                messageScrollTarget = pendingSentMessageID
+                pendingSentMessageID = nil
+            }) { request in
+                NativePhotoPreview(request: request) { data, contentType, note in
+                    let sent = await state.sendPhotoMessage(
+                        caseID: request.caseID,
+                        data: data,
+                        contentType: contentType,
+                        text: note
+                    )
+                    if sent {
+                        pendingSentMessageID = state.cases
+                            .first(where: { $0.id == request.caseID })?
+                            .messages.last?.id
+                    }
+                    return sent
                 } onClose: {
                     photoPreview = nil
                 }

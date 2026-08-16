@@ -129,7 +129,7 @@ struct AdminCaseCard: View {
                 .stroke(AppTheme.border, lineWidth: 1)
         }
         .fullScreenCover(item: $photoPreview) { request in
-            NativePhotoPreview(request: request) { _, _ in } onClose: {
+            NativePhotoPreview(request: request) { _, _, _ in false } onClose: {
                 photoPreview = nil
             }
         }

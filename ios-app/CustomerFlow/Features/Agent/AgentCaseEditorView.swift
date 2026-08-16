@@ -458,8 +458,10 @@ struct AgentCaseEditorView: View {
             Task { await importPhotos(items) }
         }
         .fullScreenCover(item: $photoPreview) { request in
-            NativePhotoPreview(request: request) { data, contentType in
-                Task { await sendAnnotatedPhoto(data, contentType: contentType, caseID: request.caseID) }
+            NativePhotoPreview(request: request) { data, contentType, note in
+                await sendAnnotatedPhoto(
+                    data, contentType: contentType, note: note, caseID: request.caseID
+                )
             } onClose: {
                 photoPreview = nil
             }
@@ -1237,14 +1239,20 @@ struct AgentCaseEditorView: View {
     }
 
     @MainActor
-    private func sendAnnotatedPhoto(_ data: Data, contentType: String, caseID: UUID) async {
-        guard canEditCase else { return }
+    private func sendAnnotatedPhoto(
+        _ data: Data, contentType: String, note: String, caseID: UUID
+    ) async -> Bool {
+        guard canEditCase else { return false }
         statusText = "Sending annotated photo…"
-        if await state.sendPhotoMessage(caseID: caseID, data: data, contentType: contentType) {
+        if await state.sendPhotoMessage(
+            caseID: caseID, data: data, contentType: contentType, text: note
+        ) {
             statusText = "Waiting for Doctor · Annotated photo sent"
             returnedToDoctor = true
+            return true
         } else {
             statusText = "Annotated photo could not be sent"
+            return false
         }
     }
 

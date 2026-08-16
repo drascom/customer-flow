@@ -151,8 +151,15 @@ actor RemoteAPIClient {
         return try await request(method: method, path: path, body: try encoder.encode(body))
     }
 
-    func upload<Response: Decodable & Sendable>(path: String, data: Data, contentType: String) async throws -> Response {
-        try await request(method: "POST", path: path, body: data, contentType: contentType)
+    func upload<Response: Decodable & Sendable>(
+        path: String,
+        data: Data,
+        contentType: String,
+        headers: [String: String] = [:]
+    ) async throws -> Response {
+        try await request(
+            method: "POST", path: path, body: data, contentType: contentType, headers: headers
+        )
     }
 
     func download(_ path: String) async throws -> Data {
@@ -181,7 +188,8 @@ actor RemoteAPIClient {
         path: String,
         body: Data?,
         contentType: String = "application/json",
-        timeoutInterval: TimeInterval = 20
+        timeoutInterval: TimeInterval = 20,
+        headers: [String: String] = [:]
     ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw RemoteServiceError.invalidServerAddress
@@ -193,6 +201,7 @@ actor RemoteAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw RemoteServiceError.invalidResponse }
@@ -267,10 +276,16 @@ final class RemoteCaseRepository: CaseRepository {
         try await client.download("photos/\(photoID)")
     }
 
-    func sendPhotoMessage(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase {
+    func sendPhotoMessage(
+        caseID: UUID, data: Data, contentType: String, text: String
+    ) async throws -> ConsultationCase {
         struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
+        let encodedText = Data(text.utf8).base64EncodedString()
         let envelope: Envelope = try await client.upload(
-            path: "cases/\(caseID)/message-photos", data: data, contentType: contentType
+            path: "cases/\(caseID)/message-photos",
+            data: data,
+            contentType: contentType,
+            headers: encodedText.isEmpty ? [:] : ["X-Message-Text": encodedText]
         )
         return envelope.case
     }

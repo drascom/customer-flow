@@ -302,13 +302,15 @@ final class AppState: ObservableObject {
         return data
     }
 
-    func sendPhotoMessage(caseID: UUID, data: Data, contentType: String) async -> Bool {
+    func sendPhotoMessage(
+        caseID: UUID, data: Data, contentType: String, text: String = ""
+    ) async -> Bool {
         do {
             let previousIDs = Set(
                 cases.first(where: { $0.id == caseID })?.messages.compactMap(\.attachmentPhotoID) ?? []
             )
             let updated = try await repository.sendPhotoMessage(
-                caseID: caseID, data: data, contentType: contentType
+                caseID: caseID, data: data, contentType: contentType, text: text
             )
             if let attachmentID = updated.messages.compactMap(\.attachmentPhotoID).last(where: { !previousIDs.contains($0) }) {
                 photoCache.setObject(data as NSData, forKey: attachmentID as NSString)

@@ -57,12 +57,16 @@ final class MockCaseRepository: CaseRepository {
         throw MockError.notFound
     }
 
-    func sendPhotoMessage(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase {
+    func sendPhotoMessage(
+        caseID: UUID, data: Data, contentType: String, text: String
+    ) async throws -> ConsultationCase {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
         cases[index].messages.append(.init(
             author: "Current User",
             role: .agent,
-            text: "Annotated patient photo",
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Annotated patient photo"
+                : text.trimmingCharacters(in: .whitespacesAndNewlines),
             attachmentPhotoID: UUID().uuidString
         ))
         return cases[index]

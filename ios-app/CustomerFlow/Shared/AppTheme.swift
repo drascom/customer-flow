@@ -235,7 +235,7 @@ private struct PhotoEditorRequest: Identifiable {
 
 struct NativePhotoPreview: View {
     let request: NativePhotoPreviewRequest
-    let onEdited: (Data, String) -> Void
+    let onEdited: (Data, String, String) async -> Bool
     let onClose: () -> Void
 
     @State private var selectedIndex: Int
@@ -244,7 +244,7 @@ struct NativePhotoPreview: View {
 
     init(
         request: NativePhotoPreviewRequest,
-        onEdited: @escaping (Data, String) -> Void,
+        onEdited: @escaping (Data, String, String) async -> Bool,
         onClose: @escaping () -> Void
     ) {
         self.request = request
@@ -273,9 +273,13 @@ struct NativePhotoPreview: View {
             PhotoMarkupEditor(
                 image: item.image,
                 position: item.position,
-                onSend: { data, contentType in
-                    onEdited(data, contentType)
-                    editorRequest = nil
+                onSend: { data, contentType, note in
+                    let sent = await onEdited(data, contentType, note)
+                    if sent {
+                        editorRequest = nil
+                        onClose()
+                    }
+                    return sent
                 },
                 onCancel: { editorRequest = nil }
             )
@@ -410,7 +414,7 @@ private struct PreviewPhotoPage: View {
 private struct PhotoMarkupEditor: UIViewControllerRepresentable {
     let image: UIImage
     let position: Int
-    let onSend: (Data, String) -> Void
+    let onSend: (Data, String, String) async -> Bool
     let onCancel: () -> Void
 
     func makeUIViewController(context: Context) -> UINavigationController {
@@ -431,22 +435,54 @@ private struct PhotoMarkupEditor: UIViewControllerRepresentable {
 private final class PhotoTextView: UITextView {
     var currentFontSize: CGFloat = 32
     var pinchStartFontSize: CGFloat = 32
+    var resizeStartFontSize: CGFloat = 32
+    let resizeHandle = UIImageView()
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        resizeHandle.image = UIImage(
+            systemName: "arrow.up.left.and.arrow.down.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)
+        )
+        resizeHandle.tintColor = .white
+        resizeHandle.backgroundColor = .systemOrange
+        resizeHandle.contentMode = .center
+        resizeHandle.layer.cornerRadius = 12
+        resizeHandle.isUserInteractionEnabled = true
+        resizeHandle.accessibilityLabel = "Resize text"
+        addSubview(resizeHandle)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        resizeHandle.frame = CGRect(
+            x: bounds.width - 28,
+            y: bounds.height - 28,
+            width: 24,
+            height: 24
+        )
+        bringSubviewToFront(resizeHandle)
+    }
 }
 
 private final class PhotoMarkupViewController: UIViewController, UITextViewDelegate, UIGestureRecognizerDelegate {
     private let sourceImage: UIImage
     private let position: Int
-    private let onSend: (Data, String) -> Void
+    private let onSend: (Data, String, String) async -> Bool
     private let onCancel: () -> Void
     private let imageView = UIImageView()
     private let canvasView = PKCanvasView()
     private let toolPicker = PKToolPicker()
     private var textViews: [PhotoTextView] = []
+    private var sendButton: UIButton!
 
     init(
         image: UIImage,
         position: Int,
-        onSend: @escaping (Data, String) -> Void,
+        onSend: @escaping (Data, String, String) async -> Bool,
         onCancel: @escaping () -> Void
     ) {
         sourceImage = image
@@ -495,7 +531,7 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         controlsBackground.contentView.addSubview(controls)
         view.addSubview(controlsBackground)
 
-        let sendButton = makeSendButton()
+        sendButton = makeSendButton()
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(sendButton)
 
@@ -647,16 +683,9 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         textView.panGestureRecognizer.isEnabled = false
         textView.keyboardAppearance = .dark
         textView.autocapitalizationType = .sentences
-        textView.textContainerInset = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 10, bottom: 26, right: 28)
         textView.textContainer.lineFragmentPadding = 0
-
-        let keyboardToolbar = UIToolbar()
-        keyboardToolbar.sizeToFit()
-        keyboardToolbar.items = [
-            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
-            UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(finishTextEditing))
-        ]
-        textView.inputAccessoryView = keyboardToolbar
+        textView.inputAccessoryView = makeTextKeyboardAccessory()
 
         let pan = UIPanGestureRecognizer(target: self, action: #selector(moveText(_:)))
         pan.delegate = self
@@ -664,6 +693,10 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(resizeText(_:)))
         pinch.delegate = self
         textView.addGestureRecognizer(pinch)
+        let resizePan = UIPanGestureRecognizer(target: self, action: #selector(resizeTextFromCorner(_:)))
+        resizePan.delegate = self
+        textView.resizeHandle.addGestureRecognizer(resizePan)
+        pan.require(toFail: resizePan)
 
         textView.frame = CGRect(origin: .zero, size: CGSize(width: 160, height: 58))
         let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
@@ -679,6 +712,36 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
     @objc private func finishTextEditing() {
         view.endEditing(true)
         focusCanvas()
+    }
+
+    private func makeTextKeyboardAccessory() -> UIView {
+        let accessory = UIView(
+            frame: CGRect(x: 0, y: 0, width: max(view.bounds.width, 320), height: 68)
+        )
+        accessory.backgroundColor = UIColor.black.withAlphaComponent(0.92)
+        accessory.autoresizingMask = [.flexibleWidth]
+
+        let doneButton = UIButton(type: .system)
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = "Done"
+        configuration.image = UIImage(systemName: "checkmark")
+        configuration.imagePadding = 8
+        configuration.cornerStyle = .capsule
+        configuration.baseForegroundColor = .white
+        configuration.baseBackgroundColor = .systemTeal
+        doneButton.configuration = configuration
+        doneButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        doneButton.translatesAutoresizingMaskIntoConstraints = false
+        doneButton.addTarget(self, action: #selector(finishTextEditing), for: .touchUpInside)
+        accessory.addSubview(doneButton)
+
+        NSLayoutConstraint.activate([
+            doneButton.centerXAnchor.constraint(equalTo: accessory.centerXAnchor),
+            doneButton.centerYAnchor.constraint(equalTo: accessory.centerYAnchor, constant: -2),
+            doneButton.widthAnchor.constraint(equalToConstant: 200),
+            doneButton.heightAnchor.constraint(equalToConstant: 46)
+        ])
+        return accessory
     }
 
     private func removeTextView(_ textView: PhotoTextView) {
@@ -703,6 +766,22 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
             textView.pinchStartFontSize = textView.currentFontSize
         }
         textView.currentFontSize = min(max(textView.pinchStartFontSize * gesture.scale, 16), 96)
+        textView.font = .systemFont(ofSize: textView.currentFontSize, weight: .semibold)
+        resizeTextViewToFit(textView)
+    }
+
+    @objc private func resizeTextFromCorner(_ gesture: UIPanGestureRecognizer) {
+        guard let handle = gesture.view,
+              let textView = handle.superview as? PhotoTextView else { return }
+        if gesture.state == .began {
+            textView.resizeStartFontSize = textView.currentFontSize
+        }
+        let translation = gesture.translation(in: canvasView)
+        let diagonalChange = (translation.x + translation.y) / 2
+        textView.currentFontSize = min(
+            max(textView.resizeStartFontSize + diagonalChange * 0.35, 16),
+            96
+        )
         textView.font = .systemFont(ofSize: textView.currentFontSize, weight: .semibold)
         resizeTextViewToFit(textView)
     }
@@ -745,15 +824,17 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
         let maximumWidth = max(imageRect.width * 0.86, 120)
         let displayText = textView.text.isEmpty ? "Type here" : textView.text ?? ""
+        let horizontalInsets = textView.textContainerInset.left + textView.textContainerInset.right
+        let verticalInsets = textView.textContainerInset.top + textView.textContainerInset.bottom
         let textBounds = (displayText as NSString).boundingRect(
-            with: CGSize(width: maximumWidth - 20, height: .greatestFiniteMagnitude),
+            with: CGSize(width: maximumWidth - horizontalInsets, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: textView.font as Any],
             context: nil
         )
         textView.bounds.size = CGSize(
-            width: min(max(ceil(textBounds.width) + 20, 120), maximumWidth),
-            height: max(ceil(textBounds.height) + 16, 52)
+            width: min(max(ceil(textBounds.width) + horizontalInsets, 120), maximumWidth),
+            height: max(ceil(textBounds.height) + verticalInsets, 58)
         )
         textView.center = center
         keepTextInsideImage(textView)
@@ -775,6 +856,24 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
 
     @objc private func send() {
         view.endEditing(true)
+        let alert = UIAlertController(
+            title: "Send edited photo",
+            message: "Add a note for the conversation, or send the photo without one.",
+            preferredStyle: .alert
+        )
+        alert.addTextField { field in
+            field.placeholder = "Note (optional)"
+            field.autocapitalizationType = .sentences
+            field.returnKeyType = .done
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Send Photo", style: .default) { [weak self, weak alert] _ in
+            self?.renderAndSend(note: alert?.textFields?.first?.text ?? "")
+        })
+        present(alert, animated: true)
+    }
+
+    private func renderAndSend(note: String) {
         view.layoutIfNeeded()
         let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
         guard imageRect.width > 0, imageRect.height > 0 else { return }
@@ -784,6 +883,8 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         format.scale = 1
         format.opaque = true
         let renderer = UIGraphicsImageRenderer(size: sourceImage.size, format: format)
+        let handleVisibility = textViews.map { $0.resizeHandle.isHidden }
+        textViews.forEach { $0.resizeHandle.isHidden = true }
         let markedImage = renderer.image { _ in
             sourceImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
             drawingImage.draw(in: CGRect(origin: .zero, size: sourceImage.size))
@@ -797,8 +898,26 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
                 textView.drawHierarchy(in: frame, afterScreenUpdates: true)
             }
         }
+        for (index, textView) in textViews.enumerated() {
+            textView.resizeHandle.isHidden = handleVisibility[index]
+        }
         guard let data = markedImage.jpegData(compressionQuality: 0.92) else { return }
-        onSend(data, "image/jpeg")
+        sendButton.isEnabled = false
+        sendButton.configuration?.showsActivityIndicator = true
+        Task { [weak self] in
+            guard let self else { return }
+            let sent = await onSend(data, "image/jpeg", note)
+            guard !sent else { return }
+            sendButton.isEnabled = true
+            sendButton.configuration?.showsActivityIndicator = false
+            let error = UIAlertController(
+                title: "Photo not sent",
+                message: "Please check the connection and try again.",
+                preferredStyle: .alert
+            )
+            error.addAction(UIAlertAction(title: "OK", style: .default))
+            present(error, animated: true)
+        }
     }
 
     private func aspectFitRect(for imageSize: CGSize, in bounds: CGRect) -> CGRect {

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import tempfile
@@ -773,12 +774,15 @@ class APITestCase(unittest.TestCase):
         uploaded_body, _ = self.raw_request(
             "POST", f"/cases/{created['id'].upper()}/message-photos", body=edited_photo,
             content_type="image/jpeg", token=doctor, expected=201,
+            extra_headers={
+                "X-Message-Text": base64.b64encode("Please review this hairline".encode()).decode()
+            },
         )
         updated = json.loads(uploaded_body)["case"]
         self.assertEqual("doctor-emre", updated["assignedDoctorID"])
         photo_message = next(message for message in updated["messages"] if message["attachmentPhotoID"])
         self.assertEqual("doctor", photo_message["role"])
-        self.assertEqual("Annotated patient photo", photo_message["text"])
+        self.assertEqual("Please review this hairline", photo_message["text"])
 
         attachment_id = photo_message["attachmentPhotoID"]
         self.assertEqual(

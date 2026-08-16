@@ -8,6 +8,8 @@ Production deployments must place it behind an HTTPS reverse proxy.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import hmac
 import http.client
@@ -43,6 +45,18 @@ def iso(value: datetime | str) -> str:
     if isinstance(value, str):
         return value
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def message_text_from_header(value: str | None) -> str:
+    if not value:
+        return "Annotated patient photo"
+    try:
+        text = base64.b64decode(value, validate=True).decode("utf-8").strip()
+    except (binascii.Error, UnicodeDecodeError):
+        raise APIError(422, "invalid_message_text", "The photo note is invalid.")
+    if len(text) > 2000:
+        raise APIError(422, "message_too_long", "The photo note must be 2,000 characters or fewer.")
+    return text or "Annotated patient photo"
 
 
 def normalize_name(value: str) -> tuple[str, set[str]]:
@@ -1333,7 +1347,9 @@ class Database:
                 raise APIError(404, "photo_unavailable", "The uploaded photo file is unavailable.")
             return file_path.read_bytes(), photo["content_type"]
 
-    def add_message_photo(self, case_id: str, body: bytes, content_type: str, user: sqlite3.Row) -> dict:
+    def add_message_photo(
+        self, case_id: str, body: bytes, content_type: str, message_text: str, user: sqlite3.Row
+    ) -> dict:
         self._require_any_role(user, "agent", "doctor", "admin")
         if not body or len(body) > 20 * 1024 * 1024:
             raise APIError(422, "invalid_photo", "Photo must be between 1 byte and 20 MB.")
@@ -1364,7 +1380,7 @@ class Database:
                     "approximate_grafts,recommended_price,attachment_path,attachment_content_type) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (message_id, case_id, user["id"], user["display_name"], user["role"], now,
-                     "Annotated patient photo", None, None, relative_path, content_type),
+                     message_text, None, None, relative_path, content_type),
                 )
                 if user["role"] == "doctor" and case["assigned_doctor_id"] is None:
                     conn.execute("UPDATE cases SET assigned_doctor_id=? WHERE id=?", (user["id"], case_id))
@@ -2267,7 +2283,10 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and action == "message-photos":
                 body = self.rfile.read(self._content_length())
                 content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
-                updated = self.server.database.add_message_photo(case_id, body, content_type, user)
+                message_text = message_text_from_header(self.headers.get("X-Message-Text"))
+                updated = self.server.database.add_message_photo(
+                    case_id, body, content_type, message_text, user
+                )
                 return self._changed(201, {"case": updated}, "message.created", case_id, user)
             if method == "DELETE" and action == "photos" and len(parts) == 3:
                 self._read_json()
