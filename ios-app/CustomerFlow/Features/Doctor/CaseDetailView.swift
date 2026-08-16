@@ -247,15 +247,9 @@ struct CaseDetailView: View {
     @ViewBuilder
     private func responseComposer(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text("Reply to agent")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(AppTheme.ink)
-                Spacer()
-                Text("Recommendation optional")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.muted)
-            }
+            Text("Reply to agent")
+                .font(.subheadline.bold())
+                .foregroundStyle(AppTheme.ink)
 
             HStack(spacing: 8) {
                 TextField("Grafts (optional)", text: $grafts)
