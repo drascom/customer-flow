@@ -24,6 +24,8 @@ struct AgentCasesView: View {
     @EnvironmentObject private var state: AppState
     @State private var filter: AgentCaseFilter = .all
     @State private var searchText = ""
+    @State private var expandedCaseID: UUID?
+    @State private var selectedCaseID: UUID?
 
     private var myCases: [ConsultationCase] {
         state.cases
@@ -71,12 +73,17 @@ struct AgentCasesView: View {
                                 .frame(minHeight: 300)
                         } else {
                             ForEach(myCases) { item in
-                                NavigationLink {
-                                    AgentCaseEditorView(caseID: item.id)
-                                } label: {
-                                    AgentCaseListCard(item: item)
-                                }
-                                .buttonStyle(.plain)
+                                AgentCaseListCard(
+                                    item: item,
+                                    isCollapsible: item.status != .answered,
+                                    isExpanded: item.status == .answered || expandedCaseID == item.id,
+                                    onToggle: {
+                                        withAnimation(.easeInOut(duration: 0.22)) {
+                                            expandedCaseID = expandedCaseID == item.id ? nil : item.id
+                                        }
+                                    },
+                                    onOpen: { selectedCaseID = item.id }
+                                )
                             }
                         }
                     }
@@ -89,6 +96,9 @@ struct AgentCasesView: View {
         }
         .background(AppTheme.background)
         .refreshable { await state.load() }
+        .navigationDestination(item: $selectedCaseID) { caseID in
+            AgentCaseEditorView(caseID: caseID)
+        }
     }
 
     private var searchHeader: some View {
@@ -156,113 +166,204 @@ struct AgentCasesView: View {
 
 private struct AgentCaseListCard: View {
     let item: ConsultationCase
+    let isCollapsible: Bool
+    let isExpanded: Bool
+    let onToggle: () -> Void
+    let onOpen: () -> Void
     @State private var photoIndex = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(item.uploadedAt.formatted(.relative(presentation: .named)))
-                Spacer()
-                Text(item.reference).fontWeight(.bold)
-            }
-            .font(.caption)
-            .foregroundStyle(AppTheme.muted)
-
-            Group {
-                if item.photoCount == 0 {
-                    NoPhotosView()
-                } else {
-                    TabView(selection: $photoIndex) {
-                        ForEach(0..<item.photoCount, id: \.self) { index in
-                            CasePhotoView(
-                                photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                                index: index
-                            )
-                            .tag(index)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .overlay(alignment: .bottomTrailing) {
-                        Text("\(photoIndex + 1) / \(item.photoCount)")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 6)
-                            .background(.black.opacity(0.6), in: Capsule())
-                            .padding(9)
+        VStack(spacing: 0) {
+            statusBand
+                .onTapGesture {
+                    if isCollapsible {
+                        onToggle()
+                    } else {
+                        onOpen()
                     }
                 }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Group {
+                    if isCollapsible {
+                        Button(action: onToggle) { summaryHeader }
+                            .buttonStyle(.plain)
+                    } else {
+                        summaryHeader
+                    }
+                }
+
+                if isExpanded {
+                    Divider().padding(.vertical, 12)
+
+                    Group {
+                        if item.photoCount == 0 {
+                            NoPhotosView()
+                        } else {
+                            TabView(selection: $photoIndex) {
+                                ForEach(0..<item.photoCount, id: \.self) { index in
+                                    CasePhotoView(
+                                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                        index: index
+                                    )
+                                    .tag(index)
+                                }
+                            }
+                            .tabViewStyle(.page(indexDisplayMode: .never))
+                            .overlay(alignment: .bottomTrailing) {
+                                Text("\(photoIndex + 1) / \(item.photoCount)")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 6)
+                                    .background(.black.opacity(0.6), in: Capsule())
+                                    .padding(10)
+                            }
+                        }
+                    }
+                    .frame(height: 250)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                    Text(item.agentNote)
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.muted)
+                        .lineLimit(2)
+                        .padding(.top, 12)
+
+                    HStack(spacing: 8) {
+                        metric("Estimated grafts", item.agentGrafts)
+                        metric("Estimated price", AppCurrency.amount(item.agentPrice))
+                    }
+                    .padding(.top, 12)
+
+                    if let finalGrafts = item.finalGrafts,
+                       let finalPrice = item.finalPrice {
+                        HStack(spacing: 8) {
+                            metric("Final grafts", finalGrafts)
+                            metric("Final price", AppCurrency.amount(finalPrice))
+                        }
+                        .padding(.top, 8)
+                    }
+
+                    if isCollapsible {
+                        Button("Open case", systemImage: "arrow.up.right.square", action: onOpen)
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.top, 12)
+                    }
+                }
+
+                if let latestMessage {
+                    Divider()
+                        .padding(.top, isExpanded ? 14 : 8)
+                        .padding(.bottom, 8)
+                    LatestMessagePreview(
+                        author: latestMessage.author,
+                        text: latestMessage.text,
+                        createdAt: latestMessage.createdAt,
+                        hasPhoto: latestMessage.attachmentPhotoID != nil
+                    )
+                }
             }
-            .frame(height: 210)
-            .clipShape(RoundedRectangle(cornerRadius: 15))
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(item.patient.name)
-                    .font(.title3.bold())
-                    .foregroundStyle(AppTheme.ink)
-                Spacer()
-                AgentStatusChip(status: item.status)
-            }
-
-            Text(item.agentNote)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.muted)
-                .lineLimit(2)
-
-            HStack {
-                Label(
-                    "\(item.finalGrafts ?? item.agentGrafts) grafts",
-                    systemImage: "scissors"
-                )
-                Spacer()
-                Text(AppCurrency.amount(item.finalPrice ?? item.agentPrice))
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(AppTheme.brandDark)
-
-            Text(item.finalGrafts == nil ? "Estimated plan" : "Final agreed plan")
-                .font(.caption2)
-                .foregroundStyle(AppTheme.muted)
-
-            if let latestMessage {
-                Divider()
-                LatestMessagePreview(
-                    author: latestMessage.author,
-                    text: latestMessage.text,
-                    createdAt: latestMessage.createdAt,
-                    hasPhoto: latestMessage.attachmentPhotoID != nil
-                )
-            }
+            .padding(14)
         }
-        .padding(14)
         .foregroundStyle(AppTheme.ink)
-        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border))
+        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AppTheme.border))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture {
+            if !isCollapsible { onOpen() }
+        }
+        .animation(.easeInOut(duration: 0.22), value: isExpanded)
+    }
+
+    private var summaryHeader: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(item.patient.name)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 5) {
+                Image(systemName: "clock")
+                Text(item.uploadedAt.compactRelativeText)
+                Spacer(minLength: 4)
+                if isCollapsible {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                }
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(AppTheme.muted)
+
+            HStack(spacing: 6) {
+                Image(systemName: "building.2")
+                Text(item.agencyName ?? "No agency").lineLimit(1)
+                Spacer(minLength: 12)
+                Text(item.agentName).lineLimit(1)
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(AppTheme.muted)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var statusBand: some View {
+        HStack(spacing: 8) {
+            Image(systemName: statusBandIcon)
+            Text(item.status.title).fontWeight(.bold)
+            Spacer(minLength: 8)
+        }
+        .font(.subheadline)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity)
+        .background(
+            statusBandColor,
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: 20,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 20,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var statusBandIcon: String {
+        switch item.status {
+        case .waiting: "clock.fill"
+        case .answered: "exclamationmark.circle.fill"
+        case .closed: "checkmark.circle.fill"
+        }
+    }
+
+    private var statusBandColor: Color {
+        switch item.status {
+        case .waiting: AppTheme.accent
+        case .answered: Color(red: 0.78, green: 0.16, blue: 0.14)
+        case .closed: Color(red: 0.08, green: 0.52, blue: 0.32)
+        }
     }
 
     private var latestMessage: ConsultationMessage? {
         item.messages.last { $0.role != .system }
     }
-}
 
-private struct AgentStatusChip: View {
-    let status: ConsultationStatus
-
-    private var color: Color {
-        switch status {
-        case .waiting: AppTheme.accent
-        case .answered: AppTheme.brand
-        case .closed: AppTheme.muted
+    private func metric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased()).font(.caption2.bold()).foregroundStyle(AppTheme.muted)
+            Text(value).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
         }
-    }
-
-    var body: some View {
-        Text(status == .answered ? "Action needed" : status.title)
-            .font(.caption2.bold())
-            .foregroundStyle(color)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(color.opacity(0.12), in: Capsule())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 11))
     }
 }
 
