@@ -6,7 +6,6 @@ struct DoctorQueueView: View {
     @State private var searchText = ""
     @State private var oldestFirst = true
     @State private var selectedCase: ConsultationCase?
-    @State private var expandedCaseID: UUID?
 
     private var filteredCases: [ConsultationCase] {
         state.cases
@@ -27,16 +26,16 @@ struct DoctorQueueView: View {
             ScrollView {
                 LazyVStack(spacing: 10, pinnedViews: [.sectionHeaders]) {
                     Section {
-                        VStack(spacing: 10) {
-                            filterMenu
+                        VStack(spacing: 12) {
+                            queueControls
                                 .padding(.horizontal, 12)
-                            caseGrid(minimumEmptyHeight: max(320, proxy.size.height - 125))
+                            caseGrid(minimumEmptyHeight: max(320, proxy.size.height - 170))
                         }
                     } header: {
                         searchHeader
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 20)
             }
             .refreshable { await state.load() }
         }
@@ -46,13 +45,16 @@ struct DoctorQueueView: View {
         .sheet(item: $selectedCase) { item in
             CaseDetailView(caseID: item.id)
                 .environmentObject(state)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(28)
         }
     }
 
     private var searchHeader: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(AppTheme.muted)
-            TextField("Search", text: $searchText)
+            TextField("Search patients, agencies or notes", text: $searchText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }
@@ -67,54 +69,54 @@ struct DoctorQueueView: View {
         .background(AppTheme.background)
     }
 
-    private var filterMenu: some View {
-        HStack(spacing: 8) {
-            Menu {
+    private var queueControls: some View {
+        VStack(spacing: 9) {
+            HStack(spacing: 6) {
                 ForEach(DoctorQueueFilter.allCases) { item in
                     Button {
-                        filter = item
-                        expandedCaseID = nil
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            filter = item
+                        }
                     } label: {
-                        Label("\(item.title)  ·  \(count(for: item))", systemImage: filter == item ? "checkmark" : "circle")
+                        HStack(spacing: 5) {
+                            Text(filterTitle(item))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Text("\(count(for: item))")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    (filter == item ? AppTheme.surfaceStrong : AppTheme.inset),
+                                    in: Capsule()
+                                )
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(filter == item ? AppTheme.accentInk : AppTheme.muted)
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                        .background(filter == item ? AppTheme.accent : AppTheme.surfaceStrong, in: Capsule())
+                        .overlay(Capsule().stroke(filter == item ? AppTheme.accent : AppTheme.border))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(filterTitle(item)), \(count(for: item)) cases")
                 }
-            } label: {
-                ZStack {
-                    HStack(spacing: 7) {
-                        Text(filter.title)
-                        Text("\(count(for: filter))")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(AppTheme.accentInk.opacity(0.12), in: Capsule())
-                    }
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.bold())
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.accentInk)
-                .padding(.horizontal, 11)
-                .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-                .background(AppTheme.accent, in: Capsule())
             }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
 
-            Button {
-                oldestFirst.toggle()
-            } label: {
-                Label(oldestFirst ? "Oldest" : "Newest", systemImage: oldestFirst ? "arrow.up" : "arrow.down")
+            HStack {
+                Text("\(filteredCases.count) \(filteredCases.count == 1 ? "patient" : "patients")")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .padding(.horizontal, 11)
-                    .frame(minHeight: 34)
-                    .background(AppTheme.surfaceStrong, in: Capsule())
-                    .overlay(Capsule().stroke(AppTheme.border))
+                    .foregroundStyle(AppTheme.muted)
+                Spacer()
+                Button {
+                    oldestFirst.toggle()
+                } label: {
+                    Label(oldestFirst ? "Oldest first" : "Newest first", systemImage: oldestFirst ? "arrow.up" : "arrow.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(oldestFirst ? "Oldest first" : "Newest first")
+            .padding(.horizontal, 4)
         }
         .padding(.vertical, 7)
     }
@@ -122,24 +124,23 @@ struct DoctorQueueView: View {
     @ViewBuilder
     private func caseGrid(minimumEmptyHeight: CGFloat) -> some View {
         if filteredCases.isEmpty {
-            ContentUnavailableView("No cases", systemImage: "tray", description: Text("No cases match this view."))
+            ContentUnavailableView("No patients", systemImage: "tray", description: Text("No patients match this view."))
                 .frame(maxWidth: .infinity, minHeight: minimumEmptyHeight)
         } else {
-            LazyVStack(spacing: 14) {
+            LazyVStack(spacing: 12) {
                 ForEach(filteredCases) { item in
-                    CaseCardView(
-                        item: item,
-                        isCollapsible: item.status != .waiting,
-                        isExpanded: item.status == .waiting || expandedCaseID == item.id,
-                        onToggle: {
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                expandedCaseID = expandedCaseID == item.id ? nil : item.id
-                            }
-                        },
-                        onOpen: { selectedCase = item }
-                    )
+                    DoctorWorkCard(item: item) { selectedCase = item }
                 }
             }
+            .padding(.horizontal, 12)
+        }
+    }
+
+    private func filterTitle(_ item: DoctorQueueFilter) -> String {
+        switch item {
+        case .waiting: "Needs review"
+        case .answered: "Sent"
+        case .confirmed: "Confirmed"
         }
     }
 
@@ -162,210 +163,144 @@ struct DoctorQueueView: View {
     }
 }
 
-private struct CaseCardView: View {
+private struct DoctorWorkCard: View {
     let item: ConsultationCase
-    let isCollapsible: Bool
-    let isExpanded: Bool
-    let onToggle: () -> Void
     let onOpen: () -> Void
-    @State private var photoIndex = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            Group {
-                if isCollapsible {
-                    Button(action: onToggle) {
-                        summaryHeader
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    summaryHeader
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-
-            statusBand
-                .onTapGesture {
-                    if isCollapsible {
-                        onToggle()
-                    } else {
-                        onOpen()
-                    }
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 8, height: 8)
+                    Text(statusTitle)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(statusColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                    Spacer(minLength: 8)
+                    Label(waitingTime, systemImage: "clock")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isOverdue ? statusColor : AppTheme.muted)
                 }
 
-            if isExpanded {
-                Group {
-                    if item.photoCount == 0 {
-                        NoPhotosView()
-                            .padding(.horizontal, 16)
-                    } else {
-                        TabView(selection: $photoIndex) {
-                            ForEach(0..<item.photoCount, id: \.self) { index in
-                                CasePhotoView(
-                                    photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                                    index: index
-                                )
-                                .tag(index)
-                            }
-                        }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
-                        .overlay(alignment: .bottomTrailing) {
-                            Text("\(photoIndex + 1) / \(item.photoCount)")
-                                .font(.caption2.bold())
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 6)
-                                .background(.black.opacity(0.6), in: Capsule())
-                                .padding(12)
-                        }
-                    }
-                }
-                .frame(height: 300)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(item.agentNote)
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.muted)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.patient.name)
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(AppTheme.ink)
                         .lineLimit(2)
+                        .multilineTextAlignment(.leading)
 
-                    HStack(spacing: 8) {
-                        metric("Estimated grafts", item.agentGrafts)
-                        metric("Estimated price", AppCurrency.amount(item.agentPrice))
-                    }
-                    .padding(.top, 12)
-
-                    if let finalGrafts = item.finalGrafts,
-                       let finalPrice = item.finalPrice {
-                        HStack(spacing: 8) {
-                            metric("Final grafts", finalGrafts)
-                            metric("Final price", AppCurrency.amount(finalPrice))
-                        }
-                        .padding(.top, 8)
-                    }
-
-                    if isCollapsible {
-                        Button("Open case", systemImage: "arrow.up.right.square", action: onOpen)
-                            .font(.caption.weight(.semibold))
-                            .buttonStyle(.borderedProminent)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .padding(.top, 12)
+                    if !patientSummary.isEmpty {
+                        Text(patientSummary)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.muted)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-            }
 
-            if let latestMessage {
-                VStack(spacing: 10) {
-                    Divider()
-                    LatestMessagePreview(
-                        author: latestMessage.author,
-                        text: latestMessage.text,
-                        createdAt: latestMessage.createdAt,
-                        hasPhoto: latestMessage.attachmentPhotoID != nil
-                    )
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-            }
-        }
-        .foregroundStyle(AppTheme.ink)
-        .frame(maxWidth: .infinity)
-        .background(AppTheme.surfaceStrong)
-        .overlay(alignment: .top) { Rectangle().fill(AppTheme.border).frame(height: 1) }
-        .overlay(alignment: .bottom) { Rectangle().fill(AppTheme.border).frame(height: 1) }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if !isCollapsible {
-                onOpen()
-            }
-        }
-        .animation(.easeInOut(duration: 0.22), value: isExpanded)
-    }
-
-    private var summaryHeader: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(item.patient.name)
-                    .font(.system(size: 17, weight: .semibold))
+                Text(item.agentNote)
+                    .font(.subheadline)
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .layoutPriority(1)
 
-                HStack(spacing: 5) {
-                    Image(systemName: "clock")
-                    Text(item.uploadedAt.compactRelativeText)
-                    if isCollapsible {
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    }
+                HStack(spacing: 8) {
+                    infoPill(icon: "leaf", text: "Est. \(item.agentGrafts) grafts")
+                    infoPill(icon: "photo.on.rectangle", text: "\(item.photoCount) photos")
+                    infoPill(icon: "bubble.left", text: "\(messageCount)")
                 }
-                .font(.system(size: 13, weight: .medium))
+
+                Divider()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "building.2")
+                    Text(item.agencyName ?? "No agency")
+                        .lineLimit(1)
+                    Text("·")
+                    Text(item.agentName)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                }
+                .font(.caption)
                 .foregroundStyle(AppTheme.muted)
-                .fixedSize(horizontal: true, vertical: false)
             }
+            .padding(16)
+            .padding(.leading, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(alignment: .leading) {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 20,
+                    bottomLeadingRadius: 20,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
+                .fill(statusColor)
+                .frame(width: 5)
+            }
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(AppTheme.border))
+            .shadow(color: AppTheme.ink.opacity(0.04), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens patient details")
+    }
 
-            HStack(spacing: 6) {
-                Image(systemName: "building.2")
-                Text(item.agencyName ?? "No agency")
-                    .lineLimit(1)
-                Spacer(minLength: 12)
-                Text(item.agentName).lineLimit(1)
-            }
-            .font(.system(size: 13))
+    private var messageCount: Int {
+        item.messages.filter { $0.role != .system }.count
+    }
+
+    private var patientSummary: String {
+        [item.patient.age.map { "\($0) years" }, item.patient.genderDisplayName]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+    }
+
+    private var isOverdue: Bool {
+        item.status == .waiting && Date().timeIntervalSince(item.uploadedAt) >= 86_400
+    }
+
+    private var statusTitle: String {
+        switch item.status {
+        case .waiting: isOverdue ? "Needs review · overdue" : "Needs review"
+        case .answered: "Sent · waiting for agent"
+        case .closed: "Confirmed"
+        }
+    }
+
+    private var statusColor: Color {
+        switch item.status {
+        case .waiting:
+            isOverdue ? Color(red: 0.78, green: 0.16, blue: 0.14) : AppTheme.accent
+        case .answered:
+            AppTheme.brand
+        case .closed:
+            AppTheme.muted
+        }
+    }
+
+    private var waitingTime: String {
+        let seconds = max(0, Date().timeIntervalSince(item.uploadedAt))
+        if seconds < 3_600 {
+            return "\(max(1, Int((seconds / 60).rounded()))) min"
+        }
+        if seconds < 86_400 {
+            return "\(max(1, Int((seconds / 3_600).rounded()))) hr"
+        }
+        return "\(max(1, Int((seconds / 86_400).rounded()))) days"
+    }
+
+    private func infoPill(icon: String, text: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(AppTheme.muted)
-
-        }
-        .contentShape(Rectangle())
-    }
-
-    private var statusBand: some View {
-        HStack(spacing: 8) {
-            Image(systemName: statusBandIcon)
-            Text(item.status.title)
-                .fontWeight(.bold)
-            Spacer(minLength: 8)
-        }
-        .font(.subheadline)
-        .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .frame(maxWidth: .infinity)
-        .background(statusBandColor)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var statusBandIcon: String {
-        switch item.status {
-        case .waiting: "exclamationmark.circle.fill"
-        case .answered: "checkmark.circle.fill"
-        case .closed: "lock.circle.fill"
-        }
-    }
-
-    private var statusBandColor: Color {
-        switch item.status {
-        case .waiting: Color(red: 0.78, green: 0.16, blue: 0.14)
-        case .answered: Color(red: 0.08, green: 0.52, blue: 0.32)
-        case .closed: AppTheme.muted
-        }
-    }
-
-    private var latestMessage: ConsultationMessage? {
-        item.messages.last { $0.role != .system }
-    }
-
-    private func metric(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label.uppercased()).font(.caption2.bold()).foregroundStyle(AppTheme.muted)
-            Text(value).font(.subheadline.bold()).foregroundStyle(AppTheme.ink)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 11))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(AppTheme.inset, in: Capsule())
     }
 }
 
@@ -373,12 +308,20 @@ struct StatusChip: View {
     let status: ConsultationStatus
 
     var body: some View {
-        Label(status.title, systemImage: "circle.fill")
+        Label(title, systemImage: "circle.fill")
             .font(.caption.bold())
             .foregroundStyle(color)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(color.opacity(0.12), in: Capsule())
+    }
+
+    private var title: String {
+        switch status {
+        case .waiting: "Needs review"
+        case .answered: "Sent · Waiting for agent"
+        case .closed: "Confirmed"
+        }
     }
 
     private var color: Color {
