@@ -29,6 +29,9 @@ from urllib.parse import parse_qs, urlparse
 
 API_PREFIX = "/api/v1"
 UTC = timezone.utc
+IDEMPOTENCY_KEY_ALLOWED = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-"
+)
 
 
 def utc_now() -> datetime:
@@ -145,6 +148,25 @@ def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
     return salt.hex(), digest.hex()
 
 
+def validate_idempotency_key(value: str | None) -> str | None:
+    """Validate an optional caller-provided key used to deduplicate writes."""
+    if value is None:
+        return None
+    key = value.strip()
+    if not 8 <= len(key) <= 128 or any(ch not in IDEMPOTENCY_KEY_ALLOWED for ch in key):
+        raise APIError(
+            422,
+            "invalid_idempotency_key",
+            "Idempotency-Key must be 8-128 characters using letters, numbers, '.', '_', ':' or '-'.",
+        )
+    return key
+
+
+def request_fingerprint(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
 class APIError(Exception):
     def __init__(self, status: int, code: str, message: str, details: object | None = None):
         super().__init__(message)
@@ -152,6 +174,10 @@ class APIError(Exception):
         self.code = code
         self.message = message
         self.details = details
+
+
+class IdempotentReplay(dict):
+    """Marks a stored mutation response so the HTTP layer does not publish it again."""
 
 
 class ChangeBroker:
@@ -296,6 +322,15 @@ CREATE TABLE IF NOT EXISTS audit_events (
   entity_id TEXT NOT NULL,
   detail_json TEXT NOT NULL,
   created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS idempotency_records (
+  actor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  operation TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(actor_id, operation, idempotency_key)
 );
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY,
@@ -760,11 +795,23 @@ class Database:
             return self._case_json(conn, row)
 
     def find_matches(self, name: str, user: sqlite3.Row) -> list[dict]:
+        self._require_role(user, "agent")
         _, query_tokens = normalize_name(name)
         if len(query_tokens) < 2:
             return []
         with self.connect() as conn:
-            patients = conn.execute("SELECT * FROM patients ORDER BY last_updated DESC").fetchall()
+            if user["agency_id"]:
+                patients = conn.execute(
+                    "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
+                    "JOIN users u ON u.id=c.agent_id WHERE u.agency_id=? ORDER BY p.last_updated DESC",
+                    (user["agency_id"],),
+                ).fetchall()
+            else:
+                patients = conn.execute(
+                    "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
+                    "WHERE c.agent_id=? ORDER BY p.last_updated DESC",
+                    (user["id"],),
+                ).fetchall()
             result = []
             for patient in patients:
                 _, patient_tokens = normalize_name(patient["name"])
@@ -772,7 +819,10 @@ class Database:
                     continue
                 latest = conn.execute(
                     "SELECT c.*, a.display_name agent_name FROM cases c JOIN users a ON a.id=c.agent_id "
-                    "WHERE c.patient_id=? ORDER BY c.uploaded_at DESC LIMIT 1", (patient["id"],)
+                    "WHERE c.patient_id=? AND "
+                    + ("a.agency_id=? " if user["agency_id"] else "c.agent_id=? ")
+                    + "ORDER BY c.uploaded_at DESC LIMIT 1",
+                    (patient["id"], user["agency_id"] or user["id"]),
                 ).fetchone()
                 doctor = None
                 if patient["assigned_doctor_id"]:
@@ -785,8 +835,15 @@ class Database:
                 })
             return result
 
-    def create_case(self, payload: dict, user: sqlite3.Row) -> dict:
+    def create_case(
+        self,
+        payload: dict,
+        user: sqlite3.Row,
+        idempotency_key: str | None = None,
+    ) -> dict:
         self._require_role(user, "agent")
+        idempotency_key = validate_idempotency_key(idempotency_key)
+        fingerprint = request_fingerprint(payload)
         required = ["patientName", "grafts", "currency", "price", "note", "photoCount"]
         missing = [key for key in required if payload.get(key) in (None, "")]
         if missing:
@@ -799,14 +856,43 @@ class Database:
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                candidates = conn.execute("SELECT id,name FROM patients WHERE normalized_name=?", (normalized,)).fetchall()
+                replay = self._idempotency_replay(
+                    conn, user["id"], "case.create", idempotency_key, fingerprint
+                )
+                if replay is not None:
+                    replayed = IdempotentReplay(self._case_json(conn, self._case_row(conn, replay)))
+                    conn.execute("COMMIT")
+                    return replayed
+                if user["agency_id"]:
+                    candidates = conn.execute(
+                        "SELECT DISTINCT p.id,p.name FROM patients p JOIN cases c ON c.patient_id=p.id "
+                        "JOIN users u ON u.id=c.agent_id WHERE p.normalized_name=? AND u.agency_id=?",
+                        (normalized, user["agency_id"]),
+                    ).fetchall()
+                else:
+                    candidates = conn.execute(
+                        "SELECT DISTINCT p.id,p.name FROM patients p JOIN cases c ON c.patient_id=p.id "
+                        "WHERE p.normalized_name=? AND c.agent_id=?",
+                        (normalized, user["id"]),
+                    ).fetchall()
                 existing_id = payload.get("existingPatientID")
                 confirmed_different = bool(payload.get("duplicateConfirmedDifferent"))
                 if candidates and not existing_id and not confirmed_different:
                     raise APIError(409, "duplicate_confirmation_required", "A previous consultation may exist for this patient.",
                                    [{"id": row["id"], "name": row["name"]} for row in candidates])
                 if existing_id:
-                    patient = conn.execute("SELECT * FROM patients WHERE id=?", (existing_id,)).fetchone()
+                    if user["agency_id"]:
+                        patient = conn.execute(
+                            "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
+                            "JOIN users u ON u.id=c.agent_id WHERE p.id=? AND u.agency_id=?",
+                            (existing_id, user["agency_id"]),
+                        ).fetchone()
+                    else:
+                        patient = conn.execute(
+                            "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
+                            "WHERE p.id=? AND c.agent_id=?",
+                            (existing_id, user["id"]),
+                        ).fetchone()
                     if not patient:
                         raise APIError(404, "patient_not_found", "The selected patient could not be found.")
                     patient_id = patient["id"]
@@ -846,6 +932,9 @@ class Database:
                              "requestedPhotoCount": requested_photo_count})
                 row = self._case_row(conn, case_id)
                 result = self._case_json(conn, row)
+                self._store_idempotency_result(
+                    conn, user["id"], "case.create", idempotency_key, fingerprint, case_id
+                )
                 conn.execute("COMMIT")
                 return result
             except Exception:
@@ -918,14 +1007,29 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
-    def add_agent_update(self, case_id: str, payload: dict, user: sqlite3.Row) -> dict:
+    def add_agent_update(
+        self,
+        case_id: str,
+        payload: dict,
+        user: sqlite3.Row,
+        idempotency_key: str | None = None,
+    ) -> dict:
         self._require_role(user, "agent")
+        idempotency_key = validate_idempotency_key(idempotency_key)
+        fingerprint = request_fingerprint({"caseID": case_id, "payload": payload})
         text = str(payload.get("text", "")).strip()
         if not text:
             raise APIError(422, "empty_update", "Write an update before sending.")
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                replay = self._idempotency_replay(
+                    conn, user["id"], "case.agent_update", idempotency_key, fingerprint
+                )
+                if replay is not None:
+                    replayed = IdempotentReplay(self._case_json(conn, self._case_row(conn, replay)))
+                    conn.execute("COMMIT")
+                    return replayed
                 row = self._case_row(conn, case_id)
                 self._assert_owner(row, user)
                 if row["status"] == "closed":
@@ -936,6 +1040,9 @@ class Database:
                 conn.execute("UPDATE cases SET status='waiting', version=version+1 WHERE id=?", (case_id,))
                 self._audit(conn, user["id"], "case.agent_update_added", "case", case_id, {})
                 result = self._case_json(conn, self._case_row(conn, case_id))
+                self._store_idempotency_result(
+                    conn, user["id"], "case.agent_update", idempotency_key, fingerprint, case_id
+                )
                 conn.execute("COMMIT")
                 return result
             except Exception:
@@ -976,8 +1083,21 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
-    def add_photo(self, case_id: str, body: bytes, content_type: str, user: sqlite3.Row) -> dict:
+    def add_photo(
+        self,
+        case_id: str,
+        body: bytes,
+        content_type: str,
+        user: sqlite3.Row,
+        idempotency_key: str | None = None,
+    ) -> dict:
         self._require_role(user, "agent")
+        idempotency_key = validate_idempotency_key(idempotency_key)
+        fingerprint = request_fingerprint({
+            "caseID": case_id,
+            "contentType": content_type,
+            "bodySHA256": hashlib.sha256(body).hexdigest(),
+        })
         if not body or len(body) > 20 * 1024 * 1024:
             raise APIError(422, "invalid_photo", "Photo must be between 1 byte and 20 MB.")
         extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/heic": ".heic"}.get(content_type)
@@ -986,6 +1106,13 @@ class Database:
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                replay = self._idempotency_replay(
+                    conn, user["id"], "case.photo_add", idempotency_key, fingerprint
+                )
+                if replay is not None:
+                    replayed = IdempotentReplay(self._case_json(conn, self._case_row(conn, replay)))
+                    conn.execute("COMMIT")
+                    return replayed
                 row = self._case_row(conn, case_id)
                 self._assert_owner(row, user)
                 photo_id = str(uuid.uuid4())
@@ -1006,6 +1133,9 @@ class Database:
                 )
                 self._audit(conn, user["id"], "case.photo_added", "case", case_id, {"photoID": photo_id})
                 result = self._case_json(conn, self._case_row(conn, case_id))
+                self._store_idempotency_result(
+                    conn, user["id"], "case.photo_add", idempotency_key, fingerprint, case_id
+                )
                 conn.execute("COMMIT")
                 return result
             except Exception:
@@ -1691,6 +1821,56 @@ class Database:
         raise APIError(403, "forbidden", "This case belongs to another agency.")
 
     @staticmethod
+    def _idempotency_replay(
+        conn: sqlite3.Connection,
+        actor_id: str,
+        operation: str,
+        idempotency_key: str | None,
+        request_hash: str,
+    ) -> str | None:
+        if idempotency_key is None:
+            return None
+        record = conn.execute(
+            "SELECT request_hash,entity_id FROM idempotency_records "
+            "WHERE actor_id=? AND operation=? AND idempotency_key=?",
+            (actor_id, operation, idempotency_key),
+        ).fetchone()
+        if not record:
+            return None
+        if not hmac.compare_digest(record["request_hash"], request_hash):
+            raise APIError(
+                409,
+                "idempotency_conflict",
+                "This Idempotency-Key was already used with different request data.",
+            )
+        return str(record["entity_id"])
+
+    @staticmethod
+    def _store_idempotency_result(
+        conn: sqlite3.Connection,
+        actor_id: str,
+        operation: str,
+        idempotency_key: str | None,
+        request_hash: str,
+        entity_id: str,
+    ) -> None:
+        if idempotency_key is None:
+            return
+        conn.execute(
+            "INSERT INTO idempotency_records("
+            "actor_id,operation,idempotency_key,request_hash,entity_id,created_at"
+            ") VALUES (?,?,?,?,?,?)",
+            (
+                actor_id,
+                operation,
+                idempotency_key,
+                request_hash,
+                entity_id,
+                iso(utc_now()),
+            ),
+        )
+
+    @staticmethod
     def _audit(conn: sqlite3.Connection, actor: str, action: str, entity_type: str, entity_id: str, detail: dict) -> None:
         conn.execute("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,detail_json,created_at) VALUES (?,?,?,?,?,?)",
                      (actor, action, entity_type, entity_id, json.dumps(detail, separators=(",", ":")), iso(utc_now())))
@@ -1780,7 +1960,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates"]})
+                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "agency-scoping", "idempotent-writes"]})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
                 payload = self._read_json()
                 return self._json(200, self.server.database.login(str(payload.get("username", "")), str(payload.get("password", ""))))
@@ -1853,7 +2033,11 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "GET" and path == f"{API_PREFIX}/cases":
                 return self._json(200, {"cases": self.server.database.fetch_cases(user)})
             if method == "POST" and path == f"{API_PREFIX}/cases":
-                created = self.server.database.create_case(self._read_json(), user)
+                created = self.server.database.create_case(
+                    self._read_json(), user, self.headers.get("Idempotency-Key")
+                )
+                if isinstance(created, IdempotentReplay):
+                    return self._json(201, {"case": created})
                 return self._changed(201, {"case": created}, "case.created", created["id"], user)
             if method == "GET" and path == f"{API_PREFIX}/patients/matches":
                 name = parse_qs(parsed.query).get("name", [""])[0]
@@ -1884,7 +2068,11 @@ class APIHandler(BaseHTTPRequestHandler):
                 updated = self.server.database.save_agent_values(case_id, self._read_json(), user)
                 return self._changed(200, {"case": updated}, "case.updated", case_id, user)
             if method == "POST" and action == "agent-updates":
-                updated = self.server.database.add_agent_update(case_id, self._read_json(), user)
+                updated = self.server.database.add_agent_update(
+                    case_id, self._read_json(), user, self.headers.get("Idempotency-Key")
+                )
+                if isinstance(updated, IdempotentReplay):
+                    return self._json(200, {"case": updated})
                 return self._changed(200, {"case": updated}, "message.created", case_id, user)
             if method == "POST" and action == "close":
                 updated = self.server.database.close_case(case_id, self._read_json(), user)
@@ -1892,7 +2080,11 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and action == "photos":
                 body = self.rfile.read(self._content_length())
                 content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
-                updated = self.server.database.add_photo(case_id, body, content_type, user)
+                updated = self.server.database.add_photo(
+                    case_id, body, content_type, user, self.headers.get("Idempotency-Key")
+                )
+                if isinstance(updated, IdempotentReplay):
+                    return self._json(201, {"case": updated})
                 return self._changed(201, {"case": updated}, "photo.created", case_id, user)
             if method == "POST" and action == "message-photos":
                 body = self.rfile.read(self._content_length())

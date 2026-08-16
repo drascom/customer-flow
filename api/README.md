@@ -26,6 +26,24 @@ The first start creates the SQLite database in `data/customer-flow.sqlite3` and 
 
 By default, the API loads the admin panel from the sibling `../admin-panel` folder. Set `CF_ADMIN_DIR` if you deploy that folder somewhere else on the same host.
 
+## Agency integrations and idempotent writes
+
+Agent case lists, patient matching, patient reuse, case details and photo access
+are scoped to the agent's agency. An agent without an agency can access only
+their own records. Supplying a patient ID from another agency is treated as a
+missing patient rather than revealing that the record exists.
+
+Integration clients should send an `Idempotency-Key` header when creating a
+case, adding an agent update or uploading a case photo. Keys must contain 8-128
+letters, numbers, `.`, `_`, `:` or `-`. Repeating the exact request with the
+same key returns the current case without repeating the database mutation or
+publishing another live-change event. Reusing a key with different request data
+returns `409 idempotency_conflict`. Existing mobile clients remain compatible:
+the header is optional.
+
+The agency MCP connector and its deployment guide are in
+[`../mcp-server/`](../mcp-server/).
+
 ## Password recovery by email
 
 Set these variables before starting the server:

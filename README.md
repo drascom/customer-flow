@@ -9,6 +9,7 @@ The project is designed for organisations that need a private, role-based consul
 - [`api/`](api/) — Python API, authentication, SQLite storage and uploaded-media handling.
 - [`admin-panel/`](admin-panel/) — Responsive web administration interface served by the API.
 - [`ios-app/`](ios-app/) — Native SwiftUI app for Doctor, Agent and Admin users.
+- [`mcp-server/`](mcp-server/) — Least-privilege MCP connector for agency LLM and automation systems.
 - [`docs/`](docs/) — Project plan and interface mockups.
 
 ## Important

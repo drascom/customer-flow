@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "customer-flow-agency-mcp"
+version = "0.1.0"
+description = "Least-privilege MCP gateway for Customer Flow agencies"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp==1.29.0",
+]
+
+[project.scripts]
+customer-flow-mcp = "customer_flow_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["customer_flow_mcp*"]

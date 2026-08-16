@@ -32,11 +32,13 @@ class APITestCase(unittest.TestCase):
         cls.temp.cleanup()
         os.environ.pop("CF_PASSWORD_RESET_TEST_CODE", None)
 
-    def request(self, method, path, payload=None, token=None, expected=200):
+    def request(self, method, path, payload=None, token=None, expected=200, extra_headers=None):
         body = None if payload is None else json.dumps(payload).encode()
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        if extra_headers:
+            headers.update(extra_headers)
         request = Request(self.base + path, data=body, headers=headers, method=method)
         try:
             with urlopen(request) as response:
@@ -46,12 +48,17 @@ class APITestCase(unittest.TestCase):
             self.assertEqual(expected, error.code)
             return json.load(error)
 
-    def raw_request(self, method, path, body=None, content_type=None, token=None, expected=200):
+    def raw_request(
+        self, method, path, body=None, content_type=None, token=None, expected=200,
+        extra_headers=None,
+    ):
         headers = {}
         if content_type:
             headers["Content-Type"] = content_type
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        if extra_headers:
+            headers.update(extra_headers)
         request = Request(self.base + path, data=body, headers=headers, method=method)
         try:
             with urlopen(request) as response:
@@ -69,6 +76,8 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("ok", health["status"])
         self.assertIn("live-updates", health["capabilities"])
         self.assertIn("patient-profile", health["capabilities"])
+        self.assertIn("agency-scoping", health["capabilities"])
+        self.assertIn("idempotent-writes", health["capabilities"])
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
 
@@ -234,15 +243,107 @@ class APITestCase(unittest.TestCase):
 
     def test_role_filtered_cases_and_patient_matching(self):
         doctor = self.login("doctor1", "demo123")
-        agent = self.login("user1", "demo123")
+        agent = self.login("user2", "demo123")
         doctor_cases = self.request("GET", "/cases", token=doctor)["cases"]
         agent_cases = self.request("GET", "/cases", token=agent)["cases"]
         self.assertGreater(len(doctor_cases), len(agent_cases))
         self.assertTrue(agent_cases)
-        self.assertTrue(all(item["agencyName"] == "Acenta 1" for item in agent_cases))
+        self.assertTrue(all(item["agencyName"] == "Acenta 2" for item in agent_cases))
         matches = self.request("GET", f"/patients/matches?name={quote('Çolak Ayhan')}", token=agent)["matches"]
         self.assertEqual("Ayhan Çolak", matches[0]["name"])
-        self.assertTrue(matches[0]["createdByAnotherAgent"])
+        self.assertFalse(matches[0]["createdByAnotherAgent"])
+
+    def test_patient_matching_and_existing_patient_link_are_agency_scoped(self):
+        agent_one = self.login("user1", "demo123")
+        agent_two = self.login("user2", "demo123")
+        unique_name = "Agency Boundary " + uuid.uuid4().hex[:8]
+        first = self.request("POST", "/cases", {
+            "patientName": unique_name,
+            "grafts": "2100", "currency": "GBP", "price": "2000",
+            "note": "Agency one confidential case", "photoCount": 0,
+        }, token=agent_one, expected=201)["case"]
+
+        self.assertEqual([], self.request(
+            "GET", f"/patients/matches?name={quote(unique_name)}", token=agent_two
+        )["matches"])
+        denied = self.request("POST", "/cases", {
+            "patientName": unique_name,
+            "grafts": "2200", "currency": "GBP", "price": "2100",
+            "note": "Attempt to link another agency patient", "photoCount": 0,
+            "existingPatientID": first["patient"]["id"],
+        }, token=agent_two, expected=404)
+        self.assertEqual("patient_not_found", denied["error"]["code"])
+
+        second = self.request("POST", "/cases", {
+            "patientName": unique_name,
+            "grafts": "2200", "currency": "GBP", "price": "2100",
+            "note": "Independent agency two patient", "photoCount": 0,
+        }, token=agent_two, expected=201)["case"]
+        self.assertNotEqual(first["patient"]["id"], second["patient"]["id"])
+        matches = self.request(
+            "GET", f"/patients/matches?name={quote(unique_name)}", token=agent_two
+        )["matches"]
+        self.assertEqual([second["patient"]["id"]], [item["id"] for item in matches])
+
+    def test_idempotency_keys_deduplicate_case_message_and_photo_writes(self):
+        agent = self.login("user1", "demo123")
+        payload = {
+            "patientName": "Idempotent Patient " + uuid.uuid4().hex[:8],
+            "grafts": "2300", "currency": "GBP", "price": "2200",
+            "note": "Created exactly once", "photoCount": 0,
+        }
+        create_key = "case:create:" + uuid.uuid4().hex
+        first = self.request(
+            "POST", "/cases", payload, token=agent, expected=201,
+            extra_headers={"Idempotency-Key": create_key},
+        )["case"]
+        replay = self.request(
+            "POST", "/cases", payload, token=agent, expected=201,
+            extra_headers={"Idempotency-Key": create_key},
+        )["case"]
+        self.assertEqual(first["id"], replay["id"])
+
+        changed_payload = dict(payload, note="A different request")
+        conflict = self.request(
+            "POST", "/cases", changed_payload, token=agent, expected=409,
+            extra_headers={"Idempotency-Key": create_key},
+        )
+        self.assertEqual("idempotency_conflict", conflict["error"]["code"])
+
+        message_key = "message:add:" + uuid.uuid4().hex
+        message_payload = {"text": "Send this update once"}
+        updated = self.request(
+            "POST", f"/cases/{first['id']}/agent-updates", message_payload,
+            token=agent, extra_headers={"Idempotency-Key": message_key},
+        )["case"]
+        replayed_update = self.request(
+            "POST", f"/cases/{first['id']}/agent-updates", message_payload,
+            token=agent, extra_headers={"Idempotency-Key": message_key},
+        )["case"]
+        self.assertEqual(len(updated["messages"]), len(replayed_update["messages"]))
+
+        photo_key = "photo:add:" + uuid.uuid4().hex
+        photo = b"\xff\xd8\xffidempotent-photo\xff\xd9"
+        body, _ = self.raw_request(
+            "POST", f"/cases/{first['id']}/photos", body=photo,
+            content_type="image/jpeg", token=agent, expected=201,
+            extra_headers={"Idempotency-Key": photo_key},
+        )
+        body_replay, _ = self.raw_request(
+            "POST", f"/cases/{first['id']}/photos", body=photo,
+            content_type="image/jpeg", token=agent, expected=201,
+            extra_headers={"Idempotency-Key": photo_key},
+        )
+        uploaded = json.loads(body)["case"]
+        uploaded_replay = json.loads(body_replay)["case"]
+        self.assertEqual(uploaded["photoIDs"], uploaded_replay["photoIDs"])
+        self.assertEqual(1, uploaded_replay["photoCount"])
+
+        invalid = self.request(
+            "POST", f"/cases/{first['id']}/agent-updates", {"text": "Invalid key"},
+            token=agent, expected=422, extra_headers={"Idempotency-Key": "short"},
+        )
+        self.assertEqual("invalid_idempotency_key", invalid["error"]["code"])
 
     def test_doctors_can_view_every_case_but_cannot_change_another_doctors_case(self):
         doctor = self.login("doctor1", "demo123")

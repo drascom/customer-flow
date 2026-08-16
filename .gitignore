@@ -9,6 +9,8 @@
 # Python and API runtime data
 __pycache__/
 *.py[cod]
+.venv/
+*.egg-info/
 api/data/*.sqlite3*
 api/media/*
 !api/media/.gitkeep
