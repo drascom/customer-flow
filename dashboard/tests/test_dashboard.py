@@ -79,6 +79,24 @@ class DashboardTestCase(unittest.TestCase):
             urlopen(request)
         self.assertEqual(403, forbidden.exception.code)
 
+    def test_dashboard_proxies_permanent_admin_case_deletion(self):
+        headers = {"Authorization": self.authorization}
+        with urlopen(Request(self.base + "/api/v1/admin/cases", headers=headers)) as response:
+            target = json.load(response)["cases"][0]
+
+        request = Request(
+            self.base + f"/api/v1/admin/cases/{target['id']}",
+            headers=headers,
+            method="DELETE",
+        )
+        with urlopen(request) as response:
+            deleted = json.load(response)["case"]
+        self.assertTrue(deleted["deleted"])
+
+        with urlopen(Request(self.base + "/api/v1/admin/cases", headers=headers)) as response:
+            remaining = json.load(response)["cases"]
+        self.assertNotIn(target["id"], {item["id"] for item in remaining})
+
 
 if __name__ == "__main__":
     unittest.main()

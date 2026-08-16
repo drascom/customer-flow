@@ -29,7 +29,7 @@ ALLOWED_ROUTES = {
         re.compile(r"^/api/v1/admin/(?:users|agencies|patients)/[A-Za-z0-9-]+$"),
     ),
     "DELETE": (
-        re.compile(r"^/api/v1/admin/(?:users|photos)/[A-Za-z0-9-]+$"),
+        re.compile(r"^/api/v1/admin/(?:users|photos|cases)/[A-Za-z0-9-]+$"),
     ),
 }
 

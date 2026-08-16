@@ -626,6 +626,53 @@ class APITestCase(unittest.TestCase):
         updated = self.request("GET", "/admin/cases", token=admin)["cases"]
         self.assertTrue(all(item["doctorID"] == "doctor-emre" for item in updated if item["patientID"] == target["patientID"]))
 
+    def test_only_admin_can_permanently_delete_case_and_all_media(self):
+        agent = self.login("user1", "demo123")
+        manager = self.login("manager", "demo123")
+        admin = self.login("admin", "demo123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Delete Test " + uuid.uuid4().hex[:8],
+            "grafts": "2100", "currency": "GBP", "price": "2000",
+            "note": "Permanent case deletion test", "photoCount": 0,
+        }, token=agent, expected=201)["case"]
+        case_id = created["id"]
+        patient_id = created["patient"]["id"]
+
+        self.raw_request(
+            "POST", f"/cases/{case_id}/photos", b"original-photo", "image/jpeg", agent, expected=201
+        )
+        self.raw_request(
+            "POST", f"/cases/{case_id}/message-photos", b"annotated-photo", "image/jpeg", agent, expected=201
+        )
+
+        with self.server.database.connect() as conn:
+            media_paths = [
+                self.server.database.media_root / row[0]
+                for row in conn.execute(
+                    "SELECT file_path FROM photos WHERE case_id=? AND file_path IS NOT NULL "
+                    "UNION ALL SELECT attachment_path FROM messages WHERE case_id=? AND attachment_path IS NOT NULL",
+                    (case_id, case_id),
+                ).fetchall()
+            ]
+        self.assertGreaterEqual(len(media_paths), 2)
+        self.assertTrue(all(path.is_file() for path in media_paths))
+
+        forbidden = self.request("DELETE", f"/admin/cases/{case_id}", token=manager, expected=403)
+        self.assertEqual("forbidden", forbidden["error"]["code"])
+
+        deleted = self.request("DELETE", f"/admin/cases/{case_id}", token=admin)["case"]
+        self.assertTrue(deleted["deleted"])
+        self.assertTrue(deleted["patientDeleted"])
+        self.assertGreaterEqual(deleted["photoCount"], 1)
+        self.assertGreaterEqual(deleted["messageCount"], 1)
+        self.assertTrue(all(not path.exists() for path in media_paths))
+
+        with self.server.database.connect() as conn:
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM cases WHERE id=?", (case_id,)).fetchone()[0])
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM photos WHERE case_id=?", (case_id,)).fetchone()[0])
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM messages WHERE case_id=?", (case_id,)).fetchone()[0])
+            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM patients WHERE id=?", (patient_id,)).fetchone()[0])
+
     def test_admin_can_auto_generate_unique_usernames_from_display_name(self):
         admin = self.login("admin", "demo123")
         first = self.request("POST", "/admin/users", {

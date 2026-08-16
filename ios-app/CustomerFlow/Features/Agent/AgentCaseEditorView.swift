@@ -103,19 +103,20 @@ struct AgentCasesView: View {
 
     private var searchHeader: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(AppTheme.muted)
-            TextField("Search my cases", text: $searchText)
+            Image(systemName: "magnifyingglass").foregroundStyle(AppTheme.muted)
+            TextField("Search", text: $searchText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }
-        .padding(.horizontal, 11)
-        .frame(minHeight: 44)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.border))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(AppTheme.surfaceStrong)
+        .padding(.horizontal, 13)
+        .frame(maxWidth: 620, minHeight: 42)
+        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(AppTheme.background)
     }
 
     private var filterMenu: some View {

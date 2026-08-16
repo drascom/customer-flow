@@ -163,10 +163,35 @@ function renderCases() {
       <td>${item.photoCount}</td>
       <td><div class="identity"><strong>${escapeHTML(item.grafts)}</strong><small>£${escapeHTML(item.price)}</small></div></td>
       <td>${formatDate(item.uploadedAt)}</td>
+      <td>${state.user.role === "admin"
+        ? `<button class="row-action danger" data-delete-case="${escapeHTML(item.id)}" data-case-reference="${escapeHTML(item.reference)}">Delete</button>`
+        : ""}</td>
     </tr>`;
   }).join("");
   $("casesEmpty").hidden = rows.length !== 0;
   document.querySelectorAll(".doctor-select").forEach((select) => select.addEventListener("change", assignDoctor));
+  document.querySelectorAll("[data-delete-case]").forEach((button) => button.addEventListener("click", deleteCase));
+}
+
+async function deleteCase(event) {
+  const button = event.currentTarget;
+  const reference = button.dataset.caseReference;
+  const confirmation = window.prompt(
+    `This permanently deletes the consultation, all messages and every photo. Type ${reference} to continue:`
+  ) || "";
+  if (confirmation !== reference) return;
+  button.disabled = true;
+  try {
+    await api(`/admin/cases/${encodeURIComponent(button.dataset.deleteCase)}`, { method: "DELETE" });
+    state.cases = state.cases.filter((item) => item.id !== button.dataset.deleteCase);
+    renderFilterChips();
+    updateOverview();
+    renderCases();
+    toast("Consultation and all related media permanently deleted.");
+  } catch (error) {
+    button.disabled = false;
+    toast(error.message);
+  }
 }
 
 function renderUsers() {

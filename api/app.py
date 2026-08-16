@@ -13,6 +13,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import smtplib
 import sqlite3
 import threading
@@ -1082,6 +1083,81 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def admin_delete_case(self, case_id: str, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        case_directory = None
+        patient_profile_path = None
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                case = self._case_row(conn, case_id)
+                patient = conn.execute(
+                    "SELECT * FROM patients WHERE id=?", (case["patient_id"],)
+                ).fetchone()
+                photo_count = conn.execute(
+                    "SELECT COUNT(*) FROM photos WHERE case_id=?", (case_id,)
+                ).fetchone()[0]
+                message_count = conn.execute(
+                    "SELECT COUNT(*) FROM messages WHERE case_id=?", (case_id,)
+                ).fetchone()[0]
+
+                media_root = self.media_root.resolve()
+                candidate_directory = (media_root / case_id).resolve()
+                if media_root not in candidate_directory.parents:
+                    raise APIError(409, "invalid_case_path", "The stored case media path is invalid.")
+                case_directory = candidate_directory
+
+                conn.execute("DELETE FROM cases WHERE id=?", (case_id,))
+                remaining_cases = conn.execute(
+                    "SELECT COUNT(*) FROM cases WHERE patient_id=?", (case["patient_id"],)
+                ).fetchone()[0]
+                patient_deleted = remaining_cases == 0
+                if patient_deleted:
+                    if patient and patient["profile_photo_path"]:
+                        candidate = (media_root / patient["profile_photo_path"]).resolve()
+                        if media_root not in candidate.parents:
+                            raise APIError(409, "invalid_patient_photo_path", "The stored patient photo path is invalid.")
+                        patient_profile_path = candidate
+                    conn.execute("DELETE FROM patients WHERE id=?", (case["patient_id"],))
+
+                self._audit(
+                    conn,
+                    user["id"],
+                    "case.deleted",
+                    "case",
+                    case_id,
+                    {
+                        "reference": case["reference"],
+                        "patientID": case["patient_id"],
+                        "patientDeleted": patient_deleted,
+                        "photoCount": photo_count,
+                        "messageCount": message_count,
+                    },
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+        if case_directory and case_directory.is_dir():
+            try:
+                shutil.rmtree(case_directory)
+            except OSError:
+                pass
+        if patient_profile_path and patient_profile_path.is_file():
+            try:
+                patient_profile_path.unlink()
+            except OSError:
+                pass
+        return {
+            "id": case_id,
+            "reference": case["reference"],
+            "deleted": True,
+            "patientDeleted": patient_deleted,
+            "photoCount": photo_count,
+            "messageCount": message_count,
+        }
+
     def get_photo(self, photo_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
         with self.connect() as conn:
             photo = conn.execute(
@@ -1744,6 +1820,10 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._read_json()
                 purged = self.server.database.admin_purge_photo(admin_parts[1], user)
                 return self._changed(200, {"photo": purged}, "photo.purged", admin_parts[1], user)
+            if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "cases":
+                self._read_json()
+                deleted = self.server.database.admin_delete_case(admin_parts[1].lower(), user)
+                return self._changed(200, {"case": deleted}, "case.deleted", admin_parts[1], user)
             if path.startswith(f"{API_PREFIX}/admin/") and method == "PATCH" and len(admin_parts) == 2:
                 if admin_parts[0] == "users":
                     payload = self._read_json()
