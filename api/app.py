@@ -1871,7 +1871,7 @@ class Database:
         self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_grafts,c.currency,c.agent_price,"
+                "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_note,c.agent_grafts,c.currency,c.agent_price,"
                 "c.final_grafts,c.final_price,c.finalized_at,"
                 "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,"
                 "p.address,p.occupation,p.profile_note,"
@@ -1913,6 +1913,7 @@ class Database:
                     "agencyName": row["agency_name"],
                     "doctorID": row["assigned_doctor_id"], "doctorName": row["doctor_name"],
                     "uploadedAt": row["uploaded_at"], "status": row["status"],
+                    "agentNote": row["agent_note"],
                     "photoCount": len(photos),
                     "deletedPhotoCount": sum(1 for photo in photos if photo["deleted_at"]),
                     "photos": [{

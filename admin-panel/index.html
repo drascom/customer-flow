@@ -4,77 +4,86 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Customer Flow Admin</title>
+  <meta name="theme-color" content="#0b7772">
+  <title>Customer Flow</title>
   <link rel="stylesheet" href="/admin/admin.css">
   <script src="/admin/admin.js" defer></script>
 </head>
 <body>
   <main id="loginView" class="login-shell">
     <section class="login-card">
-      <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>C</b>ustomer <b>F</b>low</span></div>
-      <div>
-        <h1>Management sign in</h1>
-        <p>Admins manage access; managers monitor all records in read-only mode.</p>
+      <div class="brand brand-large"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>C</b>ustomer <b>F</b>low</span></div>
+      <div class="login-copy">
+        <span class="eyebrow">Secure clinical workspace</span>
+        <h1>Welcome back</h1>
+        <p>Sign in to manage consultations, clinical replies and patient communication.</p>
       </div>
       <form id="loginForm" class="stack">
-        <label>Username<input id="loginUsername" autocomplete="username" required></label>
+        <label>Username<input id="loginUsername" autocomplete="username" autocapitalize="none" required></label>
         <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required></label>
-        <button class="primary" type="submit">Sign in</button>
+        <label class="remember"><input id="rememberSession" type="checkbox"> Keep me signed in on this device</label>
+        <button class="primary login-button" type="submit">Sign in</button>
         <p id="loginError" class="form-error" role="alert"></p>
       </form>
-      <small>Accounts are created by an administrator. Public registration is disabled.</small>
+      <small>Accounts are issued by your Customer Flow administrator. Public registration is disabled.</small>
     </section>
   </main>
 
   <div id="appView" class="app-shell" hidden>
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>C</b>ustomer <b>F</b>low</span></div>
-      <div class="account"><span id="adminName"></span><button id="logoutButton" class="quiet">Sign out</button></div>
+      <div class="account">
+        <button id="profileButton" class="account-button" type="button"><span id="accountAvatar">CF</span><span><strong id="accountName"></strong><small id="accountRole"></small></span></button>
+        <button id="logoutButton" class="quiet">Sign out</button>
+      </div>
     </header>
 
     <main class="content">
-      <section class="overview" aria-label="Overview">
-        <article><span>Active users</span><strong id="activeUsers">—</strong></article>
-        <article><span>Patients</span><strong id="patientCount">—</strong></article>
-        <article><span>Waiting</span><strong id="waitingCount">—</strong></article>
-        <article><span>Answered</span><strong id="answeredCount">—</strong></article>
+      <section id="overview" class="overview" aria-label="Overview">
+        <article data-overview-filter="all"><span id="overviewLabel1">Cases</span><strong id="overviewValue1">—</strong></article>
+        <article data-overview-filter="waiting"><span id="overviewLabel2">Waiting</span><strong id="overviewValue2">—</strong></article>
+        <article data-overview-filter="answered"><span id="overviewLabel3">Answered</span><strong id="overviewValue3">—</strong></article>
+        <article data-overview-filter="closed"><span id="overviewLabel4">Confirmed</span><strong id="overviewValue4">—</strong></article>
       </section>
 
       <div class="workspace-bar">
-        <nav class="tabs" aria-label="Admin sections">
-          <button class="tab active" data-view="cases">Patients & cases</button>
-          <button class="tab" data-view="users">Users</button>
-          <button class="tab" data-view="agencies">Agencies</button>
+        <nav id="tabs" class="tabs" aria-label="Workspace sections">
+          <button class="tab active" data-view="cases">Cases</button>
+          <button class="tab management-only" data-view="users">Users</button>
+          <button class="tab management-only" data-view="agencies">Agencies</button>
         </nav>
         <div class="workspace-actions">
-          <label class="search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search"></label>
-          <button id="addUserButton" class="primary compact" hidden>+ Add user</button>
+          <label class="search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search patients or cases"></label>
+          <button id="newCaseButton" class="primary compact agent-only" hidden>+ New case</button>
+          <button id="addUserButton" class="primary compact admin-only" hidden>+ Add user</button>
         </div>
       </div>
 
       <section id="casesView" class="panel">
         <div class="panel-heading">
-          <div><h2>Patients & cases</h2><p>Track consultation status, owner and assigned doctor.</p></div>
+          <div><h2 id="casesHeading">Cases</h2><p id="casesDescription">Track consultation progress and recent communication.</p></div>
+          <button id="refreshButton" class="quiet compact" type="button">↻ Refresh</button>
         </div>
         <div class="filter-bar" aria-label="Case filters">
           <div class="filter-groups">
             <div class="filter-group"><span class="filter-label">Status</span><div id="caseStatusChips" class="filter-chips"></div></div>
-            <div class="filter-group"><span class="filter-label">Assignment</span><div id="caseAssignmentChips" class="filter-chips"></div></div>
-            <div class="filter-group"><span class="filter-label">Agency</span><div id="caseAgencyChips" class="filter-chips"></div></div>
-            <div class="filter-group"><span class="filter-label">Doctor</span><div id="caseDoctorChips" class="filter-chips"></div></div>
+            <div id="caseAssignmentGroup" class="filter-group management-only"><span class="filter-label">Assignment</span><div id="caseAssignmentChips" class="filter-chips"></div></div>
+            <div id="caseAgencyGroup" class="filter-group management-only"><span class="filter-label">Agency</span><div id="caseAgencyChips" class="filter-chips"></div></div>
+            <div id="caseDoctorGroup" class="filter-group management-only"><span class="filter-label">Doctor</span><div id="caseDoctorChips" class="filter-chips"></div></div>
           </div>
           <button id="clearCaseFilters" class="clear-filters" type="button" hidden>Clear filters</button>
         </div>
-        <div class="table-wrap">
+        <div id="caseCards" class="case-grid"></div>
+        <div id="managementCaseTable" class="table-wrap management-only">
           <table>
             <thead><tr><th>Patient</th><th>Messages</th><th>Status</th><th>Agent</th><th>Assigned doctor</th><th>Photos</th><th>Grafts / price</th><th>Uploaded</th><th></th></tr></thead>
             <tbody id="casesBody"></tbody>
           </table>
-          <p id="casesEmpty" class="empty" hidden>No matching cases.</p>
         </div>
+        <p id="casesEmpty" class="empty" hidden>No matching cases.</p>
       </section>
 
-      <section id="usersView" class="panel" hidden>
+      <section id="usersView" class="panel management-only" hidden>
         <div class="panel-heading"><div><h2>Users</h2><p>Create accounts and control access without deleting audit history.</p></div></div>
         <div class="filter-bar" aria-label="User filters">
           <div class="filter-groups">
@@ -84,62 +93,49 @@
           </div>
           <button id="clearUserFilters" class="clear-filters" type="button" hidden>Clear filters</button>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>User</th><th>Username</th><th>Role</th><th>Agency</th><th>Activity</th><th>Status</th><th></th></tr></thead>
-            <tbody id="usersBody"></tbody>
-          </table>
-          <p id="usersEmpty" class="empty" hidden>No matching users.</p>
-        </div>
+        <div class="table-wrap"><table><thead><tr><th>User</th><th>Username</th><th>Role</th><th>Agency</th><th>Activity</th><th>Status</th><th></th></tr></thead><tbody id="usersBody"></tbody></table></div>
+        <p id="usersEmpty" class="empty" hidden>No matching users.</p>
       </section>
 
-      <section id="agenciesView" class="panel" hidden>
+      <section id="agenciesView" class="panel management-only" hidden>
         <div class="panel-heading"><div><h2>Agencies</h2><p>Edit agencies and manage their shared MCP connection.</p></div></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Agency</th><th>Users</th><th>MCP connection</th><th>Last rotated</th><th></th></tr></thead>
-            <tbody id="agenciesBody"></tbody>
-          </table>
-          <p id="agenciesEmpty" class="empty" hidden>No agencies.</p>
-        </div>
+        <div class="table-wrap"><table><thead><tr><th>Agency</th><th>Users</th><th>MCP connection</th><th>Last rotated</th><th></th></tr></thead><tbody id="agenciesBody"></tbody></table></div>
+        <p id="agenciesEmpty" class="empty" hidden>No agencies.</p>
       </section>
     </main>
   </div>
 
-  <dialog id="userDialog">
-    <form id="userForm" class="dialog-card">
-      <div class="dialog-heading"><div><h2>Add user</h2><p>Create a server-authorised account.</p></div><button id="closeDialog" class="icon-button" type="button" aria-label="Close">×</button></div>
-      <label>Display name<input id="newDisplayName" autocomplete="off" required></label>
-      <label>Username<input id="newUsername" autocomplete="off" autocapitalize="none" required></label>
-      <label>Role<select id="newRole" required><option value="agent">Agent</option><option value="doctor">Doctor</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label>
-      <label id="agencyField">Agency<select id="newAgency" required></select></label>
-      <label id="newAgencyField" hidden>New agency name<input id="newAgencyName" autocomplete="organization"><small>The agency will be added before the user is created.</small></label>
-      <label>Temporary password<input id="newPassword" type="password" minlength="10" autocomplete="new-password" required><small>At least 10 characters.</small></label>
-      <p id="userFormError" class="form-error" role="alert"></p>
-      <div class="dialog-actions"><button id="cancelUser" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create user</button></div>
+  <dialog id="caseDialog" class="wide-dialog"><div class="case-dialog-shell"><div class="sticky-dialog-heading"><div><span id="caseDialogEyebrow" class="eyebrow"></span><h2 id="caseDialogTitle">Patient</h2></div><button id="closeCaseDialog" class="icon-button" type="button" aria-label="Close">×</button></div><div id="caseDialogContent" class="case-dialog-content"></div></div></dialog>
+
+  <dialog id="newCaseDialog" class="form-dialog">
+    <form id="newCaseForm" class="dialog-card case-form">
+      <div class="dialog-heading"><div><h2>Create case</h2><p>Add patient details, consultation needs and photographs.</p></div><button id="closeNewCase" class="icon-button" type="button" aria-label="Close">×</button></div>
+      <div class="form-grid">
+        <label class="span-2">Patient name *<input id="casePatientName" autocomplete="name" required><span id="patientMatchHint" class="field-hint"></span></label>
+        <label>Date of birth<input id="caseDateOfBirth" type="date"></label><label>Age<input id="caseAge" type="number" min="0" max="130"></label>
+        <label>Gender<select id="caseGender"><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="non_binary">Non-binary</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
+        <label>Phone<input id="casePhone" type="tel" autocomplete="tel"></label><label>Email<input id="caseEmail" type="email" autocomplete="email"></label>
+        <label class="span-2">Address / city / region<input id="caseAddress" autocomplete="street-address"></label><label>Occupation<input id="caseOccupation"></label>
+        <label class="span-2">Short patient information<textarea id="caseProfileNote" rows="3"></textarea></label>
+        <label class="span-2">Patient need *<textarea id="caseNeed" rows="5" required></textarea></label>
+        <label>Estimated grafts *<input id="caseGrafts" inputmode="numeric" value="3200" required></label><label>Estimated price (£) *<input id="casePrice" inputmode="decimal" value="2850" required></label>
+        <label class="span-2">Photos *<input id="casePhotos" type="file" accept="image/*" capture="environment" multiple><span class="field-hint">At least two photos are required.</span></label>
+      </div>
+      <div id="pendingPhotoGrid" class="pending-photo-grid"></div>
+      <p id="newCaseError" class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button id="cancelNewCase" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create case</button></div>
     </form>
   </dialog>
 
-  <dialog id="agencyDialog">
-    <form id="agencyForm" class="dialog-card">
-      <div class="dialog-heading"><div><h2>Agency settings</h2><p>Manage the agency and its LLM/MCP connection.</p></div><button id="closeAgencyDialog" class="icon-button" type="button" aria-label="Close">×</button></div>
-      <label>Agency name<input id="editAgencyName" autocomplete="organization" required></label>
-      <button id="saveAgency" class="quiet" type="submit">Save agency name</button>
-      <div class="mcp-settings">
-        <div><strong>MCP connection</strong><p id="mcpStatus">Loading…</p></div>
-        <label>Endpoint<input id="mcpEndpoint" readonly></label>
-        <div id="mcpTokenBox" class="one-time-token" hidden>
-          <strong>Copy this token now. It will not be shown again.</strong>
-          <code id="mcpToken"></code>
-          <button id="copyMCPToken" class="quiet" type="button">Copy token</button>
-        </div>
-        <button id="rotateMCPToken" class="primary" type="button">Generate access token</button>
-        <small>Rotating immediately invalidates the previous token. Give the endpoint and token only to the agency's approved system administrator.</small>
-      </div>
-      <p id="agencyFormError" class="form-error" role="alert"></p>
-      <div class="dialog-actions"><button id="cancelAgency" class="quiet" type="button">Close</button></div>
-    </form>
-  </dialog>
+  <dialog id="photoDialog" class="photo-dialog"><div class="photo-viewer"><div class="photo-toolbar"><span id="photoCounter"></span><div><button id="editPhotoButton" class="primary compact" type="button">Edit & mark up</button><button id="closePhotoDialog" class="icon-button" type="button">×</button></div></div><button id="previousPhoto" class="photo-arrow previous" type="button">‹</button><img id="photoPreviewImage" alt="Patient photograph"><button id="nextPhoto" class="photo-arrow next" type="button">›</button><div id="photoThumbnails" class="photo-thumbnails"></div></div></dialog>
+
+  <dialog id="editorDialog" class="editor-dialog"><div class="editor-shell"><div class="editor-toolbar"><div class="editor-tools"><button id="editorClose" class="icon-button" type="button">×</button><button id="editorUndo" class="quiet compact" type="button">↶ Undo</button><button id="editorText" class="quiet compact" type="button">Aa Text</button></div><div class="pen-controls"><label>Colour<input id="penColor" type="color" value="#ff8a00"></label><label>Width<input id="penWidth" type="range" min="2" max="28" value="7"></label></div></div><div id="canvasStage" class="canvas-stage"><canvas id="markupCanvas"></canvas><div id="textLayer" class="text-layer"></div></div><div class="editor-send"><input id="photoMessageNote" placeholder="Add a note to send with this photo (optional)"><button id="sendEditedPhoto" class="primary" type="button">Send photo</button></div></div></dialog>
+
+  <dialog id="profileDialog"><form id="profileForm" class="dialog-card"><div class="dialog-heading"><div><h2>My profile</h2><p>Update your details or password.</p></div><button id="closeProfile" class="icon-button" type="button">×</button></div><label>Display name<input id="profileDisplayName" required></label><label>Email<input id="profileEmail" type="email"></label><label>Phone<input id="profilePhone" type="tel"></label><button class="primary" type="submit">Save profile</button><hr><label>Current password<input id="currentPassword" type="password" autocomplete="current-password"></label><label>New password<input id="newProfilePassword" type="password" minlength="10" autocomplete="new-password"></label><button id="changePassword" class="quiet" type="button">Change password</button><p id="profileError" class="form-error"></p></form></dialog>
+
+  <dialog id="userDialog"><form id="userForm" class="dialog-card"><div class="dialog-heading"><div><h2>Add user</h2><p>Create a server-authorised account.</p></div><button id="closeDialog" class="icon-button" type="button">×</button></div><label>Display name<input id="newDisplayName" autocomplete="off" required></label><label>Username<input id="newUsername" autocomplete="off" autocapitalize="none" required></label><label>Role<select id="newRole" required><option value="agent">Agent</option><option value="doctor">Doctor</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label><label id="agencyField">Agency<select id="newAgency" required></select></label><label id="newAgencyField" hidden>New agency name<input id="newAgencyName" autocomplete="organization"><small>The agency will be added before the user is created.</small></label><label>Temporary password<input id="newPassword" type="password" minlength="10" autocomplete="new-password" required><small>At least 10 characters.</small></label><p id="userFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelUser" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create user</button></div></form></dialog>
+
+  <dialog id="agencyDialog"><form id="agencyForm" class="dialog-card"><div class="dialog-heading"><div><h2>Agency settings</h2><p>Manage the agency and its LLM/MCP connection.</p></div><button id="closeAgencyDialog" class="icon-button" type="button">×</button></div><label>Agency name<input id="editAgencyName" autocomplete="organization" required></label><button id="saveAgency" class="quiet" type="submit">Save agency name</button><div class="mcp-settings"><div><strong>MCP connection</strong><p id="mcpStatus">Loading…</p></div><label>Endpoint<input id="mcpEndpoint" readonly></label><div id="mcpTokenBox" class="one-time-token" hidden><strong>Copy this token now. It will not be shown again.</strong><code id="mcpToken"></code><button id="copyMCPToken" class="quiet" type="button">Copy token</button></div><button id="rotateMCPToken" class="primary" type="button">Generate access token</button><small>Rotating immediately invalidates the previous token. Give the endpoint and token only to the agency's approved system administrator.</small></div><p id="agencyFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelAgency" class="quiet" type="button">Close</button></div></form></dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
 </body>

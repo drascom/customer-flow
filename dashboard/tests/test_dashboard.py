@@ -1,5 +1,4 @@
 import importlib.util
-import base64
 import json
 import sys
 import tempfile
@@ -8,7 +7,6 @@ import unittest
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "api"))
@@ -27,92 +25,58 @@ class DashboardTestCase(unittest.TestCase):
         cls.api = api_app.create_server("127.0.0.1", 0, temp_root / "test.sqlite3", temp_root / "media", seed=True)
         cls.api_thread = threading.Thread(target=cls.api.serve_forever, daemon=True)
         cls.api_thread.start()
-        cls.dashboard = dashboard_app.create_server(
-            "127.0.0.1",
-            0,
-            f"http://127.0.0.1:{cls.api.server_port}",
-            ROOT / "admin-panel",
-            "admin",
-            "demo123",
-            "73918426",
-        )
+        cls.dashboard = dashboard_app.create_server("127.0.0.1", 0, f"http://127.0.0.1:{cls.api.server_port}", ROOT / "admin-panel")
         cls.dashboard_thread = threading.Thread(target=cls.dashboard.serve_forever, daemon=True)
         cls.dashboard_thread.start()
         cls.base = f"http://127.0.0.1:{cls.dashboard.server_port}"
-        cls.authorization = "Basic " + base64.b64encode(b"admin:73918426").decode()
 
     @classmethod
     def tearDownClass(cls):
-        cls.dashboard.shutdown()
-        cls.dashboard.server_close()
-        cls.api.shutdown()
-        cls.api.server_close()
-        cls.temp.cleanup()
+        cls.dashboard.shutdown(); cls.dashboard.server_close(); cls.api.shutdown(); cls.api.server_close(); cls.temp.cleanup()
 
-    def test_dashboard_is_direct_and_proxies_admin_reads(self):
-        with self.assertRaises(HTTPError) as unauthorized:
-            urlopen(self.base + "/")
-        self.assertEqual(401, unauthorized.exception.code)
+    def request(self, method, path, body=None, token=None, expected=200, content_type="application/json"):
+        headers = {"Accept": "application/json"}
+        if token: headers["Authorization"] = f"Bearer {token}"
+        if body is not None: headers["Content-Type"] = content_type
+        data = json.dumps(body).encode() if body is not None and content_type == "application/json" else body
+        request = Request(self.base + path, data=data, headers=headers, method=method)
+        try:
+            response = urlopen(request)
+        except HTTPError as error:
+            response = error
+        payload = response.read()
+        self.assertEqual(expected, response.status, payload)
+        return json.loads(payload) if response.headers.get_content_type() == "application/json" else payload
 
-        with urlopen(Request(self.base + "/", headers={"Authorization": self.authorization})) as response:
-            html = response.read()
-        self.assertIn(b'data-direct-admin="true"', html)
-        self.assertIn(b'<main id="loginView" hidden', html)
-        self.assertIn(b'<div id="appView" class="app-shell">', html)
+    def login(self, username):
+        return self.request("POST", "/api/v1/auth/login", {"username": username, "password": "demo123"})["token"]
 
-        with urlopen(Request(self.base + "/api/v1/admin/cases", headers={"Authorization": self.authorization})) as response:
-            payload = json.load(response)
-        self.assertGreater(len(payload["cases"]), 0)
+    def test_dashboard_serves_real_login_and_forwards_every_role(self):
+        html = self.request("GET", "/")
+        self.assertIn(b'id="loginForm"', html)
+        self.assertNotIn(b"data-direct-admin", html)
+        for username in ("admin", "manager", "user1", "doctor1"):
+            token = self.login(username)
+            me = self.request("GET", "/api/v1/auth/me", token=token)
+            self.assertEqual(username, me["user"]["username"])
 
-    def test_dashboard_does_not_expose_auth_routes_or_cross_origin_mutations(self):
-        with self.assertRaises(HTTPError) as missing:
-            urlopen(Request(self.base + "/api/v1/auth/me", headers={"Authorization": self.authorization}))
-        self.assertEqual(404, missing.exception.code)
+    def test_role_authorization_is_enforced_by_api(self):
+        agent = self.login("user1")
+        self.request("GET", "/api/v1/cases", token=agent)
+        self.request("GET", "/api/v1/admin/users", token=agent, expected=403)
 
-        request = Request(
-            self.base + "/api/v1/admin/agencies",
-            data=json.dumps({"name": "Blocked"}).encode(),
-            headers={"Content-Type": "application/json", "Origin": "https://example.test", "Authorization": self.authorization},
-            method="POST",
-        )
-        with self.assertRaises(HTTPError) as forbidden:
-            urlopen(request)
+    def test_case_creation_and_photo_upload_forward_binary_and_headers(self):
+        agent = self.login("user1")
+        case = self.request("POST", "/api/v1/cases", {"patientName": "Web Patient", "grafts": "2300", "currency": "GBP", "price": "2200", "note": "Web flow", "photoCount": 1}, token=agent, expected=201)["case"]
+        jpeg = b"\xff\xd8dashboard-photo\xff\xd9"
+        uploaded = self.request("POST", f"/api/v1/cases/{case['id']}/photos", jpeg, agent, 201, "image/jpeg")["case"]
+        photo = self.request("GET", f"/api/v1/photos/{uploaded['photoIDs'][0]}", token=agent)
+        self.assertEqual(jpeg, photo)
+
+    def test_cross_origin_mutation_is_rejected(self):
+        request = Request(self.base + "/api/v1/auth/login", data=b"{}", headers={"Content-Type": "application/json", "Origin": "https://example.test"}, method="POST")
+        with self.assertRaises(HTTPError) as forbidden: urlopen(request)
         self.assertEqual(403, forbidden.exception.code)
-
-    def test_dashboard_proxies_permanent_admin_case_deletion(self):
-        headers = {"Authorization": self.authorization}
-        with urlopen(Request(self.base + "/api/v1/admin/cases", headers=headers)) as response:
-            target = json.load(response)["cases"][0]
-
-        request = Request(
-            self.base + f"/api/v1/admin/cases/{target['id']}",
-            headers=headers,
-            method="DELETE",
-        )
-        with urlopen(request) as response:
-            deleted = json.load(response)["case"]
-        self.assertTrue(deleted["deleted"])
-
-        with urlopen(Request(self.base + "/api/v1/admin/cases", headers=headers)) as response:
-            remaining = json.load(response)["cases"]
-        self.assertNotIn(target["id"], {item["id"] for item in remaining})
-
-    def test_dashboard_proxies_admin_only_mcp_connection_rotation(self):
-        headers = {"Authorization": self.authorization, "Content-Type": "application/json"}
-        with urlopen(Request(self.base + "/api/v1/admin/agencies", headers=headers)) as response:
-            agency = json.load(response)["agencies"][0]
-        with urlopen(Request(
-            self.base + f"/api/v1/admin/agencies/{agency['id']}/mcp/rotate",
-            data=b"{}", headers=headers, method="POST",
-        )) as response:
-            connection = json.load(response)["connection"]
-        self.assertTrue(connection["accessToken"].startswith("cfmcp_"))
-        with urlopen(Request(
-            self.base + f"/api/v1/admin/agencies/{agency['id']}/mcp", headers=headers,
-        )) as response:
-            info = json.load(response)["connection"]
-        self.assertTrue(info["configured"])
-        self.assertNotIn("accessToken", info)
 
 
 if __name__ == "__main__":
