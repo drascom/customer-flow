@@ -199,6 +199,9 @@ private struct AgentCaseListCard: View {
                     statusChip
                 }
 
+                Divider()
+                    .overlay(AppTheme.muted.opacity(0.22))
+
                 HStack(spacing: 6) {
                     Image(systemName: "clock")
                     Text(item.uploadedAt.compactRelativeText)
