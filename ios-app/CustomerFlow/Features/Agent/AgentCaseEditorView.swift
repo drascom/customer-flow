@@ -109,6 +109,8 @@ struct AgentCasesView: View {
                                 .accessibilityLabel("Close case details")
                             }
                         }
+                        .toolbarBackground(AppTheme.surfaceStrong, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
                 }
                 .presentationDetents([.fraction(0.97)])
                 .presentationDragIndicator(.hidden)
@@ -1039,7 +1041,13 @@ struct AgentCaseEditorView: View {
                     .font(.caption)
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 10)], spacing: 10) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 14),
+                    GridItem(.flexible(), spacing: 14)
+                ],
+                spacing: 14
+            ) {
                 if photoCount == 0 {
                     if canEditCase {
                         PhotoSourceButton(
@@ -1064,7 +1072,11 @@ struct AgentCaseEditorView: View {
                         onDelete: canEditCase ? photoDeleteAction(for: photoID) : nil,
                         onTap: photoPreviewAction(for: photoID)
                     )
-                        .frame(maxWidth: .infinity, minHeight: 108, maxHeight: 108)
+                        .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(AppTheme.border, lineWidth: 1)
+                        }
                         .overlay(alignment: .topLeading) {
                             Text("\(index + 1)")
                                 .font(.caption2.bold()).foregroundStyle(.white)
