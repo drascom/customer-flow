@@ -90,6 +90,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--amber); box-shad
 .topbar-search { justify-self: center; width: 100%; }
 .panel { overflow: hidden; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); backdrop-filter: blur(18px); }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.panel-heading-actions { display: flex; align-items: center; gap: 8px; }
 .panel-heading p { margin-top: 3px; font-size: 13px; }
 .panel-heading select { min-width: 150px; min-height: 36px; }
 .filter-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--inset), transparent 54%); }
@@ -310,6 +311,7 @@ hr { width: 100%; border: 0; border-top: 1px solid var(--border); }
   .overview article { padding: 14px; }
   .overview strong { font-size: 23px; }
   .panel-heading { align-items: stretch; flex-direction: column; }
+  .panel-heading-actions { justify-content: flex-end; }
   .panel-heading select { width: 100%; }
   .case-title-row { align-items: flex-start; }
   .case-title-row strong { white-space: normal; }

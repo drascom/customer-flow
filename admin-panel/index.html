@@ -47,14 +47,13 @@
         <article data-overview-filter="closed"><span id="overviewLabel4">Confirmed</span><strong id="overviewValue4">—</strong></article>
       </section>
 
-      <div class="workspace-bar">
+      <div id="workspaceBar" class="workspace-bar">
         <nav id="tabs" class="tabs" aria-label="Workspace sections">
           <button class="tab active" data-view="cases">Cases</button>
           <button class="tab management-only" data-view="users">Users</button>
           <button class="tab management-only" data-view="agencies">Agencies</button>
         </nav>
         <div class="workspace-actions">
-          <button id="newCaseButton" class="primary compact agent-only" hidden>+ New case</button>
           <button id="addUserButton" class="primary compact admin-only" hidden>+ Add user</button>
         </div>
       </div>
@@ -62,7 +61,7 @@
       <section id="casesView" class="panel">
         <div class="panel-heading">
           <div><h2 id="casesHeading">Cases</h2><p id="casesDescription">Track consultation progress and recent communication.</p></div>
-          <button id="refreshButton" class="quiet compact" type="button">↻ Refresh</button>
+          <div class="panel-heading-actions"><button id="newCaseButton" class="primary compact agent-only" hidden>+ New case</button><button id="refreshButton" class="quiet compact" type="button">↻ Refresh</button></div>
         </div>
         <div class="filter-bar" aria-label="Case filters">
           <div class="filter-groups">

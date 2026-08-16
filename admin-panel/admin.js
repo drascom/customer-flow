@@ -58,7 +58,9 @@ function applyRoleVisibility() {
   $("caseCards").hidden = isManagement();
   $("managementCaseTable").hidden = !isManagement();
   $("tabs").hidden = !isManagement();
+  $("workspaceBar").hidden = !isManagement();
   $("newCaseButton").hidden = state.user.role !== "agent";
+  $("refreshButton").hidden = state.user.role === "agent";
 }
 
 function showApp() {
@@ -110,7 +112,7 @@ function startLiveUpdates() {
       try {
         const result = await api(`/events?since=${Math.max(-1, state.liveRevision)}`);
         state.liveRevision = result.revision ?? state.liveRevision;
-        if (result.changed && !document.querySelector("dialog[open]")) await loadData({ silent: true });
+        if (result.changed) await loadData({ silent: true });
       } catch (error) { if (!state.token) return; await new Promise((resolve) => setTimeout(resolve, 2500)); }
     }
   };
