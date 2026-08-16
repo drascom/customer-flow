@@ -199,6 +199,10 @@ private struct DoctorWorkCard: View {
                     }
                 }
 
+                Rectangle()
+                    .fill(AppTheme.border)
+                    .frame(height: 1)
+
                 Text(item.agentNote)
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.ink)
