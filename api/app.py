@@ -167,6 +167,19 @@ def request_fingerprint(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def mcp_token_hash(token: str) -> str:
+    """Hash a high-entropy agency MCP token before persistent storage."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def public_mcp_url() -> str:
+    base_url = os.getenv("CF_PUBLIC_BASE_URL", "https://flow.drascom.uk").strip().rstrip("/")
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
+        raise RuntimeError("CF_PUBLIC_BASE_URL must be an absolute HTTP(S) URL without a query or fragment.")
+    return f"{base_url}/mcp"
+
+
 class APIError(Exception):
     def __init__(self, status: int, code: str, message: str, details: object | None = None):
         super().__init__(message)
@@ -236,6 +249,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agency_mcp_credentials (
+  agency_id TEXT PRIMARY KEY REFERENCES agencies(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  service_user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  rotated_at TEXT NOT NULL,
+  rotated_by TEXT NOT NULL REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS password_reset_codes (
   id TEXT PRIMARY KEY,
@@ -1449,6 +1470,7 @@ class Database:
                 "(SELECT COUNT(*) FROM cases c WHERE c.agent_id=u.id) agent_case_count, "
                 "(SELECT COUNT(*) FROM patients p WHERE p.assigned_doctor_id=u.id) doctor_patient_count "
                 "FROM users u LEFT JOIN agencies ag ON ag.id=u.agency_id "
+                "WHERE NOT EXISTS (SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id) "
                 "ORDER BY u.active DESC, u.role, u.display_name"
             ).fetchall()
             return [{
@@ -1520,6 +1542,10 @@ class Database:
                 target = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
                 if not target:
                     raise APIError(404, "user_not_found", "The user could not be found.")
+                if conn.execute(
+                    "SELECT 1 FROM agency_mcp_credentials WHERE service_user_id=?", (user_id,)
+                ).fetchone():
+                    raise APIError(409, "managed_service_account", "This MCP service account is managed from its agency settings.")
                 username = str(payload.get("username", target["username"])).strip()
                 display_name = str(payload.get("displayName", target["display_name"])).strip()
                 role = str(payload.get("role", target["role"])).strip().lower()
@@ -1593,6 +1619,10 @@ class Database:
                 target = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
                 if not target:
                     raise APIError(404, "user_not_found", "The user could not be found.")
+                if conn.execute(
+                    "SELECT 1 FROM agency_mcp_credentials WHERE service_user_id=?", (user_id,)
+                ).fetchone():
+                    raise APIError(409, "managed_service_account", "This MCP service account is managed from its agency settings.")
                 conn.execute("UPDATE users SET active=? WHERE id=?", (1 if active else 0, user_id))
                 if not active:
                     conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
@@ -1613,6 +1643,10 @@ class Database:
                 target = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
                 if not target:
                     raise APIError(404, "user_not_found", "The user could not be found.")
+                if conn.execute(
+                    "SELECT 1 FROM agency_mcp_credentials WHERE service_user_id=?", (user_id,)
+                ).fetchone():
+                    raise APIError(409, "managed_service_account", "This MCP service account cannot be deleted directly.")
                 if target["active"]:
                     raise APIError(409, "deactivate_first", "Deactivate the user before deleting the account.")
                 counts = {
@@ -1638,11 +1672,15 @@ class Database:
         self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT ag.*, (SELECT COUNT(*) FROM users u WHERE u.agency_id=ag.id) user_count "
-                "FROM agencies ag ORDER BY ag.active DESC, ag.name"
+                "SELECT ag.*, (SELECT COUNT(*) FROM users u WHERE u.agency_id=ag.id AND NOT EXISTS "
+                "(SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id)) user_count, "
+                "mc.rotated_at mcp_rotated_at "
+                "FROM agencies ag LEFT JOIN agency_mcp_credentials mc ON mc.agency_id=ag.id "
+                "ORDER BY ag.active DESC, ag.name"
             ).fetchall()
             return [{"id": row["id"], "name": row["name"], "active": bool(row["active"]),
-                     "userCount": row["user_count"]} for row in rows]
+                     "userCount": row["user_count"], "mcpConfigured": bool(row["mcp_rotated_at"]),
+                     "mcpRotatedAt": row["mcp_rotated_at"]} for row in rows]
 
     def admin_create_agency(self, payload: dict, user: sqlite3.Row) -> dict:
         self._require_role(user, "admin")
@@ -1656,7 +1694,8 @@ class Database:
                 conn.execute("INSERT INTO agencies VALUES (?,?,1,?)", (agency_id, name, iso(utc_now())))
                 self._audit(conn, user["id"], "agency.created", "agency", agency_id, {"name": name})
                 conn.execute("COMMIT")
-                return {"id": agency_id, "name": name, "active": True, "userCount": 0}
+                return {"id": agency_id, "name": name, "active": True, "userCount": 0,
+                        "mcpConfigured": False, "mcpRotatedAt": None}
             except sqlite3.IntegrityError:
                 conn.execute("ROLLBACK")
                 raise APIError(409, "agency_exists", "An agency with this name already exists.")
@@ -1678,16 +1717,138 @@ class Database:
                 conn.execute("UPDATE agencies SET name=? WHERE id=?", (name, agency_id))
                 self._audit(conn, user["id"], "agency.updated", "agency", agency_id,
                             {"from": agency["name"], "to": name})
-                user_count = conn.execute("SELECT COUNT(*) FROM users WHERE agency_id=?", (agency_id,)).fetchone()[0]
+                user_count = conn.execute(
+                    "SELECT COUNT(*) FROM users u WHERE u.agency_id=? AND NOT EXISTS "
+                    "(SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id)",
+                    (agency_id,),
+                ).fetchone()[0]
                 conn.execute("COMMIT")
+                credential = conn.execute(
+                    "SELECT rotated_at FROM agency_mcp_credentials WHERE agency_id=?", (agency_id,)
+                ).fetchone()
                 return {"id": agency_id, "name": name, "active": bool(agency["active"]),
-                        "userCount": user_count}
+                        "userCount": user_count, "mcpConfigured": bool(credential),
+                        "mcpRotatedAt": credential["rotated_at"] if credential else None}
             except sqlite3.IntegrityError:
                 conn.execute("ROLLBACK")
                 raise APIError(409, "agency_exists", "An agency with this name already exists.")
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
+
+    @staticmethod
+    def _mcp_connection_json(agency: sqlite3.Row, credential: sqlite3.Row | None) -> dict:
+        return {
+            "agencyID": agency["id"],
+            "agencyName": agency["name"],
+            "endpointURL": public_mcp_url(),
+            "configured": credential is not None,
+            "rotatedAt": credential["rotated_at"] if credential else None,
+        }
+
+    def admin_mcp_connection(self, agency_id: str, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        with self.connect() as conn:
+            agency = conn.execute("SELECT * FROM agencies WHERE id=?", (agency_id,)).fetchone()
+            if not agency:
+                raise APIError(404, "agency_not_found", "The agency could not be found.")
+            credential = conn.execute(
+                "SELECT * FROM agency_mcp_credentials WHERE agency_id=?", (agency_id,)
+            ).fetchone()
+            return self._mcp_connection_json(agency, credential)
+
+    def admin_rotate_mcp_token(self, agency_id: str, user: sqlite3.Row) -> dict:
+        """Create or replace an agency token; plaintext exists only in this response."""
+        self._require_role(user, "admin")
+        plaintext = "cfmcp_" + secrets.token_urlsafe(48)
+        digest = mcp_token_hash(plaintext)
+        now = iso(utc_now())
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                agency = conn.execute("SELECT * FROM agencies WHERE id=?", (agency_id,)).fetchone()
+                if not agency:
+                    raise APIError(404, "agency_not_found", "The agency could not be found.")
+                if not agency["active"]:
+                    raise APIError(409, "agency_inactive", "Activate the agency before generating an MCP token.")
+                credential = conn.execute(
+                    "SELECT * FROM agency_mcp_credentials WHERE agency_id=?", (agency_id,)
+                ).fetchone()
+                service_user = None
+                if credential:
+                    service_user = conn.execute(
+                        "SELECT * FROM users WHERE id=?", (credential["service_user_id"],)
+                    ).fetchone()
+                if not service_user:
+                    service_user_id = "agent-mcp-" + uuid.uuid4().hex[:12]
+                    base = f"mcp.{username_base(agency['name']) or 'agency'}"
+                    username = base
+                    suffix = 2
+                    while conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                        username = f"{base}{suffix}"
+                        suffix += 1
+                    salt, password_digest = hash_password(secrets.token_urlsafe(48))
+                    conn.execute(
+                        "INSERT INTO users(id,username,display_name,role,password_salt,password_hash,agency_id,active,created_at) "
+                        "VALUES (?,?,?,'agent',?,?,?,1,?)",
+                        (service_user_id, username, f"{agency['name']} MCP Integration", salt,
+                         password_digest, agency_id, now),
+                    )
+                else:
+                    service_user_id = service_user["id"]
+                    conn.execute(
+                        "UPDATE users SET display_name=?,agency_id=?,role='agent',active=1 WHERE id=?",
+                        (f"{agency['name']} MCP Integration", agency_id, service_user_id),
+                    )
+                conn.execute(
+                    "INSERT INTO agency_mcp_credentials(agency_id,token_hash,service_user_id,created_at,rotated_at,rotated_by) "
+                    "VALUES (?,?,?,?,?,?) ON CONFLICT(agency_id) DO UPDATE SET "
+                    "token_hash=excluded.token_hash,service_user_id=excluded.service_user_id,"
+                    "rotated_at=excluded.rotated_at,rotated_by=excluded.rotated_by",
+                    (agency_id, digest, service_user_id,
+                     credential["created_at"] if credential else now, now, user["id"]),
+                )
+                self._audit(conn, user["id"], "agency.mcp_token_rotated", "agency", agency_id,
+                            {"serviceUserID": service_user_id})
+                updated = conn.execute(
+                    "SELECT * FROM agency_mcp_credentials WHERE agency_id=?", (agency_id,)
+                ).fetchone()
+                conn.execute("COMMIT")
+                return {**self._mcp_connection_json(agency, updated), "accessToken": plaintext}
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def authenticate_mcp_token(self, token: str) -> dict:
+        if not token.startswith("cfmcp_") or len(token) < 48:
+            raise APIError(401, "invalid_mcp_token", "The MCP access token is invalid.")
+        digest = mcp_token_hash(token)
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT mc.agency_id,mc.service_user_id,mc.rotated_at,ag.name agency_name,"
+                "ag.active agency_active,u.active user_active,u.role "
+                "FROM agency_mcp_credentials mc JOIN agencies ag ON ag.id=mc.agency_id "
+                "JOIN users u ON u.id=mc.service_user_id WHERE mc.token_hash=?",
+                (digest,),
+            ).fetchone()
+            if not row or not row["agency_active"] or not row["user_active"] or row["role"] != "agent":
+                raise APIError(401, "invalid_mcp_token", "The MCP access token is invalid.")
+            return {
+                "agencyID": row["agency_id"], "agencyName": row["agency_name"],
+                "serviceUserID": row["service_user_id"], "rotatedAt": row["rotated_at"],
+            }
+
+    def mcp_service_user(self, service_user_id: str, agency_id: str) -> sqlite3.Row:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT u.* FROM users u JOIN agency_mcp_credentials mc ON mc.service_user_id=u.id "
+                "JOIN agencies ag ON ag.id=mc.agency_id WHERE u.id=? AND mc.agency_id=? "
+                "AND u.active=1 AND ag.active=1 AND u.role='agent'",
+                (service_user_id, agency_id),
+            ).fetchone()
+            if not row:
+                raise APIError(401, "invalid_mcp_principal", "The MCP agency principal is no longer active.")
+            return row
 
     def admin_cases(self, user: sqlite3.Row) -> list[dict]:
         self._require_any_role(user, "admin", "manager")
@@ -1954,13 +2115,14 @@ class APIHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
+            self._enforce_mcp_route_scope(method, path)
             if method == "GET" and path in {"/", f"{API_PREFIX}/admin"}:
                 return self._redirect("/admin")
             if method == "GET" and (path == "/admin" or path.startswith("/admin/")):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "agency-scoping", "idempotent-writes"]})
+                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "agency-scoping", "idempotent-writes", "agency-mcp"]})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
                 payload = self._read_json()
                 return self._json(200, self.server.database.login(str(payload.get("username", "")), str(payload.get("password", ""))))
@@ -1968,7 +2130,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._json(200, self.server.database.request_password_reset(self._read_json()))
             if method == "POST" and path == f"{API_PREFIX}/auth/password-reset/confirm":
                 return self._json(200, self.server.database.reset_password(self._read_json()))
-            token, user = self._authenticated_user()
+            token, user = self._authenticated_user(method, path)
             if method == "GET" and path == f"{API_PREFIX}/events":
                 raw_since = parse_qs(parsed.query).get("since", ["0"])[0]
                 try:
@@ -2000,6 +2162,19 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "GET" and path == f"{API_PREFIX}/admin/cases":
                 return self._json(200, {"cases": self.server.database.admin_cases(user)})
             admin_parts = path.removeprefix(f"{API_PREFIX}/admin/").split("/")
+            if (path.startswith(f"{API_PREFIX}/admin/") and method == "GET" and
+                    len(admin_parts) == 3 and admin_parts[0] == "agencies" and admin_parts[2] == "mcp"):
+                return self._json(
+                    200, {"connection": self.server.database.admin_mcp_connection(admin_parts[1], user)}
+                )
+            if (path.startswith(f"{API_PREFIX}/admin/") and method == "POST" and
+                    len(admin_parts) == 4 and admin_parts[0] == "agencies" and
+                    admin_parts[2:] == ["mcp", "rotate"]):
+                self._read_json()
+                connection = self.server.database.admin_rotate_mcp_token(admin_parts[1], user)
+                return self._changed(
+                    200, {"connection": connection}, "agency.mcp_token_rotated", admin_parts[1], user
+                )
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "users":
                 self._read_json()
                 deleted = self.server.database.admin_delete_user(admin_parts[1], user)
@@ -2108,11 +2283,61 @@ class APIHandler(BaseHTTPRequestHandler):
             self.log_error("Unhandled API error: %r", exc)
             self._json(500, {"error": {"code": "internal_error", "message": "The server could not complete the request."}})
 
-    def _authenticated_user(self) -> tuple[str, sqlite3.Row]:
+    @staticmethod
+    def _mcp_route_allowed(method: str, path: str) -> bool:
+        """Keep agency integration tokens out of every non-MCP API workflow."""
+        if (method, path) in {
+            ("GET", f"{API_PREFIX}/auth/me"),
+            ("GET", f"{API_PREFIX}/cases"),
+            ("POST", f"{API_PREFIX}/cases"),
+        }:
+            return True
+        prefix = f"{API_PREFIX}/cases/"
+        if not path.startswith(prefix):
+            return False
+        parts = path.removeprefix(prefix).split("/")
+        if method == "GET" and len(parts) == 1 and parts[0]:
+            return True
+        return (
+            method == "POST"
+            and len(parts) == 2
+            and bool(parts[0])
+            and parts[1] in {"agent-updates", "photos"}
+        )
+
+    def _enforce_mcp_route_scope(self, method: str, path: str) -> None:
+        """Reject scoped bearer credentials even on routes handled before normal auth."""
+        header = self.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
+            return
+        token = header.removeprefix("Bearer ").strip()
+        if not token.startswith("cfmcp_"):
+            return
+        self.server.database.authenticate_mcp_token(token)
+        if not self._mcp_route_allowed(method, path):
+            raise APIError(
+                403,
+                "mcp_scope_forbidden",
+                "The agency MCP token is not permitted to use this endpoint.",
+            )
+
+    def _authenticated_user(self, method: str, path: str) -> tuple[str, sqlite3.Row]:
         header = self.headers.get("Authorization", "")
         if not header.startswith("Bearer "):
             raise APIError(401, "authentication_required", "Sign in to continue.")
         token = header.removeprefix("Bearer ").strip()
+        if token.startswith("cfmcp_"):
+            principal = self.server.database.authenticate_mcp_token(token)
+            if not self._mcp_route_allowed(method, path):
+                raise APIError(
+                    403,
+                    "mcp_scope_forbidden",
+                    "The agency MCP token is not permitted to use this endpoint.",
+                )
+            user = self.server.database.mcp_service_user(
+                principal["serviceUserID"], principal["agencyID"]
+            )
+            return token, user
         return token, self.server.database.authenticate(token)
 
     def _content_length(self) -> int:

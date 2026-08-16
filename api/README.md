@@ -44,6 +44,23 @@ the header is optional.
 The agency MCP connector and its deployment guide are in
 [`../mcp-server/`](../mcp-server/).
 
+Set `CF_PUBLIC_BASE_URL=https://flow.drascom.uk` so admin connection details use
+the correct common endpoint. Only an admin may call:
+
+- `GET /api/v1/admin/agencies/{agencyID}/mcp` — endpoint and rotation status,
+  never the token.
+- `POST /api/v1/admin/agencies/{agencyID}/mcp/rotate` — generate/replace the
+  agency token; plaintext is returned once and only its SHA-256 digest is stored.
+
+Rotation immediately invalidates the old token and reuses the agency's managed
+MCP service account for stable audit ownership.
+
+The `cfmcp_` bearer token is not a general API session. It is accepted only for
+the managed service account's identity, agency case list/detail/create, agent
+updates and case photo uploads. All other authenticated routes return
+`403 mcp_scope_forbidden`. MCP writes therefore pass through the same API event,
+validation and idempotency paths as mobile/web writes.
+
 ## Password recovery by email
 
 Set these variables before starting the server:

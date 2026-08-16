@@ -19,11 +19,13 @@ MAX_BODY_BYTES = 2 * 1024 * 1024
 ALLOWED_ROUTES = {
     "GET": (
         re.compile(r"^/api/v1/admin/(?:users|agencies|cases)(?:\?.*)?$"),
+        re.compile(r"^/api/v1/admin/agencies/[A-Za-z0-9-]+/mcp$"),
         re.compile(r"^/api/v1/(?:photos|message-photos)/[A-Za-z0-9-]+(?:\?.*)?$"),
         re.compile(r"^/api/v1/health(?:\?.*)?$"),
     ),
     "POST": (
         re.compile(r"^/api/v1/admin/(?:users|agencies)$"),
+        re.compile(r"^/api/v1/admin/agencies/[A-Za-z0-9-]+/mcp/rotate$"),
     ),
     "PATCH": (
         re.compile(r"^/api/v1/admin/(?:users|agencies|patients)/[A-Za-z0-9-]+$"),

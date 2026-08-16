@@ -104,6 +104,21 @@ actor RemoteAdminRepository: AdminRepository {
         return response.agency
     }
 
+    func fetchMCPConnection(agencyID: String) async throws -> AdminMCPConnection {
+        struct Envelope: Decodable, Sendable { let connection: AdminMCPConnection }
+        let response: Envelope = try await client.get("admin/agencies/\(agencyID)/mcp")
+        return response.connection
+    }
+
+    func rotateMCPToken(agencyID: String) async throws -> AdminMCPConnection {
+        struct Empty: Encodable, Sendable {}
+        struct Envelope: Decodable, Sendable { let connection: AdminMCPConnection }
+        let response: Envelope = try await client.send(
+            "POST", path: "admin/agencies/\(agencyID)/mcp/rotate", body: Empty()
+        )
+        return response.connection
+    }
+
     func assignDoctor(patientID: String, doctorID: String?, reason: String) async throws {
         struct Body: Encodable, Sendable { let doctorID: String?; let reason: String }
         struct Mutation: Decodable, Sendable { let patientID: String; let doctorID: String? }

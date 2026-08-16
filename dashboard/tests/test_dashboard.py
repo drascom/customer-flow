@@ -97,6 +97,23 @@ class DashboardTestCase(unittest.TestCase):
             remaining = json.load(response)["cases"]
         self.assertNotIn(target["id"], {item["id"] for item in remaining})
 
+    def test_dashboard_proxies_admin_only_mcp_connection_rotation(self):
+        headers = {"Authorization": self.authorization, "Content-Type": "application/json"}
+        with urlopen(Request(self.base + "/api/v1/admin/agencies", headers=headers)) as response:
+            agency = json.load(response)["agencies"][0]
+        with urlopen(Request(
+            self.base + f"/api/v1/admin/agencies/{agency['id']}/mcp/rotate",
+            data=b"{}", headers=headers, method="POST",
+        )) as response:
+            connection = json.load(response)["connection"]
+        self.assertTrue(connection["accessToken"].startswith("cfmcp_"))
+        with urlopen(Request(
+            self.base + f"/api/v1/admin/agencies/{agency['id']}/mcp", headers=headers,
+        )) as response:
+            info = json.load(response)["connection"]
+        self.assertTrue(info["configured"])
+        self.assertNotIn("accessToken", info)
+
 
 if __name__ == "__main__":
     unittest.main()

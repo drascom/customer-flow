@@ -10,6 +10,8 @@ protocol AdminRepository: Sendable {
     func deleteUser(id: String) async throws
     func createAgency(name: String) async throws -> AdminAgency
     func updateAgency(id: String, name: String) async throws -> AdminAgency
+    func fetchMCPConnection(agencyID: String) async throws -> AdminMCPConnection
+    func rotateMCPToken(agencyID: String) async throws -> AdminMCPConnection
     func assignDoctor(patientID: String, doctorID: String?, reason: String) async throws
     func purgePhoto(id: String) async throws
 }

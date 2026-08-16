@@ -74,7 +74,9 @@ struct AdminDashboardView: View {
             AdminAgencyManagementSheet(
                 agencies: model.agencies,
                 onCreate: { name in await model.createAgency(name: name) },
-                onUpdate: { agency, name in await model.updateAgency(agency, name: name) }
+                onUpdate: { agency, name in await model.updateAgency(agency, name: name) },
+                onFetchMCP: { agency in await model.fetchMCPConnection(for: agency) },
+                onRotateMCP: { agency in await model.rotateMCPToken(for: agency) }
             )
         }
         .sheet(item: $editingUser) { user in

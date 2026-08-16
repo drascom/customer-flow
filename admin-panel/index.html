@@ -44,6 +44,7 @@
         <nav class="tabs" aria-label="Admin sections">
           <button class="tab active" data-view="cases">Patients & cases</button>
           <button class="tab" data-view="users">Users</button>
+          <button class="tab" data-view="agencies">Agencies</button>
         </nav>
         <div class="workspace-actions">
           <label class="search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search"></label>
@@ -91,6 +92,17 @@
           <p id="usersEmpty" class="empty" hidden>No matching users.</p>
         </div>
       </section>
+
+      <section id="agenciesView" class="panel" hidden>
+        <div class="panel-heading"><div><h2>Agencies</h2><p>Edit agencies and manage their shared MCP connection.</p></div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Agency</th><th>Users</th><th>MCP connection</th><th>Last rotated</th><th></th></tr></thead>
+            <tbody id="agenciesBody"></tbody>
+          </table>
+          <p id="agenciesEmpty" class="empty" hidden>No agencies.</p>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -105,6 +117,27 @@
       <label>Temporary password<input id="newPassword" type="password" minlength="10" autocomplete="new-password" required><small>At least 10 characters.</small></label>
       <p id="userFormError" class="form-error" role="alert"></p>
       <div class="dialog-actions"><button id="cancelUser" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create user</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="agencyDialog">
+    <form id="agencyForm" class="dialog-card">
+      <div class="dialog-heading"><div><h2>Agency settings</h2><p>Manage the agency and its LLM/MCP connection.</p></div><button id="closeAgencyDialog" class="icon-button" type="button" aria-label="Close">×</button></div>
+      <label>Agency name<input id="editAgencyName" autocomplete="organization" required></label>
+      <button id="saveAgency" class="quiet" type="submit">Save agency name</button>
+      <div class="mcp-settings">
+        <div><strong>MCP connection</strong><p id="mcpStatus">Loading…</p></div>
+        <label>Endpoint<input id="mcpEndpoint" readonly></label>
+        <div id="mcpTokenBox" class="one-time-token" hidden>
+          <strong>Copy this token now. It will not be shown again.</strong>
+          <code id="mcpToken"></code>
+          <button id="copyMCPToken" class="quiet" type="button">Copy token</button>
+        </div>
+        <button id="rotateMCPToken" class="primary" type="button">Generate access token</button>
+        <small>Rotating immediately invalidates the previous token. Give the endpoint and token only to the agency's approved system administrator.</small>
+      </div>
+      <p id="agencyFormError" class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button id="cancelAgency" class="quiet" type="button">Close</button></div>
     </form>
   </dialog>
 

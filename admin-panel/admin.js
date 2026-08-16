@@ -99,7 +99,9 @@ function updateOverview() {
 }
 
 function renderCurrentView() {
-  if (state.view === "cases") renderCases(); else renderUsers();
+  if (state.view === "cases") renderCases();
+  else if (state.view === "users") renderUsers();
+  else renderAgencies();
 }
 
 function setChipGroup(id, items, selected, filterKey) {
@@ -219,6 +221,46 @@ function renderUsers() {
   document.querySelectorAll("[data-delete-user]").forEach((button) => button.addEventListener("click", deleteUser));
 }
 
+function renderAgencies() {
+  const query = $("searchInput").value.trim().toLocaleLowerCase();
+  const rows = state.agencies.filter((agency) => agency.name.toLocaleLowerCase().includes(query));
+  $("agenciesBody").innerHTML = rows.map((agency) => `<tr>
+    <td><div class="identity"><strong>${escapeHTML(agency.name)}</strong><small>${agency.active ? "Active" : "Inactive"}</small></div></td>
+    <td>${agency.userCount}</td>
+    <td><span class="${agency.mcpConfigured ? "active-dot" : "inactive-dot"}">${agency.mcpConfigured ? "Connected" : "Not configured"}</span></td>
+    <td>${agency.mcpRotatedAt ? formatDate(agency.mcpRotatedAt) : "—"}</td>
+    <td>${state.user.role === "admin" ? `<button class="row-action" data-agency-settings="${escapeHTML(agency.id)}">Manage</button>` : ""}</td>
+  </tr>`).join("");
+  $("agenciesEmpty").hidden = rows.length !== 0;
+  document.querySelectorAll("[data-agency-settings]").forEach((button) => button.addEventListener("click", openAgencySettings));
+}
+
+async function openAgencySettings(event) {
+  const agency = state.agencies.find((item) => item.id === event.currentTarget.dataset.agencySettings);
+  if (!agency) return;
+  $("agencyDialog").dataset.agencyID = agency.id;
+  $("editAgencyName").value = agency.name;
+  $("mcpStatus").textContent = "Loading…";
+  $("mcpEndpoint").value = "";
+  $("mcpTokenBox").hidden = true;
+  $("agencyFormError").textContent = "";
+  $("agencyDialog").showModal();
+  try {
+    const result = await api(`/admin/agencies/${encodeURIComponent(agency.id)}/mcp`);
+    updateMCPDialog(result.connection);
+  } catch (error) {
+    $("agencyFormError").textContent = error.message;
+  }
+}
+
+function updateMCPDialog(connection) {
+  $("mcpStatus").textContent = connection.configured
+    ? `Active${connection.rotatedAt ? ` · rotated ${formatDate(connection.rotatedAt)}` : ""}`
+    : "Not configured";
+  $("mcpEndpoint").value = connection.endpointURL || "";
+  $("rotateMCPToken").textContent = connection.configured ? "Rotate access token" : "Generate access token";
+}
+
 async function assignDoctor(event) {
   const select = event.currentTarget;
   const previous = select.dataset.previous;
@@ -315,8 +357,9 @@ function switchView(view) {
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $("casesView").hidden = view !== "cases";
   $("usersView").hidden = view !== "users";
+  $("agenciesView").hidden = view !== "agencies";
   $("addUserButton").hidden = view !== "users" || state.user.role === "manager";
-  $("searchInput").placeholder = view === "users" ? "Search users" : "Search patients or cases";
+  $("searchInput").placeholder = view === "users" ? "Search users" : view === "agencies" ? "Search agencies" : "Search patients or cases";
   $("searchInput").value = "";
   renderCurrentView();
 }
@@ -386,6 +429,53 @@ $("closeDialog").addEventListener("click", () => $("userDialog").close());
 $("cancelUser").addEventListener("click", () => $("userDialog").close());
 $("newRole").addEventListener("change", updateAgencyFields);
 $("newAgency").addEventListener("change", updateAgencyFields);
+$("closeAgencyDialog").addEventListener("click", () => $("agencyDialog").close());
+$("cancelAgency").addEventListener("click", () => $("agencyDialog").close());
+$("copyMCPToken").addEventListener("click", async () => {
+  await navigator.clipboard.writeText($("mcpToken").textContent);
+  toast("MCP token copied.");
+});
+$("rotateMCPToken").addEventListener("click", async () => {
+  const agencyID = $("agencyDialog").dataset.agencyID;
+  const agency = state.agencies.find((item) => item.id === agencyID);
+  if (!agency) return;
+  const warning = agency.mcpConfigured
+    ? "Rotate this token? The current token will stop working immediately."
+    : "Generate an MCP token for this agency?";
+  if (!window.confirm(warning)) return;
+  $("rotateMCPToken").disabled = true;
+  try {
+    const result = await api(`/admin/agencies/${encodeURIComponent(agencyID)}/mcp/rotate`, { method: "POST", body: {} });
+    updateMCPDialog(result.connection);
+    $("mcpToken").textContent = result.connection.accessToken;
+    $("mcpTokenBox").hidden = false;
+    agency.mcpConfigured = true;
+    agency.mcpRotatedAt = result.connection.rotatedAt;
+    renderAgencies();
+  } catch (error) {
+    $("agencyFormError").textContent = error.message;
+  } finally {
+    $("rotateMCPToken").disabled = false;
+  }
+});
+$("agencyForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const agencyID = $("agencyDialog").dataset.agencyID;
+  const agency = state.agencies.find((item) => item.id === agencyID);
+  if (!agency) return;
+  try {
+    const result = await api(`/admin/agencies/${encodeURIComponent(agencyID)}`, {
+      method: "PATCH", body: { name: $("editAgencyName").value.trim() }
+    });
+    Object.assign(agency, result.agency);
+    renderAgencyOptions();
+    renderFilterChips();
+    renderAgencies();
+    toast("Agency updated.");
+  } catch (error) {
+    $("agencyFormError").textContent = error.message;
+  }
+});
 $("userForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("userFormError").textContent = "";

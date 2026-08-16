@@ -173,6 +173,35 @@ final class AdminDashboardModel {
         }
     }
 
+    func fetchMCPConnection(for agency: AdminAgency) async -> AdminMCPConnection? {
+        do {
+            return try await repository.fetchMCPConnection(agencyID: agency.id)
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func rotateMCPToken(for agency: AdminAgency) async -> AdminMCPConnection? {
+        do {
+            let connection = try await repository.rotateMCPToken(agencyID: agency.id)
+            if let index = agencies.firstIndex(where: { $0.id == agency.id }) {
+                agencies[index] = AdminAgency(
+                    id: agencies[index].id,
+                    name: agencies[index].name,
+                    active: agencies[index].active,
+                    userCount: agencies[index].userCount,
+                    mcpConfigured: true,
+                    mcpRotatedAt: connection.rotatedAt
+                )
+            }
+            return connection
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func updateUser(
         _ user: AdminUser,
         username: String,

@@ -1,7 +1,7 @@
 [Unit]
 Description=Customer Flow agency MCP gateway
 After=network-online.target customer-flow-api.service
-Wants=network-online.target
+Wants=network-online.target customer-flow-api.service
 
 [Service]
 Type=simple
@@ -14,7 +14,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/dr/customer-flow/mcp-server
+ReadWritePaths=/home/dr/customer-flow/api/data /home/dr/customer-flow/api/media
 
 [Install]
 WantedBy=default.target

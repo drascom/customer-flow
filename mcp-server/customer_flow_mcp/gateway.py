@@ -6,8 +6,8 @@ import re
 from datetime import datetime
 from typing import Any
 
-from .api_client import CustomerFlowAPIClient, CustomerFlowAPIError
 from .config import Settings
+from .api_client import CustomerFlowAPIError
 
 
 CASE_REFERENCE = re.compile(r"^HT-[0-9]{4,12}$", re.IGNORECASE)
@@ -24,15 +24,26 @@ class GatewayError(RuntimeError):
 class AgencyGateway:
     """Policy boundary between an MCP client and the Customer Flow API."""
 
-    def __init__(self, settings: Settings, client: CustomerFlowAPIClient | None = None):
+    def __init__(
+        self,
+        settings: Settings,
+        client: Any | None = None,
+        principal: dict[str, Any] | None = None,
+    ):
         self.settings = settings
-        self.client = client or CustomerFlowAPIClient(settings)
+        if client is None:
+            raise GatewayError("An authenticated agency data client is required.")
+        self.client = client
+        self.principal = principal
 
     def _principal(self) -> dict[str, Any]:
-        try:
-            user = self.client.me()
-        except CustomerFlowAPIError as exc:
-            raise GatewayError(str(exc)) from None
+        if self.principal is not None:
+            user = self.principal
+        else:
+            try:
+                user = self.client.me()
+            except CustomerFlowAPIError as exc:
+                raise GatewayError(str(exc)) from None
         if user.get("role") != "agent" or not user.get("agencyID"):
             raise GatewayError(
                 "MCP credentials must belong to an active agent account assigned to exactly one agency."
@@ -336,7 +347,7 @@ class AgencyGateway:
 
     def policy(self) -> dict[str, Any]:
         return {
-            "scope": "one configured Customer Flow agency",
+            "scope": "the agency resolved from the current bearer token",
             "data_classification": "confidential_patient_data",
             "read_tools": ["who_am_i", "list_cases", "get_case"],
             "write_tools_enabled": self.settings.enable_writes,

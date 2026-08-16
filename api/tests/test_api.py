@@ -78,8 +78,114 @@ class APITestCase(unittest.TestCase):
         self.assertIn("patient-profile", health["capabilities"])
         self.assertIn("agency-scoping", health["capabilities"])
         self.assertIn("idempotent-writes", health["capabilities"])
+        self.assertIn("agency-mcp", health["capabilities"])
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
+
+    def test_agency_mcp_token_is_admin_only_hashed_and_rotation_invalidates_old_token(self):
+        admin = self.login("admin", "demo123")
+        manager = self.login("manager", "demo123")
+        agent = self.login("user1", "demo123")
+        agency = self.request(
+            "POST", "/admin/agencies", {"name": "MCP Test " + uuid.uuid4().hex[:8]},
+            token=admin, expected=201,
+        )["agency"]
+
+        self.request("GET", f"/admin/agencies/{agency['id']}/mcp", token=manager, expected=403)
+        self.request(
+            "POST", f"/admin/agencies/{agency['id']}/mcp/rotate", {}, token=agent, expected=403
+        )
+        first = self.request(
+            "POST", f"/admin/agencies/{agency['id']}/mcp/rotate", {}, token=admin
+        )["connection"]
+        self.assertTrue(first["configured"])
+        self.assertEqual("https://flow.drascom.uk/mcp", first["endpointURL"])
+        self.assertTrue(first["accessToken"].startswith("cfmcp_"))
+
+        with self.server.database.connect() as conn:
+            stored = conn.execute(
+                "SELECT token_hash,service_user_id FROM agency_mcp_credentials WHERE agency_id=?",
+                (agency["id"],),
+            ).fetchone()
+            self.assertNotEqual(first["accessToken"], stored["token_hash"])
+            self.assertNotIn(first["accessToken"], self.server.database.path.read_bytes().decode("latin-1"))
+            first_service_user = stored["service_user_id"]
+        principal = self.server.database.authenticate_mcp_token(first["accessToken"])
+        self.assertEqual(agency["id"], principal["agencyID"])
+
+        second = self.request(
+            "POST", f"/admin/agencies/{agency['id']}/mcp/rotate", {}, token=admin
+        )["connection"]
+        self.assertNotEqual(first["accessToken"], second["accessToken"])
+        with self.assertRaises(Exception):
+            self.server.database.authenticate_mcp_token(first["accessToken"])
+        current = self.server.database.authenticate_mcp_token(second["accessToken"])
+        self.assertEqual(first_service_user, current["serviceUserID"])
+        info = self.request("GET", f"/admin/agencies/{agency['id']}/mcp", token=admin)["connection"]
+        self.assertNotIn("accessToken", info)
+
+    def test_mcp_bearer_has_narrow_api_scope_and_writes_publish_live_events(self):
+        admin = self.login("admin", "demo123")
+        agency = self.request(
+            "POST", "/admin/agencies", {"name": "MCP Events " + uuid.uuid4().hex[:8]},
+            token=admin, expected=201,
+        )["agency"]
+        mcp_token = self.request(
+            "POST", f"/admin/agencies/{agency['id']}/mcp/rotate", {}, token=admin
+        )["connection"]["accessToken"]
+
+        identity = self.request("GET", "/auth/me", token=mcp_token)["user"]
+        self.assertEqual("agent", identity["role"])
+        self.assertEqual(agency["id"], identity["agencyID"])
+        self.assertEqual([], self.request("GET", "/cases", token=mcp_token)["cases"])
+
+        for method, path, payload in (
+            ("GET", "/events?since=-1", None),
+            ("GET", "/admin/cases", None),
+            ("PATCH", "/auth/profile", {"displayName": "Not allowed"}),
+            ("POST", "/auth/logout", {}),
+            ("POST", "/auth/password-reset/request", {"username": "admin"}),
+        ):
+            denied = self.request(method, path, payload, token=mcp_token, expected=403)
+            self.assertEqual("mcp_scope_forbidden", denied["error"]["code"])
+
+        revision = self.request("GET", "/events?since=-1", token=admin)["revision"]
+        created = self.request(
+            "POST", "/cases", {
+                "patientName": "MCP Realtime " + uuid.uuid4().hex[:8],
+                "grafts": "2200", "currency": "GBP", "price": "2100",
+                "note": "Created through the MCP-scoped API", "photoCount": 0,
+            }, token=mcp_token, expected=201,
+            extra_headers={"Idempotency-Key": "mcp:create:12345678"},
+        )["case"]
+        event = self.request("GET", f"/events?since={revision}", token=admin)
+        self.assertEqual("case.created", event["event"]["kind"])
+        self.assertEqual(created["id"], event["event"]["entityID"])
+
+        detail = self.request("GET", f"/cases/{created['id']}", token=mcp_token)["case"]
+        self.assertEqual(created["reference"], detail["reference"])
+        revision = event["revision"]
+        self.request(
+            "POST", f"/cases/{created['id']}/agent-updates", {"text": "MCP update"},
+            token=mcp_token,
+            extra_headers={"Idempotency-Key": "mcp:message:12345678"},
+        )
+        event = self.request("GET", f"/events?since={revision}", token=admin)
+        self.assertEqual("message.created", event["event"]["kind"])
+
+        revision = event["revision"]
+        self.raw_request(
+            "POST", f"/cases/{created['id']}/photos", body=b"\xff\xd8\xffmcp-photo",
+            content_type="image/jpeg", token=mcp_token, expected=201,
+            extra_headers={"Idempotency-Key": "mcp:photo:12345678"},
+        )
+        event = self.request("GET", f"/events?since={revision}", token=admin)
+        self.assertEqual("photo.created", event["event"]["kind"])
+
+        denied = self.request(
+            "POST", f"/cases/{created['id']}/close", {}, token=mcp_token, expected=403
+        )
+        self.assertEqual("mcp_scope_forbidden", denied["error"]["code"])
 
     def test_optional_patient_profile_round_trips_and_updates(self):
         agent = self.login("user1", "demo123")
