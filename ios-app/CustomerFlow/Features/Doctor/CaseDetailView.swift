@@ -134,28 +134,30 @@ struct CaseDetailView: View {
 
     private func caseHeader(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(item.patient.name)
-                        .font(.title2.bold())
-                        .foregroundStyle(AppTheme.ink)
-                    Text([item.patient.age.map { "\($0) years" }, item.patient.genderDisplayName]
-                        .compactMap { $0 }
-                        .joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.muted)
-                }
-                Spacer(minLength: 8)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(item.patient.name)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
                 StatusChip(status: item.status)
             }
 
-            Label("\(item.agencyName ?? "No agency") · \(item.agentName)", systemImage: "building.2")
-                .font(.caption)
-                .foregroundStyle(AppTheme.muted)
+            Divider()
+                .overlay(AppTheme.muted.opacity(0.22))
+
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
+                Text(item.uploadedAt.compactRelativeText)
+                Spacer(minLength: 12)
+                Image(systemName: "building.2")
+                Text("\(item.agencyName ?? "No agency") · \(item.agentName)")
+                    .lineLimit(1)
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(AppTheme.muted)
         }
-        .padding(14)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border))
+        .padding(.horizontal, 4)
     }
 
     @ViewBuilder
