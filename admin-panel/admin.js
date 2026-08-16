@@ -1,6 +1,7 @@
 const API = "/api/v1";
+const directAdmin = document.body.dataset.directAdmin === "true";
 const state = {
-  token: sessionStorage.getItem("cfAdminToken"), user: null, users: [], agencies: [], cases: [], view: "cases",
+  token: directAdmin ? null : sessionStorage.getItem("cfAdminToken"), user: null, users: [], agencies: [], cases: [], view: "cases",
   filters: {
     caseStatus: "", caseAssignment: "", caseAgency: "", caseDoctor: "",
     userRole: "", userStatus: "", userAgency: ""
@@ -20,6 +21,7 @@ async function api(path, options = {}) {
   const response = await fetch(`${API}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401) {
+    if (directAdmin) throw new Error("The dashboard could not establish its admin session.");
     signOut(false);
     throw new Error("Your session expired. Sign in again.");
   }
@@ -39,9 +41,11 @@ function showApp() {
   $("adminName").textContent = state.user.role === "manager"
     ? `${state.user.displayName} · Read only`
     : state.user.displayName;
+  $("logoutButton").hidden = directAdmin;
 }
 
 async function signOut(callServer = true) {
+  if (directAdmin) return;
   if (callServer && state.token) await api("/auth/logout", { method: "POST", body: {} }).catch(() => {});
   sessionStorage.removeItem("cfAdminToken");
   state.token = null;
@@ -50,6 +54,16 @@ async function signOut(callServer = true) {
 }
 
 async function restore() {
+  if (directAdmin) {
+    state.user = { id: "direct-admin", role: "admin", displayName: "Admin" };
+    showApp();
+    try {
+      await loadData();
+    } catch (error) {
+      toast(error.message);
+    }
+    return;
+  }
   if (!state.token) return showLogin();
   try {
     const result = await api("/auth/me");
@@ -132,8 +146,14 @@ function renderCases() {
     const options = [`<option value="">Unassigned</option>`, ...doctors.map((doctor) =>
       `<option value="${escapeHTML(doctor.id)}" ${doctor.id === item.doctorID ? "selected" : ""}>${escapeHTML(doctor.displayName)}</option>`
     )].join("");
+    const profile = [
+      item.age != null ? `${item.age} years` : "",
+      item.gender ? String(item.gender).replaceAll("_", " ") : "",
+      item.occupation || "",
+      item.patientAddress || ""
+    ].filter(Boolean).join(" · ");
     return `<tr>
-      <td><div class="identity"><strong>${escapeHTML(item.patientName)}</strong><small>${escapeHTML(item.patientID)}</small></div></td>
+      <td><div class="identity"><strong>${escapeHTML(item.patientName)}</strong><small>${escapeHTML(profile || item.patientID)}</small></div></td>
       <td><div class="identity"><strong>${escapeHTML(item.reference)}</strong><small>${item.messageCount} messages</small></div></td>
       <td><span class="status ${escapeHTML(item.status)}">${statusTitle(item.status)}</span></td>
       <td><div class="identity"><strong>${escapeHTML(item.agentName)}</strong><small>${escapeHTML(item.agencyName || "No agency")}</small></div></td>
@@ -283,7 +303,7 @@ function switchView(view) {
 }
 
 function statusTitle(status) {
-  return ({ waiting: "Waiting", answered: "Answered", closed: "Closed" })[status] || status;
+  return ({ waiting: "Waiting", answered: "Answered", closed: "Confirmed" })[status] || status;
 }
 
 function formatDate(value) {

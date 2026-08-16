@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 import uuid
+from datetime import date
 from http.client import HTTPConnection
 from pathlib import Path
 from urllib.error import HTTPError
@@ -67,8 +68,69 @@ class APITestCase(unittest.TestCase):
         health = self.request("GET", "/health")
         self.assertEqual("ok", health["status"])
         self.assertIn("live-updates", health["capabilities"])
+        self.assertIn("patient-profile", health["capabilities"])
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
+
+    def test_optional_patient_profile_round_trips_and_updates(self):
+        agent = self.login("user1", "demo123")
+        admin = self.login("admin", "demo123")
+        birth_date = "1990-04-20"
+        today = date.today()
+        expected_age = today.year - 1990 - ((today.month, today.day) < (4, 20))
+
+        created = self.request("POST", "/cases", {
+            "patientName": "Profile Patient " + uuid.uuid4().hex[:6],
+            "grafts": "2400", "currency": "GBP", "price": "2300",
+            "note": "Patient profile test", "photoCount": 0,
+            "patientProfile": {
+                "dateOfBirth": birth_date,
+                "gender": "female",
+                "phone": "+44 7700 900123",
+                "email": "patient@example.test",
+                "address": "Manchester, Greater Manchester",
+                "occupation": "Architect",
+                "profileNote": "Prefers afternoon appointments",
+            },
+        }, token=agent, expected=201)["case"]
+
+        self.assertEqual(birth_date, created["patient"]["dateOfBirth"])
+        self.assertEqual(expected_age, created["patient"]["age"])
+        self.assertEqual("female", created["patient"]["gender"])
+        self.assertEqual("Architect", created["patient"]["occupation"])
+
+        edited = self.request("PATCH", f"/cases/{created['id']}/agent-values", {
+            "patientName": created["patient"]["name"],
+            "grafts": "2500", "currency": "GBP", "price": "2350",
+            "patientProfile": {
+                "dateOfBirth": birth_date,
+                "gender": "prefer_not_to_say",
+                "phone": "+44 7700 900999",
+                "email": None,
+                "address": "Leeds",
+                "occupation": "Architect",
+                "profileNote": "Contact by phone",
+            },
+        }, token=agent)["case"]
+        self.assertEqual("prefer_not_to_say", edited["patient"]["gender"])
+        self.assertEqual("+44 7700 900999", edited["patient"]["phone"])
+        self.assertIsNone(edited["patient"]["email"])
+
+        admin_case = next(
+            item for item in self.request("GET", "/admin/cases", token=admin)["cases"]
+            if item["id"] == created["id"]
+        )
+        self.assertEqual(expected_age, admin_case["age"])
+        self.assertEqual("Leeds", admin_case["patientAddress"])
+        self.assertEqual("Contact by phone", admin_case["profileNote"])
+
+        invalid = self.request("POST", "/cases", {
+            "patientName": "Invalid Profile Patient", "grafts": "2000",
+            "currency": "GBP", "price": "1800", "note": "Invalid DOB",
+            "photoCount": 0,
+            "patientProfile": {"dateOfBirth": "2999-01-01"},
+        }, token=agent, expected=422)
+        self.assertEqual("invalid_date_of_birth", invalid["error"]["code"])
 
     def test_authenticated_clients_receive_live_change_events(self):
         admin = self.login("admin", "demo123")

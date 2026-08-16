@@ -27,6 +27,14 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let reference: String
     let patientID: String
     let patientName: String
+    let dateOfBirth: String?
+    let age: Int?
+    let gender: String?
+    let patientPhone: String?
+    let patientEmail: String?
+    let patientAddress: String?
+    let occupation: String?
+    let profileNote: String?
     let agentName: String
     var agencyName: String?
     var doctorID: String?

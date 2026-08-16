@@ -1,0 +1,25 @@
+[Unit]
+Description=Customer Flow private admin dashboard
+After=network-online.target customer-flow-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dr
+Group=dr
+WorkingDirectory=/home/dr/customer-flow
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/home/dr/customer-flow/dashboard/dashboard.env
+ExecStart=/usr/bin/python3 /home/dr/customer-flow/dashboard/app.py --host 0.0.0.0 --port 80 --api-url http://127.0.0.1:8080 --admin-dir /home/dr/customer-flow/admin-panel
+Restart=on-failure
+RestartSec=3
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/home/dr/customer-flow
+
+[Install]
+WantedBy=multi-user.target

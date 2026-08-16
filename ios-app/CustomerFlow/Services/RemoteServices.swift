@@ -226,10 +226,11 @@ final class RemoteCaseRepository: CaseRepository {
         return envelope.cases
     }
 
-    func createCase(patientName: String, agentName: String, grafts: String, currency: String, price: String,
+    func createCase(patientName: String, patientProfile: PatientProfileInput, agentName: String, grafts: String, currency: String, price: String,
                     note: String, photoCount: Int, duplicateConfirmedDifferent: Bool) async throws -> ConsultationCase {
         struct Body: Encodable, Sendable {
             let patientName: String
+            let patientProfile: PatientProfileInput
             let grafts: String
             let currency: String
             let price: String
@@ -239,7 +240,7 @@ final class RemoteCaseRepository: CaseRepository {
         }
         struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
         let envelope: Envelope = try await client.send("POST", path: "cases", body: Body(
-            patientName: patientName, grafts: grafts, currency: currency, price: price,
+            patientName: patientName, patientProfile: patientProfile, grafts: grafts, currency: currency, price: price,
             note: note, photoCount: photoCount, duplicateConfirmedDifferent: duplicateConfirmedDifferent
         ))
         return envelope.case
@@ -302,11 +303,18 @@ final class RemoteCaseRepository: CaseRepository {
         return envelope.case
     }
 
-    func saveAgentValues(caseID: UUID, patientName: String, grafts: String, currency: String, price: String) async throws {
-        struct Body: Encodable, Sendable { let patientName: String; let grafts: String; let currency: String; let price: String }
+    func saveAgentValues(caseID: UUID, patientName: String, patientProfile: PatientProfileInput, grafts: String, currency: String, price: String) async throws {
+        struct Body: Encodable, Sendable {
+            let patientName: String
+            let patientProfile: PatientProfileInput
+            let grafts: String
+            let currency: String
+            let price: String
+        }
         struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
         let _: Envelope = try await client.send("PATCH", path: "cases/\(caseID)/agent-values",
-                                                body: Body(patientName: patientName, grafts: grafts, currency: currency, price: price))
+                                                body: Body(patientName: patientName, patientProfile: patientProfile,
+                                                           grafts: grafts, currency: currency, price: price))
     }
 
     func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String) async throws {

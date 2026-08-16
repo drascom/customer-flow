@@ -234,11 +234,12 @@ final class AppState: ObservableObject {
         liveRevision &+= 1
     }
 
-    func createCase(patientName: String, grafts: String, currency: String, price: String, note: String,
+    func createCase(patientName: String, patientProfile: PatientProfileInput, grafts: String, currency: String, price: String, note: String,
                     photos: [CasePhotoUpload], duplicateConfirmedDifferent: Bool) async -> Bool {
         do {
             var created = try await repository.createCase(
                 patientName: patientName,
+                patientProfile: patientProfile,
                 agentName: currentAgentName,
                 grafts: grafts,
                 currency: currency,
@@ -357,9 +358,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    func saveAgentValues(caseID: UUID, patientName: String, grafts: String, currency: String, price: String) async -> Bool {
+    func saveAgentValues(caseID: UUID, patientName: String, patientProfile: PatientProfileInput, grafts: String, currency: String, price: String) async -> Bool {
         do {
-            try await repository.saveAgentValues(caseID: caseID, patientName: patientName, grafts: grafts, currency: currency, price: price)
+            try await repository.saveAgentValues(
+                caseID: caseID, patientName: patientName, patientProfile: patientProfile,
+                grafts: grafts, currency: currency, price: price
+            )
             await load()
             return true
         } catch {

@@ -273,6 +273,14 @@ struct AgentCaseEditorView: View {
     @State private var editingCaseID: UUID?
     @State private var detailsExpanded: Bool
     @State private var patientName = ""
+    @State private var includesDateOfBirth = false
+    @State private var dateOfBirth = Date.now
+    @State private var gender = ""
+    @State private var patientPhone = ""
+    @State private var patientEmail = ""
+    @State private var patientAddress = ""
+    @State private var occupation = ""
+    @State private var profileNote = ""
     @State private var grafts = "3,200"
     @State private var currency = AppCurrency.code
     @State private var price = "2,850"
@@ -498,6 +506,8 @@ struct AgentCaseEditorView: View {
                 }
                 patientVerificationView
                     .font(.caption)
+                Divider()
+                patientProfileFields
             }
         case .needs:
             wizardCard("Needs") {
@@ -606,6 +616,145 @@ struct AgentCaseEditorView: View {
         }
     }
 
+    private var patientProfileFields: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Patient details")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Optional")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.muted)
+                }
+                Spacer()
+            }
+
+            Toggle("Add date of birth", isOn: $includesDateOfBirth)
+                .font(.subheadline)
+            if includesDateOfBirth {
+                DatePicker("Date of birth", selection: $dateOfBirth, in: ...Date.now, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                if let age = selectedAge {
+                    Text("Age \(age)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.brand)
+                }
+            }
+
+            labeledField("Gender", required: false) {
+                Picker("Gender", selection: $gender) {
+                    Text("Not specified").tag("")
+                    Text("Male").tag("male")
+                    Text("Female").tag("female")
+                    Text("Non-binary").tag("non_binary")
+                    Text("Other").tag("other")
+                    Text("Prefer not to say").tag("prefer_not_to_say")
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            labeledField("Phone", required: false) {
+                TextField("Patient phone number", text: $patientPhone)
+                    .keyboardType(.phonePad)
+                    .textContentType(.telephoneNumber)
+                    .textFieldStyle(.roundedBorder)
+            }
+            labeledField("Email", required: false) {
+                TextField("Patient email address", text: $patientEmail)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .textContentType(.emailAddress)
+                    .textFieldStyle(.roundedBorder)
+            }
+            labeledField("Address or city / region", required: false) {
+                TextField("Address, city or region", text: $patientAddress, axis: .vertical)
+                    .lineLimit(2...4)
+                    .textContentType(.fullStreetAddress)
+                    .textFieldStyle(.roundedBorder)
+            }
+            labeledField("Occupation", required: false) {
+                TextField("Patient occupation", text: $occupation)
+                    .textFieldStyle(.roundedBorder)
+            }
+            labeledField("Short patient information", required: false) {
+                TextField("Relevant personal context", text: $profileNote, axis: .vertical)
+                    .lineLimit(3...6)
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var compactPatientProfile: some View {
+        if let patient = editCase?.patient {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("PATIENT DETAILS")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.muted)
+                if let dateOfBirth = patient.dateOfBirth {
+                    profileLine("Date of birth", patient.age.map { "\(dateOfBirth) · Age \($0)" } ?? dateOfBirth)
+                }
+                if let gender = patient.genderDisplayName { profileLine("Gender", gender) }
+                if let phone = patient.phone { profileLine("Phone", phone) }
+                if let email = patient.email { profileLine("Email", email) }
+                if let address = patient.address { profileLine("Address", address) }
+                if let occupation = patient.occupation { profileLine("Occupation", occupation) }
+                if let note = patient.profileNote { profileLine("Info", note) }
+            }
+        }
+    }
+
+    private func profileLine(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(AppTheme.muted)
+                .frame(width: 82, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(AppTheme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var selectedAge: Int? {
+        guard includesDateOfBirth else { return nil }
+        return Calendar.current.dateComponents([.year], from: dateOfBirth, to: .now).year
+    }
+
+    private var patientProfileInput: PatientProfileInput {
+        PatientProfileInput(
+            dateOfBirth: includesDateOfBirth ? Self.apiDate(dateOfBirth) : nil,
+            gender: Self.trimmedOrNil(gender),
+            phone: Self.trimmedOrNil(patientPhone),
+            email: Self.trimmedOrNil(patientEmail),
+            address: Self.trimmedOrNil(patientAddress),
+            occupation: Self.trimmedOrNil(occupation),
+            profileNote: Self.trimmedOrNil(profileNote)
+        )
+    }
+
+    private static func trimmedOrNil(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func apiDate(_ value: Date) -> String {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: value)
+        return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+
+    private static func date(fromAPI value: String?) -> Date? {
+        guard let value else { return nil }
+        let components = value.split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3 else { return nil }
+        return Calendar.current.date(from: DateComponents(
+            year: components[0], month: components[1], day: components[2]
+        ))
+    }
+
     private func wizardCard<Content: View>(_ title: String, info: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.headline).foregroundStyle(AppTheme.ink)
@@ -670,7 +819,11 @@ struct AgentCaseEditorView: View {
                             }
                         }
                     }
+                    patientProfileFields
                 }
+            } else if editCase?.patient.hasProfileDetails == true {
+                Divider()
+                compactPatientProfile
             }
         }
         .padding(14)
@@ -927,7 +1080,10 @@ struct AgentCaseEditorView: View {
                 Button("Save changes") {
                     if let editCase {
                         Task {
-                            if await state.saveAgentValues(caseID: editCase.id, patientName: patientName, grafts: grafts, currency: currency, price: price) {
+                            if await state.saveAgentValues(
+                                caseID: editCase.id, patientName: patientName, patientProfile: patientProfileInput,
+                                grafts: grafts, currency: currency, price: price
+                            ) {
                                 statusText = "Changes saved"
                                 detailsExpanded = false
                             }
@@ -1013,6 +1169,7 @@ struct AgentCaseEditorView: View {
         Task {
             let created = await state.createCase(
                 patientName: patientName,
+                patientProfile: patientProfileInput,
                 grafts: grafts,
                 currency: currency,
                 price: price,
@@ -1031,6 +1188,19 @@ struct AgentCaseEditorView: View {
         if let item = editCase {
             detailsExpanded = false
             patientName = item.patient.name
+            if let parsedDate = Self.date(fromAPI: item.patient.dateOfBirth) {
+                includesDateOfBirth = true
+                dateOfBirth = parsedDate
+            } else {
+                includesDateOfBirth = false
+                dateOfBirth = .now
+            }
+            gender = item.patient.gender ?? ""
+            patientPhone = item.patient.phone ?? ""
+            patientEmail = item.patient.email ?? ""
+            patientAddress = item.patient.address ?? ""
+            occupation = item.patient.occupation ?? ""
+            profileNote = item.patient.profileNote ?? ""
             grafts = item.agentGrafts
             currency = AppCurrency.code
             price = item.agentPrice
@@ -1048,6 +1218,14 @@ struct AgentCaseEditorView: View {
         } else {
             detailsExpanded = true
             patientName = ""
+            includesDateOfBirth = false
+            dateOfBirth = .now
+            gender = ""
+            patientPhone = ""
+            patientEmail = ""
+            patientAddress = ""
+            occupation = ""
+            profileNote = ""
             grafts = "3,200"
             currency = AppCurrency.code
             price = "2,850"
@@ -1156,6 +1334,18 @@ struct AgentCaseEditorView: View {
             editingCaseID = item.id
             detailsExpanded = false
             patientName = item.patient.name
+            if let parsedDate = Self.date(fromAPI: item.patient.dateOfBirth) {
+                includesDateOfBirth = true
+                dateOfBirth = parsedDate
+            } else {
+                includesDateOfBirth = false
+            }
+            gender = item.patient.gender ?? ""
+            patientPhone = item.patient.phone ?? ""
+            patientEmail = item.patient.email ?? ""
+            patientAddress = item.patient.address ?? ""
+            occupation = item.patient.occupation ?? ""
+            profileNote = item.patient.profileNote ?? ""
             grafts = item.agentGrafts
             currency = AppCurrency.code
             price = item.agentPrice

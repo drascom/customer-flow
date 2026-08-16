@@ -34,6 +34,10 @@ struct CaseDetailView: View {
                                 StatusChip(status: item.status)
                             }
 
+                            if item.patient.hasProfileDetails {
+                                patientDetails(item.patient)
+                            }
+
                             if item.photoCount == 0 {
                                 NoPhotosView()
                                     .frame(height: 220)
@@ -240,6 +244,36 @@ struct CaseDetailView: View {
         .padding(13)
         .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border))
+    }
+
+    private func patientDetails(_ patient: Patient) -> some View {
+        detailSection("Patient details") {
+            VStack(alignment: .leading, spacing: 9) {
+                if let dateOfBirth = patient.dateOfBirth {
+                    patientDetailLine("Date of birth", patient.age.map { "\(dateOfBirth) · Age \($0)" } ?? dateOfBirth)
+                }
+                if let gender = patient.genderDisplayName { patientDetailLine("Gender", gender) }
+                if let phone = patient.phone { patientDetailLine("Phone", phone) }
+                if let email = patient.email { patientDetailLine("Email", email) }
+                if let address = patient.address { patientDetailLine("Address", address) }
+                if let occupation = patient.occupation { patientDetailLine("Occupation", occupation) }
+                if let note = patient.profileNote { patientDetailLine("Info", note) }
+            }
+        }
+    }
+
+    private func patientDetailLine(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.muted)
+                .frame(width: 84, alignment: .leading)
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.ink)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

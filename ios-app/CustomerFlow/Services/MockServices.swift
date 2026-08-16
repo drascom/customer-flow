@@ -6,13 +6,19 @@ final class MockCaseRepository: CaseRepository {
 
     func fetchCases() async throws -> [ConsultationCase] { cases }
 
-    func createCase(patientName: String, agentName: String, grafts: String, currency: String, price: String, note: String, photoCount: Int, duplicateConfirmedDifferent: Bool) async throws -> ConsultationCase {
+    func createCase(patientName: String, patientProfile: PatientProfileInput, agentName: String, grafts: String, currency: String, price: String, note: String, photoCount: Int, duplicateConfirmedDifferent: Bool) async throws -> ConsultationCase {
         let sequence = 240900 + cases.count + 1
         let patientSequence = 1100 + cases.count + 1
         let item = ConsultationCase(
             id: UUID(),
             reference: "HT-\(sequence)",
-            patient: Patient(id: "PT-\(patientSequence)", name: patientName, assignedDoctorID: nil, lastUpdated: .now),
+            patient: Patient(
+                id: "PT-\(patientSequence)", name: patientName,
+                dateOfBirth: patientProfile.dateOfBirth, gender: patientProfile.gender,
+                phone: patientProfile.phone, email: patientProfile.email, address: patientProfile.address,
+                occupation: patientProfile.occupation, profileNote: patientProfile.profileNote,
+                assignedDoctorID: nil, lastUpdated: .now
+            ),
             agentName: agentName,
             assignedDoctorID: nil,
             uploadedAt: .now,
@@ -95,9 +101,16 @@ final class MockCaseRepository: CaseRepository {
         return cases[index]
     }
 
-    func saveAgentValues(caseID: UUID, patientName: String, grafts: String, currency: String, price: String) async throws {
+    func saveAgentValues(caseID: UUID, patientName: String, patientProfile: PatientProfileInput, grafts: String, currency: String, price: String) async throws {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
         cases[index].patient.name = patientName
+        cases[index].patient.dateOfBirth = patientProfile.dateOfBirth
+        cases[index].patient.gender = patientProfile.gender
+        cases[index].patient.phone = patientProfile.phone
+        cases[index].patient.email = patientProfile.email
+        cases[index].patient.address = patientProfile.address
+        cases[index].patient.occupation = patientProfile.occupation
+        cases[index].patient.profileNote = patientProfile.profileNote
         cases[index].patient.lastUpdated = .now
         cases[index].agentGrafts = grafts
         cases[index].currency = currency

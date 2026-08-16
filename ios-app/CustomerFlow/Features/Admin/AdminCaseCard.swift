@@ -74,6 +74,11 @@ struct AdminCaseCard: View {
                     metric(title: "Media", value: "\(item.photoCount) · \(item.messageCount)")
                 }
 
+                if hasPatientDetails {
+                    adminPatientDetails
+                        .padding(.top, 10)
+                }
+
                 if let finalGrafts = item.finalGrafts,
                    let finalPrice = item.finalPrice {
                     HStack(spacing: 8) {
@@ -205,6 +210,43 @@ struct AdminCaseCard: View {
             .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private var hasPatientDetails: Bool {
+        item.dateOfBirth != nil || item.gender != nil || item.patientPhone != nil || item.patientEmail != nil
+            || item.patientAddress != nil || item.occupation != nil || item.profileNote != nil
+    }
+
+    private var adminPatientDetails: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Patient details")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppTheme.ink)
+            if let dateOfBirth = item.dateOfBirth {
+                patientDetail("Date of birth", item.age.map { "\(dateOfBirth) · Age \($0)" } ?? dateOfBirth)
+            }
+            if let gender = item.gender { patientDetail("Gender", gender.replacingOccurrences(of: "_", with: " ").capitalized) }
+            if let phone = item.patientPhone { patientDetail("Phone", phone) }
+            if let email = item.patientEmail { patientDetail("Email", email) }
+            if let address = item.patientAddress { patientDetail("Address", address) }
+            if let occupation = item.occupation { patientDetail("Occupation", occupation) }
+            if let note = item.profileNote { patientDetail("Info", note) }
+        }
+        .padding(11)
+        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func patientDetail(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.muted)
+                .frame(width: 76, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(AppTheme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var adminPhotos: some View {

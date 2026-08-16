@@ -18,7 +18,7 @@ import sqlite3
 import threading
 import unicodedata
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -63,6 +63,66 @@ def pound_amount(value: object) -> str:
     if amount.startswith(("£", "€")):
         amount = amount[1:]
     return f"£{amount.strip()}"
+
+
+PATIENT_PROFILE_FIELDS = {
+    "dateOfBirth": ("date_of_birth", 10),
+    "gender": ("gender", 32),
+    "phone": ("phone", 40),
+    "email": ("email", 254),
+    "address": ("address", 500),
+    "occupation": ("occupation", 120),
+    "profileNote": ("profile_note", 1000),
+}
+PATIENT_GENDERS = {"male", "female", "non_binary", "other", "prefer_not_to_say"}
+
+
+def patient_profile_values(payload: dict, defaults: sqlite3.Row | None = None) -> dict:
+    source = payload.get("patientProfile")
+    if source is None:
+        return {
+            column: defaults[column] if defaults is not None and column in defaults.keys() else None
+            for column, _ in PATIENT_PROFILE_FIELDS.values()
+        }
+    if not isinstance(source, dict):
+        raise APIError(422, "invalid_patient_profile", "Patient profile information is invalid.")
+
+    result = {}
+    for api_name, (column, limit) in PATIENT_PROFILE_FIELDS.items():
+        if api_name not in source and defaults is not None and column in defaults.keys():
+            result[column] = defaults[column]
+            continue
+        value = str(source.get(api_name) or "").strip() or None
+        if value and len(value) > limit:
+            raise APIError(422, "invalid_patient_profile", f"{api_name} is too long.")
+        result[column] = value
+
+    date_of_birth = result["date_of_birth"]
+    if date_of_birth:
+        try:
+            parsed = date.fromisoformat(date_of_birth)
+        except ValueError as exc:
+            raise APIError(422, "invalid_date_of_birth", "Use YYYY-MM-DD for the date of birth.") from exc
+        if parsed > utc_now().date():
+            raise APIError(422, "invalid_date_of_birth", "The date of birth cannot be in the future.")
+        if parsed.year < 1900:
+            raise APIError(422, "invalid_date_of_birth", "Enter a valid date of birth.")
+
+    gender = result["gender"]
+    if gender and gender not in PATIENT_GENDERS:
+        raise APIError(422, "invalid_gender", "Select a valid gender option.")
+    email = result["email"]
+    if email and ("@" not in email or email.startswith("@") or email.endswith("@")):
+        raise APIError(422, "invalid_patient_email", "Enter a valid patient email address.")
+    return result
+
+
+def patient_age(date_of_birth: str | None) -> int | None:
+    if not date_of_birth:
+        return None
+    born = date.fromisoformat(date_of_birth)
+    today = utc_now().date()
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
 def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
@@ -154,6 +214,13 @@ CREATE TABLE IF NOT EXISTS patients (
   normalized_name TEXT NOT NULL,
   assigned_doctor_id TEXT REFERENCES users(id),
   profile_photo_path TEXT,
+  date_of_birth TEXT,
+  gender TEXT,
+  phone TEXT,
+  email TEXT,
+  address TEXT,
+  occupation TEXT,
+  profile_note TEXT,
   last_updated TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_patients_normalized_name ON patients(normalized_name);
@@ -250,6 +317,12 @@ class Database:
                     conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
                 if "phone" not in columns:
                     conn.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+                patient_columns = {row["name"] for row in conn.execute("PRAGMA table_info(patients)").fetchall()}
+                for column in (
+                    "date_of_birth", "gender", "phone", "email", "address", "occupation", "profile_note"
+                ):
+                    if column not in patient_columns:
+                        conn.execute(f"ALTER TABLE patients ADD COLUMN {column} TEXT")
                 photo_columns = {row["name"] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
                 if "deleted_at" not in photo_columns:
                     conn.execute("ALTER TABLE photos ADD COLUMN deleted_at TEXT")
@@ -427,7 +500,8 @@ class Database:
         created = utc_now() - timedelta(hours=hours_ago)
         normalized, _ = normalize_name(patient_name)
         conn.execute(
-            "INSERT INTO patients VALUES (?,?,?,?,NULL,?)",
+            "INSERT INTO patients(id,name,normalized_name,assigned_doctor_id,profile_photo_path,last_updated) "
+            "VALUES (?,?,?,?,NULL,?)",
             (patient_id, patient_name, normalized, doctor_id, iso(created)),
         )
         case_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"customer-flow:{reference}"))
@@ -651,6 +725,7 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 f"SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
+                f"p.date_of_birth,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
                 f"u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
                 f"JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id "
                 f"{where} ORDER BY c.uploaded_at ASC",
@@ -700,6 +775,7 @@ class Database:
         normalized, query_tokens = normalize_name(name)
         if len(query_tokens) < 2:
             raise APIError(422, "full_name_required", "Enter the patient's first and last name.")
+        profile = patient_profile_values(payload)
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -719,8 +795,17 @@ class Database:
                 else:
                     patient_id = self._next_reference(conn, "patient_reference", "PT-")
                     assigned_doctor = None
-                    conn.execute("INSERT INTO patients VALUES (?,?,?,?,NULL,?)",
-                                 (patient_id, name, normalized, None, iso(utc_now())))
+                    conn.execute(
+                        "INSERT INTO patients("
+                        "id,name,normalized_name,assigned_doctor_id,profile_photo_path,date_of_birth,gender,"
+                        "phone,email,address,occupation,profile_note,last_updated"
+                        ") VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?,?)",
+                        (
+                            patient_id, name, normalized, None, profile["date_of_birth"], profile["gender"],
+                            profile["phone"], profile["email"], profile["address"], profile["occupation"],
+                            profile["profile_note"], iso(utc_now()),
+                        ),
+                    )
                 case_id = str(uuid.uuid4())
                 reference = self._next_reference(conn, "case_reference", "HT-")
                 now = iso(utc_now())
@@ -793,8 +878,16 @@ class Database:
                 normalized, tokens = normalize_name(name)
                 if len(tokens) < 2:
                     raise APIError(422, "full_name_required", "Enter the patient's first and last name.")
-                conn.execute("UPDATE patients SET name=?, normalized_name=?, last_updated=? WHERE id=?",
-                             (name, normalized, iso(utc_now()), row["patient_id"]))
+                profile = patient_profile_values(payload, row)
+                conn.execute(
+                    "UPDATE patients SET name=?,normalized_name=?,date_of_birth=?,gender=?,phone=?,email=?,"
+                    "address=?,occupation=?,profile_note=?,last_updated=? WHERE id=?",
+                    (
+                        name, normalized, profile["date_of_birth"], profile["gender"], profile["phone"],
+                        profile["email"], profile["address"], profile["occupation"], profile["profile_note"],
+                        iso(utc_now()), row["patient_id"],
+                    ),
+                )
                 conn.execute("UPDATE cases SET agent_grafts=?, currency=?, agent_price=?, version=version+1 WHERE id=?",
                              (str(payload["grafts"]), "GBP", str(payload["price"]), case_id))
                 self._audit(conn, user["id"], "case.agent_values_updated", "case", case_id, {})
@@ -1376,7 +1469,8 @@ class Database:
             rows = conn.execute(
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_grafts,c.currency,c.agent_price,"
                 "c.final_grafts,c.final_price,c.finalized_at,"
-                "p.id patient_id,p.name patient_name,p.assigned_doctor_id,"
+                "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.gender,p.phone,p.email,"
+                "p.address,p.occupation,p.profile_note,"
                 "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NULL) message_count,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NOT NULL) deleted_message_count "
@@ -1407,6 +1501,10 @@ class Database:
                 result.append({
                     "id": row["id"], "reference": row["reference"], "patientID": row["patient_id"],
                     "patientName": row["patient_name"], "agentName": row["agent_name"],
+                    "dateOfBirth": row["date_of_birth"], "age": patient_age(row["date_of_birth"]),
+                    "gender": row["gender"], "patientPhone": row["phone"], "patientEmail": row["email"],
+                    "patientAddress": row["address"], "occupation": row["occupation"],
+                    "profileNote": row["profile_note"],
                     "agencyName": row["agency_name"],
                     "doctorID": row["assigned_doctor_id"], "doctorName": row["doctor_name"],
                     "uploadedAt": row["uploaded_at"], "status": row["status"],
@@ -1501,6 +1599,7 @@ class Database:
     def _case_row(conn: sqlite3.Connection, case_id: str) -> sqlite3.Row:
         row = conn.execute(
             "SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
+            "p.date_of_birth,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
             "u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
             "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id WHERE c.id=?", (case_id,),
         ).fetchone()
@@ -1522,7 +1621,11 @@ class Database:
         return {
             "id": row["id"], "reference": row["reference"],
             "patient": {"id": row["patient_id"], "name": row["patient_name"],
-                        "assignedDoctorID": row["patient_doctor"], "lastUpdated": row["last_updated"]},
+                        "assignedDoctorID": row["patient_doctor"], "lastUpdated": row["last_updated"],
+                        "dateOfBirth": row["date_of_birth"], "age": patient_age(row["date_of_birth"]),
+                        "gender": row["gender"], "phone": row["phone"], "email": row["email"],
+                        "address": row["address"], "occupation": row["occupation"],
+                        "profileNote": row["profile_note"]},
             "agentName": row["agent_name"], "agencyName": row["agency_name"],
             "assignedDoctorID": row["assigned_doctor_id"],
             "uploadedAt": row["uploaded_at"], "status": row["status"], "photoCount": len(photos),
@@ -1575,7 +1678,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "patient-matching", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates"]})
+                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates"]})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
                 payload = self._read_json()
                 return self._json(200, self.server.database.login(str(payload.get("username", "")), str(payload.get("password", ""))))
