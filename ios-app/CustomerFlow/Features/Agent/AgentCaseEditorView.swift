@@ -297,12 +297,14 @@ struct AgentCaseEditorView: View {
     @State private var pendingMessageDeletion: ConsultationMessage?
     @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var matchCandidate: PatientMatchCandidate?
+    @State private var isMatchDetailsPresented = false
     @State private var duplicateResolution: DuplicateResolution?
     @State private var statusText = "Draft · Not saved"
     @State private var returnedToDoctor = false
     @State private var createStep: CreateStep = .patient
     @State private var patientVerification: PatientVerification = .idle
     @State private var isSubmitting = false
+    @FocusState private var isPatientNameFocused: Bool
 
     init(caseID: UUID? = nil) {
         _editingCaseID = State(initialValue: caseID)
@@ -380,28 +382,21 @@ struct AgentCaseEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) { actionBar }
         .onAppear(perform: configureForm)
-        .sheet(item: $matchCandidate) { candidate in
-            PatientMatchSheet(
-                candidate: candidate,
-                onOpenExisting: { useExistingPatient(candidate) },
-                onSamePatient: { endDuplicateRegistration() },
-                onDifferentPatient: {
-                    duplicateResolution = .different
-                    patientVerification = .differentConfirmed
-                    statusText = "Different patient confirmed · New Patient ID"
-                }
-            )
-            .presentationDetents([.large])
-        }
-        .task(id: patientName) {
-            guard !isEditMode else { return }
-            duplicateResolution = nil
-            patientVerification = .idle
-            guard patientName.split(whereSeparator: \.isWhitespace).count >= 2 else { return }
-            try? await Task.sleep(for: .milliseconds(550))
-            guard !Task.isCancelled else { return }
-            patientVerification = .checking
-            await checkForExistingPatient()
+        .sheet(isPresented: $isMatchDetailsPresented) {
+            if let candidate = matchCandidate {
+                PatientMatchSheet(
+                    candidate: candidate,
+                    onOpenExisting: { useExistingPatient(candidate) },
+                    onSamePatient: { endDuplicateRegistration() },
+                    onDifferentPatient: {
+                        duplicateResolution = .different
+                        patientVerification = .differentConfirmed
+                        statusText = "Different patient confirmed · New Patient ID"
+                    }
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
         }
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
@@ -502,7 +497,21 @@ struct AgentCaseEditorView: View {
                 labeledField("Patient name", required: true) {
                     TextField("Enter the patient's full name", text: $patientName)
                         .textFieldStyle(.roundedBorder)
-                        .submitLabel(.search)
+                        .submitLabel(.done)
+                        .focused($isPatientNameFocused)
+                        .onSubmit { isPatientNameFocused = false }
+                        .onChange(of: patientName) { _, _ in
+                            guard !isEditMode, isPatientNameFocused else { return }
+                            matchCandidate = nil
+                            isMatchDetailsPresented = false
+                            duplicateResolution = nil
+                            patientVerification = .idle
+                            statusText = "Draft · Not saved"
+                        }
+                        .onChange(of: isPatientNameFocused) { wasFocused, isFocused in
+                            guard wasFocused, !isFocused, !isEditMode else { return }
+                            Task { await verifyPatientNameAfterEditing() }
+                        }
                 }
                 patientVerificationView
                     .font(.caption)
@@ -605,8 +614,31 @@ struct AgentCaseEditorView: View {
             }
             .foregroundStyle(AppTheme.muted)
         case .matchFound:
-            Label("Possible patient found. Complete the identity confirmation.", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(AppTheme.accent)
+            if let matchCandidate {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(AppTheme.accent)
+                    Text(
+                        matchCandidate.createdByAnotherAgent
+                            ? "A patient with this name is already registered."
+                            : "A patient with this name is already in your records."
+                    )
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Show details") {
+                        isMatchDetailsPresented = true
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .padding(10)
+                .background(AppTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.accent.opacity(0.35))
+                }
+            }
         case .newPatient:
             Label("No matching patient found.", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(AppTheme.brandDark)
@@ -1361,10 +1393,28 @@ struct AgentCaseEditorView: View {
         }
     }
 
-    private func checkForExistingPatient() async {
+    @MainActor
+    private func verifyPatientNameAfterEditing() async {
+        let query = patientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.split(whereSeparator: \.isWhitespace).count >= 2 else {
+            matchCandidate = nil
+            patientVerification = .idle
+            return
+        }
+
+        duplicateResolution = nil
+        matchCandidate = nil
+        patientVerification = .checking
+        await checkForExistingPatient(named: query)
+    }
+
+    @MainActor
+    private func checkForExistingPatient(named query: String) async {
         guard duplicateResolution == nil else { return }
         do {
-            if let first = try await state.patientMatcher.findMatches(for: patientName).first {
+            let first = try await state.patientMatcher.findMatches(for: query).first
+            guard patientName.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
+            if let first {
                 patientVerification = .matchFound
                 matchCandidate = first
             } else {
@@ -1372,6 +1422,7 @@ struct AgentCaseEditorView: View {
                 statusText = "New patient · Name verified"
             }
         } catch {
+            guard patientName.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
             patientVerification = .idle
             state.errorMessage = error.localizedDescription
         }
