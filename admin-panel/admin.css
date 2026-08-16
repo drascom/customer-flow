@@ -71,9 +71,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--amber); box-shad
 
 .app-shell { min-height: 100vh; }
 .topbar { position: sticky; z-index: 20; top: 0; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(280px, 540px) minmax(max-content, 1fr); align-items: center; gap: 20px; min-height: 68px; padding: 10px clamp(16px, 4vw, 54px); background: color-mix(in srgb, var(--surface-strong), transparent 7%); border-bottom: 1px solid var(--border); backdrop-filter: blur(20px); }
-.account { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
+.account { position: relative; display: flex; align-items: center; color: var(--muted); font-size: 13px; }
 .topbar .account { justify-self: end; }
-.account .quiet { min-height: 34px; padding: 6px 11px; }
 .content { width: min(1460px, calc(100% - 32px)); margin: 28px auto 60px; }
 .overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .overview article { display: grid; gap: 7px; padding: 18px; border: 1px solid var(--border); border-radius: 17px; background: var(--surface); backdrop-filter: blur(16px); }
@@ -148,9 +147,18 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .login-button { min-height: 48px; }
 .account-button { display: flex; align-items: center; gap: 9px; padding: 5px 8px; color: var(--ink); border: 0; border-radius: 12px; background: transparent; text-align: left; }
 .account-button:hover { background: var(--inset); }
-.account-button > span:last-child { display: grid; gap: 1px; }
+.account-copy { display: grid; gap: 1px; }
 .account-button small { font-size: 11px; text-transform: capitalize; }
+.account-chevron { margin-left: 2px; color: var(--muted); font-size: 17px; transition: transform .18s ease; }
+.account-button[aria-expanded="true"] .account-chevron { transform: rotate(180deg); }
 #accountAvatar { display: grid; place-items: center; width: 36px; height: 36px; color: white; border-radius: 50%; background: var(--teal); font-size: 12px; font-weight: 850; }
+.account-dropdown { position: absolute; z-index: 40; top: calc(100% + 10px); right: 0; width: 230px; padding: 7px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface-strong); box-shadow: var(--shadow); }
+.account-menu-item { display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 7px; width: 100%; padding: 10px; color: var(--ink); border: 0; border-radius: 10px; background: transparent; text-align: left; }
+.account-menu-item:hover, .account-menu-item:focus-visible { background: var(--inset); outline: none; }
+.account-menu-item > span:first-child { color: var(--teal); font-size: 20px; }
+.account-menu-item > span:last-child { display: grid; gap: 1px; }
+.account-menu-item small { color: var(--muted); font-size: 10px; font-weight: 500; text-transform: none; }
+.account-menu-item.danger strong, .account-menu-item.danger > span:first-child { color: var(--red); }
 .overview article { cursor: pointer; transition: transform .16s ease, border-color .16s ease; }
 .overview article:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--amber), var(--border) 55%); }
 
@@ -283,7 +291,7 @@ hr { width: 100%; border: 0; border-top: 1px solid var(--border); }
   .workspace-actions .primary { flex: none; }
   .tabs { width: 100%; }
   .tab { flex: 1; }
-  .account-button > span:last-child { display: none; }
+  .account-copy { display: none; }
   .filter-bar { align-items: stretch; flex-direction: column; padding-inline: 14px; }
   .filter-groups { display: grid; gap: 12px; }
   .filter-group { overflow: hidden; }

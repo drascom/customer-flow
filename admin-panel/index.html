@@ -33,9 +33,12 @@
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>C</b>ustomer <b>F</b>low</span></div>
       <label class="search topbar-search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" aria-label="Search workspace" placeholder="Search patients or cases"></label>
-      <div class="account">
-        <button id="profileButton" class="account-button" type="button"><span id="accountAvatar">CF</span><span><strong id="accountName"></strong><small id="accountRole"></small></span></button>
-        <button id="logoutButton" class="quiet">Sign out</button>
+      <div id="accountMenu" class="account">
+        <button id="accountMenuButton" class="account-button" type="button" aria-haspopup="menu" aria-expanded="false"><span id="accountAvatar">CF</span><span class="account-copy"><strong id="accountName"></strong><small id="accountRole"></small></span><span class="account-chevron" aria-hidden="true">⌄</span></button>
+        <div id="accountDropdown" class="account-dropdown" role="menu" hidden>
+          <button id="profileButton" class="account-menu-item" type="button" role="menuitem"><span aria-hidden="true">◎</span><span><strong>Profile</strong><small>Personal details and password</small></span></button>
+          <button id="logoutButton" class="account-menu-item danger" type="button" role="menuitem"><span aria-hidden="true">↪</span><span><strong>Sign out</strong><small>End this session</small></span></button>
+        </div>
       </div>
     </header>
 
