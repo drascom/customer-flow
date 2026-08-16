@@ -67,6 +67,7 @@ def pound_amount(value: object) -> str:
 
 PATIENT_PROFILE_FIELDS = {
     "dateOfBirth": ("date_of_birth", 10),
+    "age": ("stated_age", 3),
     "gender": ("gender", 32),
     "phone": ("phone", 40),
     "email": ("email", 254),
@@ -92,7 +93,9 @@ def patient_profile_values(payload: dict, defaults: sqlite3.Row | None = None) -
         if api_name not in source and defaults is not None and column in defaults.keys():
             result[column] = defaults[column]
             continue
-        value = str(source.get(api_name) or "").strip() or None
+        raw_value = source.get(api_name)
+        value = str(raw_value).strip() if raw_value is not None else ""
+        value = value or None
         if value and len(value) > limit:
             raise APIError(422, "invalid_patient_profile", f"{api_name} is too long.")
         result[column] = value
@@ -108,6 +111,16 @@ def patient_profile_values(payload: dict, defaults: sqlite3.Row | None = None) -
         if parsed.year < 1900:
             raise APIError(422, "invalid_date_of_birth", "Enter a valid date of birth.")
 
+    stated_age = result["stated_age"]
+    if stated_age is not None:
+        try:
+            stated_age = int(stated_age)
+        except ValueError as exc:
+            raise APIError(422, "invalid_patient_age", "Enter a valid patient age.") from exc
+        if not 0 <= stated_age <= 130:
+            raise APIError(422, "invalid_patient_age", "Patient age must be between 0 and 130.")
+        result["stated_age"] = stated_age
+
     gender = result["gender"]
     if gender and gender not in PATIENT_GENDERS:
         raise APIError(422, "invalid_gender", "Select a valid gender option.")
@@ -117,12 +130,12 @@ def patient_profile_values(payload: dict, defaults: sqlite3.Row | None = None) -
     return result
 
 
-def patient_age(date_of_birth: str | None) -> int | None:
-    if not date_of_birth:
-        return None
-    born = date.fromisoformat(date_of_birth)
-    today = utc_now().date()
-    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+def patient_age(date_of_birth: str | None, stated_age: int | None = None) -> int | None:
+    if date_of_birth:
+        born = date.fromisoformat(date_of_birth)
+        today = utc_now().date()
+        return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    return stated_age
 
 
 def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
@@ -215,6 +228,7 @@ CREATE TABLE IF NOT EXISTS patients (
   assigned_doctor_id TEXT REFERENCES users(id),
   profile_photo_path TEXT,
   date_of_birth TEXT,
+  stated_age INTEGER,
   gender TEXT,
   phone TEXT,
   email TEXT,
@@ -318,11 +332,13 @@ class Database:
                 if "phone" not in columns:
                     conn.execute("ALTER TABLE users ADD COLUMN phone TEXT")
                 patient_columns = {row["name"] for row in conn.execute("PRAGMA table_info(patients)").fetchall()}
-                for column in (
-                    "date_of_birth", "gender", "phone", "email", "address", "occupation", "profile_note"
-                ):
+                patient_profile_columns = {
+                    "date_of_birth": "TEXT", "stated_age": "INTEGER", "gender": "TEXT", "phone": "TEXT",
+                    "email": "TEXT", "address": "TEXT", "occupation": "TEXT", "profile_note": "TEXT",
+                }
+                for column, column_type in patient_profile_columns.items():
                     if column not in patient_columns:
-                        conn.execute(f"ALTER TABLE patients ADD COLUMN {column} TEXT")
+                        conn.execute(f"ALTER TABLE patients ADD COLUMN {column} {column_type}")
                 photo_columns = {row["name"] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
                 if "deleted_at" not in photo_columns:
                     conn.execute("ALTER TABLE photos ADD COLUMN deleted_at TEXT")
@@ -725,7 +741,7 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 f"SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
-                f"p.date_of_birth,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
+                f"p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
                 f"u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
                 f"JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id "
                 f"{where} ORDER BY c.uploaded_at ASC",
@@ -797,13 +813,13 @@ class Database:
                     assigned_doctor = None
                     conn.execute(
                         "INSERT INTO patients("
-                        "id,name,normalized_name,assigned_doctor_id,profile_photo_path,date_of_birth,gender,"
+                        "id,name,normalized_name,assigned_doctor_id,profile_photo_path,date_of_birth,stated_age,gender,"
                         "phone,email,address,occupation,profile_note,last_updated"
-                        ") VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?,?)",
+                        ") VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)",
                         (
-                            patient_id, name, normalized, None, profile["date_of_birth"], profile["gender"],
-                            profile["phone"], profile["email"], profile["address"], profile["occupation"],
-                            profile["profile_note"], iso(utc_now()),
+                            patient_id, name, normalized, None, profile["date_of_birth"], profile["stated_age"],
+                            profile["gender"], profile["phone"], profile["email"], profile["address"],
+                            profile["occupation"], profile["profile_note"], iso(utc_now()),
                         ),
                     )
                 case_id = str(uuid.uuid4())
@@ -880,12 +896,12 @@ class Database:
                     raise APIError(422, "full_name_required", "Enter the patient's first and last name.")
                 profile = patient_profile_values(payload, row)
                 conn.execute(
-                    "UPDATE patients SET name=?,normalized_name=?,date_of_birth=?,gender=?,phone=?,email=?,"
+                    "UPDATE patients SET name=?,normalized_name=?,date_of_birth=?,stated_age=?,gender=?,phone=?,email=?,"
                     "address=?,occupation=?,profile_note=?,last_updated=? WHERE id=?",
                     (
-                        name, normalized, profile["date_of_birth"], profile["gender"], profile["phone"],
-                        profile["email"], profile["address"], profile["occupation"], profile["profile_note"],
-                        iso(utc_now()), row["patient_id"],
+                        name, normalized, profile["date_of_birth"], profile["stated_age"], profile["gender"],
+                        profile["phone"], profile["email"], profile["address"], profile["occupation"],
+                        profile["profile_note"], iso(utc_now()), row["patient_id"],
                     ),
                 )
                 conn.execute("UPDATE cases SET agent_grafts=?, currency=?, agent_price=?, version=version+1 WHERE id=?",
@@ -1469,7 +1485,7 @@ class Database:
             rows = conn.execute(
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_grafts,c.currency,c.agent_price,"
                 "c.final_grafts,c.final_price,c.finalized_at,"
-                "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.gender,p.phone,p.email,"
+                "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,"
                 "p.address,p.occupation,p.profile_note,"
                 "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NULL) message_count,"
@@ -1501,7 +1517,8 @@ class Database:
                 result.append({
                     "id": row["id"], "reference": row["reference"], "patientID": row["patient_id"],
                     "patientName": row["patient_name"], "agentName": row["agent_name"],
-                    "dateOfBirth": row["date_of_birth"], "age": patient_age(row["date_of_birth"]),
+                    "dateOfBirth": row["date_of_birth"], "statedAge": row["stated_age"],
+                    "age": patient_age(row["date_of_birth"], row["stated_age"]),
                     "gender": row["gender"], "patientPhone": row["phone"], "patientEmail": row["email"],
                     "patientAddress": row["address"], "occupation": row["occupation"],
                     "profileNote": row["profile_note"],
@@ -1599,7 +1616,7 @@ class Database:
     def _case_row(conn: sqlite3.Connection, case_id: str) -> sqlite3.Row:
         row = conn.execute(
             "SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
-            "p.date_of_birth,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
+            "p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
             "u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
             "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id WHERE c.id=?", (case_id,),
         ).fetchone()
@@ -1622,7 +1639,8 @@ class Database:
             "id": row["id"], "reference": row["reference"],
             "patient": {"id": row["patient_id"], "name": row["patient_name"],
                         "assignedDoctorID": row["patient_doctor"], "lastUpdated": row["last_updated"],
-                        "dateOfBirth": row["date_of_birth"], "age": patient_age(row["date_of_birth"]),
+                        "dateOfBirth": row["date_of_birth"], "statedAge": row["stated_age"],
+                        "age": patient_age(row["date_of_birth"], row["stated_age"]),
                         "gender": row["gender"], "phone": row["phone"], "email": row["email"],
                         "address": row["address"], "occupation": row["occupation"],
                         "profileNote": row["profile_note"]},

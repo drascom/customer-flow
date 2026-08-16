@@ -14,7 +14,7 @@ final class MockCaseRepository: CaseRepository {
             reference: "HT-\(sequence)",
             patient: Patient(
                 id: "PT-\(patientSequence)", name: patientName,
-                dateOfBirth: patientProfile.dateOfBirth, gender: patientProfile.gender,
+                dateOfBirth: patientProfile.dateOfBirth, statedAge: patientProfile.age, gender: patientProfile.gender,
                 phone: patientProfile.phone, email: patientProfile.email, address: patientProfile.address,
                 occupation: patientProfile.occupation, profileNote: patientProfile.profileNote,
                 assignedDoctorID: nil, lastUpdated: .now
@@ -105,6 +105,7 @@ final class MockCaseRepository: CaseRepository {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
         cases[index].patient.name = patientName
         cases[index].patient.dateOfBirth = patientProfile.dateOfBirth
+        cases[index].patient.statedAge = patientProfile.age
         cases[index].patient.gender = patientProfile.gender
         cases[index].patient.phone = patientProfile.phone
         cases[index].patient.email = patientProfile.email

@@ -273,8 +273,8 @@ struct AgentCaseEditorView: View {
     @State private var editingCaseID: UUID?
     @State private var detailsExpanded: Bool
     @State private var patientName = ""
-    @State private var includesDateOfBirth = false
-    @State private var dateOfBirth = Date.now
+    @State private var dateOfBirthText = ""
+    @State private var patientAge = ""
     @State private var gender = ""
     @State private var patientPhone = ""
     @State private var patientEmail = ""
@@ -580,7 +580,10 @@ struct AgentCaseEditorView: View {
                         .frame(height: 92)
                     }
                     ForEach(Array(pendingPhotos.enumerated()), id: \.element.id) { index, photo in
-                        PendingPhotoThumbnail(photo: photo, index: index)
+                        PendingPhotoThumbnail(photo: photo, index: index) {
+                            pendingPhotos.removeAll { $0.id == photo.id }
+                            photoCount = pendingPhotos.count
+                        }
                             .frame(height: 92)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
@@ -630,15 +633,35 @@ struct AgentCaseEditorView: View {
                 Spacer()
             }
 
-            Toggle("Add date of birth", isOn: $includesDateOfBirth)
-                .font(.subheadline)
-            if includesDateOfBirth {
-                DatePicker("Date of birth", selection: $dateOfBirth, in: ...Date.now, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                if let age = selectedAge {
-                    Text("Age \(age)")
-                        .font(.caption.weight(.semibold))
+            labeledField("Date of birth", required: false) {
+                TextField("DD/MM/YYYY", text: $dateOfBirthText)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textContentType(.birthdate)
+                    .textFieldStyle(.roundedBorder)
+                if !dateOfBirthText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isDateOfBirthValid {
+                    Text("Enter the date as DD/MM/YYYY.")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            labeledField("Age", required: false) {
+                TextField("Age if date of birth is unknown", text: $patientAge)
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(selectedAge != nil)
+                    .opacity(selectedAge == nil ? 1 : 0.72)
+                    .onChange(of: dateOfBirthText) { _, _ in
+                        if let selectedAge { patientAge = String(selectedAge) }
+                    }
+                if selectedAge != nil {
+                    Text("Calculated automatically from the date of birth.")
+                        .font(.caption2)
                         .foregroundStyle(AppTheme.brand)
+                } else if !patientAge.isEmpty && !isPatientAgeValid {
+                    Text("Enter an age between 0 and 130.")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
                 }
             }
 
@@ -693,9 +716,9 @@ struct AgentCaseEditorView: View {
                 Text("PATIENT DETAILS")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AppTheme.muted)
-                if let dateOfBirth = patient.dateOfBirth {
+                if let dateOfBirth = patient.dateOfBirthDisplayName {
                     profileLine("Date of birth", patient.age.map { "\(dateOfBirth) · Age \($0)" } ?? dateOfBirth)
-                }
+                } else if let age = patient.age { profileLine("Age", "\(age)") }
                 if let gender = patient.genderDisplayName { profileLine("Gender", gender) }
                 if let phone = patient.phone { profileLine("Phone", phone) }
                 if let email = patient.email { profileLine("Email", email) }
@@ -720,13 +743,28 @@ struct AgentCaseEditorView: View {
     }
 
     private var selectedAge: Int? {
-        guard includesDateOfBirth else { return nil }
-        return Calendar.current.dateComponents([.year], from: dateOfBirth, to: .now).year
+        guard let date = Self.date(fromDisplay: dateOfBirthText) else { return nil }
+        return Calendar.current.dateComponents([.year], from: date, to: .now).year
+    }
+
+    private var isDateOfBirthValid: Bool {
+        dateOfBirthText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || Self.date(fromDisplay: dateOfBirthText) != nil
+    }
+
+    private var isPatientAgeValid: Bool {
+        patientAge.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || Int(patientAge).map { (0...130).contains($0) } == true
+    }
+
+    private var patientProfileIsValid: Bool {
+        isDateOfBirthValid && isPatientAgeValid
     }
 
     private var patientProfileInput: PatientProfileInput {
         PatientProfileInput(
-            dateOfBirth: includesDateOfBirth ? Self.apiDate(dateOfBirth) : nil,
+            dateOfBirth: Self.apiDate(fromDisplay: dateOfBirthText),
+            age: selectedAge == nil ? Int(patientAge) : nil,
             gender: Self.trimmedOrNil(gender),
             phone: Self.trimmedOrNil(patientPhone),
             email: Self.trimmedOrNil(patientEmail),
@@ -741,18 +779,34 @@ struct AgentCaseEditorView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func apiDate(_ value: Date) -> String {
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: value)
+    private static func apiDate(fromDisplay value: String) -> String? {
+        guard let date = date(fromDisplay: value) else { return nil }
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
-    private static func date(fromAPI value: String?) -> Date? {
-        guard let value else { return nil }
+    private static func displayDate(fromAPI value: String?) -> String {
+        guard let value else { return "" }
         let components = value.split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3 else { return value }
+        return String(format: "%02d/%02d/%04d", components[2], components[1], components[0])
+    }
+
+    private static func date(fromDisplay value: String) -> Date? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let components = trimmed.split(whereSeparator: { "/-.".contains($0) }).compactMap { Int($0) }
         guard components.count == 3 else { return nil }
-        return Calendar.current.date(from: DateComponents(
-            year: components[0], month: components[1], day: components[2]
-        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        guard let date = calendar.date(from: DateComponents(
+            year: components[2], month: components[1], day: components[0]
+        )), date <= .now else { return nil }
+        let verified = calendar.dateComponents([.year, .month, .day], from: date)
+        guard verified.year == components[2], verified.month == components[1], verified.day == components[0] else {
+            return nil
+        }
+        return date
     }
 
     private func wizardCard<Content: View>(_ title: String, info: String? = nil, @ViewBuilder content: () -> Content) -> some View {
@@ -1092,6 +1146,7 @@ struct AgentCaseEditorView: View {
                 }
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.borderedProminent)
+                .disabled(!patientProfileIsValid)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             } else if editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor {
                 Button("Save Final Plan & Close") {
@@ -1152,7 +1207,8 @@ struct AgentCaseEditorView: View {
     private var canAdvance: Bool {
         switch createStep {
         case .patient:
-            return patientVerification == .newPatient || patientVerification == .differentConfirmed
+            return patientProfileIsValid
+                && (patientVerification == .newPatient || patientVerification == .differentConfirmed)
         case .needs:
             return !agentNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .plan:
@@ -1188,13 +1244,8 @@ struct AgentCaseEditorView: View {
         if let item = editCase {
             detailsExpanded = false
             patientName = item.patient.name
-            if let parsedDate = Self.date(fromAPI: item.patient.dateOfBirth) {
-                includesDateOfBirth = true
-                dateOfBirth = parsedDate
-            } else {
-                includesDateOfBirth = false
-                dateOfBirth = .now
-            }
+            dateOfBirthText = Self.displayDate(fromAPI: item.patient.dateOfBirth)
+            patientAge = item.patient.age.map(String.init) ?? ""
             gender = item.patient.gender ?? ""
             patientPhone = item.patient.phone ?? ""
             patientEmail = item.patient.email ?? ""
@@ -1218,8 +1269,8 @@ struct AgentCaseEditorView: View {
         } else {
             detailsExpanded = true
             patientName = ""
-            includesDateOfBirth = false
-            dateOfBirth = .now
+            dateOfBirthText = ""
+            patientAge = ""
             gender = ""
             patientPhone = ""
             patientEmail = ""
@@ -1334,12 +1385,8 @@ struct AgentCaseEditorView: View {
             editingCaseID = item.id
             detailsExpanded = false
             patientName = item.patient.name
-            if let parsedDate = Self.date(fromAPI: item.patient.dateOfBirth) {
-                includesDateOfBirth = true
-                dateOfBirth = parsedDate
-            } else {
-                includesDateOfBirth = false
-            }
+            dateOfBirthText = Self.displayDate(fromAPI: item.patient.dateOfBirth)
+            patientAge = item.patient.age.map(String.init) ?? ""
             gender = item.patient.gender ?? ""
             patientPhone = item.patient.phone ?? ""
             patientEmail = item.patient.email ?? ""
@@ -1500,6 +1547,7 @@ private enum PhotoImportError: Error {
 private struct PendingPhotoThumbnail: View {
     let photo: CasePhotoUpload
     let index: Int
+    let onRemove: () -> Void
 
     var body: some View {
         Group {
@@ -1512,6 +1560,19 @@ private struct PendingPhotoThumbnail: View {
             }
         }
         .clipped()
+        .overlay(alignment: .topTrailing) {
+            Button(role: .destructive, action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(.red, in: Circle())
+                    .shadow(radius: 2)
+            }
+            .buttonStyle(.plain)
+            .padding(6)
+            .accessibilityLabel("Remove selected photo \(index + 1)")
+        }
         .accessibilityLabel("Selected patient photo \(index + 1)")
     }
 }

@@ -249,9 +249,9 @@ struct CaseDetailView: View {
     private func patientDetails(_ patient: Patient) -> some View {
         detailSection("Patient details") {
             VStack(alignment: .leading, spacing: 9) {
-                if let dateOfBirth = patient.dateOfBirth {
+                if let dateOfBirth = patient.dateOfBirthDisplayName {
                     patientDetailLine("Date of birth", patient.age.map { "\(dateOfBirth) · Age \($0)" } ?? dateOfBirth)
-                }
+                } else if let age = patient.age { patientDetailLine("Age", "\(age)") }
                 if let gender = patient.genderDisplayName { patientDetailLine("Gender", gender) }
                 if let phone = patient.phone { patientDetailLine("Phone", phone) }
                 if let email = patient.email { patientDetailLine("Email", email) }

@@ -103,7 +103,8 @@ class APITestCase(unittest.TestCase):
             "patientName": created["patient"]["name"],
             "grafts": "2500", "currency": "GBP", "price": "2350",
             "patientProfile": {
-                "dateOfBirth": birth_date,
+                "dateOfBirth": None,
+                "age": 41,
                 "gender": "prefer_not_to_say",
                 "phone": "+44 7700 900999",
                 "email": None,
@@ -112,6 +113,9 @@ class APITestCase(unittest.TestCase):
                 "profileNote": "Contact by phone",
             },
         }, token=agent)["case"]
+        self.assertIsNone(edited["patient"]["dateOfBirth"])
+        self.assertEqual(41, edited["patient"]["age"])
+        self.assertEqual(41, edited["patient"]["statedAge"])
         self.assertEqual("prefer_not_to_say", edited["patient"]["gender"])
         self.assertEqual("+44 7700 900999", edited["patient"]["phone"])
         self.assertIsNone(edited["patient"]["email"])
@@ -120,7 +124,8 @@ class APITestCase(unittest.TestCase):
             item for item in self.request("GET", "/admin/cases", token=admin)["cases"]
             if item["id"] == created["id"]
         )
-        self.assertEqual(expected_age, admin_case["age"])
+        self.assertEqual(41, admin_case["age"])
+        self.assertEqual(41, admin_case["statedAge"])
         self.assertEqual("Leeds", admin_case["patientAddress"])
         self.assertEqual("Contact by phone", admin_case["profileNote"])
 
@@ -131,6 +136,13 @@ class APITestCase(unittest.TestCase):
             "patientProfile": {"dateOfBirth": "2999-01-01"},
         }, token=agent, expected=422)
         self.assertEqual("invalid_date_of_birth", invalid["error"]["code"])
+
+        invalid_age = self.request("POST", "/cases", {
+            "patientName": "Invalid Age Patient", "grafts": "2000",
+            "currency": "GBP", "price": "1800", "note": "Invalid age",
+            "photoCount": 0, "patientProfile": {"age": 131},
+        }, token=agent, expected=422)
+        self.assertEqual("invalid_patient_age", invalid_age["error"]["code"])
 
     def test_authenticated_clients_receive_live_change_events(self):
         admin = self.login("admin", "demo123")

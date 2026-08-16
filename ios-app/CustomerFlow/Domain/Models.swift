@@ -60,6 +60,7 @@ struct Patient: Identifiable, Hashable, Codable, Sendable {
     let id: String
     var name: String
     var dateOfBirth: String? = nil
+    var statedAge: Int? = nil
     var gender: String? = nil
     var phone: String? = nil
     var email: String? = nil
@@ -70,7 +71,7 @@ struct Patient: Identifiable, Hashable, Codable, Sendable {
     var lastUpdated: Date
 
     var age: Int? {
-        guard let dateOfBirth else { return nil }
+        guard let dateOfBirth else { return statedAge }
         let components = dateOfBirth.split(separator: "-").compactMap { Int($0) }
         guard components.count == 3 else { return nil }
         var calendar = Calendar(identifier: .gregorian)
@@ -79,6 +80,13 @@ struct Patient: Identifiable, Hashable, Codable, Sendable {
             year: components[0], month: components[1], day: components[2]
         )) else { return nil }
         return calendar.dateComponents([.year], from: birthday, to: .now).year
+    }
+
+    var dateOfBirthDisplayName: String? {
+        guard let dateOfBirth else { return nil }
+        let components = dateOfBirth.split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3 else { return dateOfBirth }
+        return String(format: "%02d/%02d/%04d", components[2], components[1], components[0])
     }
 
     var genderDisplayName: String? {
@@ -93,13 +101,14 @@ struct Patient: Identifiable, Hashable, Codable, Sendable {
     }
 
     var hasProfileDetails: Bool {
-        dateOfBirth != nil || gender != nil || phone != nil || email != nil || address != nil
+        dateOfBirth != nil || statedAge != nil || gender != nil || phone != nil || email != nil || address != nil
             || occupation != nil || profileNote != nil
     }
 }
 
 struct PatientProfileInput: Hashable, Codable, Sendable {
     let dateOfBirth: String?
+    let age: Int?
     let gender: String?
     let phone: String?
     let email: String?
@@ -108,12 +117,13 @@ struct PatientProfileInput: Hashable, Codable, Sendable {
     let profileNote: String?
 
     private enum CodingKeys: String, CodingKey {
-        case dateOfBirth, gender, phone, email, address, occupation, profileNote
+        case dateOfBirth, age, gender, phone, email, address, occupation, profileNote
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(dateOfBirth, forKey: .dateOfBirth)
+        try container.encode(age, forKey: .age)
         try container.encode(gender, forKey: .gender)
         try container.encode(phone, forKey: .phone)
         try container.encode(email, forKey: .email)

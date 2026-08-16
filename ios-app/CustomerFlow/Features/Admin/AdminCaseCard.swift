@@ -213,7 +213,7 @@ struct AdminCaseCard: View {
     }
 
     private var hasPatientDetails: Bool {
-        item.dateOfBirth != nil || item.gender != nil || item.patientPhone != nil || item.patientEmail != nil
+        item.dateOfBirth != nil || item.age != nil || item.gender != nil || item.patientPhone != nil || item.patientEmail != nil
             || item.patientAddress != nil || item.occupation != nil || item.profileNote != nil
     }
 
@@ -222,9 +222,9 @@ struct AdminCaseCard: View {
             Text("Patient details")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(AppTheme.ink)
-            if let dateOfBirth = item.dateOfBirth {
+            if let dateOfBirth = item.dateOfBirthDisplayName {
                 patientDetail("Date of birth", item.age.map { "\(dateOfBirth) · Age \($0)" } ?? dateOfBirth)
-            }
+            } else if let age = item.age { patientDetail("Age", "\(age)") }
             if let gender = item.gender { patientDetail("Gender", gender.replacingOccurrences(of: "_", with: " ").capitalized) }
             if let phone = item.patientPhone { patientDetail("Phone", phone) }
             if let email = item.patientEmail { patientDetail("Email", email) }

@@ -57,4 +57,11 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let finalGrafts: String?
     let finalPrice: String?
     let finalizedAt: Date?
+
+    var dateOfBirthDisplayName: String? {
+        guard let dateOfBirth else { return nil }
+        let components = dateOfBirth.split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3 else { return dateOfBirth }
+        return String(format: "%02d/%02d/%04d", components[2], components[1], components[0])
+    }
 }
