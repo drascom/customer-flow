@@ -431,6 +431,12 @@ struct AgentCaseEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) { actionBar }
         .onAppear(perform: configureForm)
+        .task {
+            guard !isEditMode else { return }
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            isPatientNameFocused = true
+        }
         .sheet(isPresented: $isMatchDetailsPresented) {
             if let candidate = matchCandidate {
                 PatientMatchSheet(
