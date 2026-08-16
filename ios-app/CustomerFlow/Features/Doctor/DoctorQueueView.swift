@@ -84,6 +84,7 @@ struct DoctorQueueView: View {
                                 .minimumScaleFactor(0.75)
                             Text("\(count(for: item))")
                                 .font(.caption2.bold())
+                                .foregroundStyle(filter == item ? AppTheme.accentInk : AppTheme.muted)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
                                 .background(
@@ -92,7 +93,7 @@ struct DoctorQueueView: View {
                                 )
                         }
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(filter == item ? AppTheme.accentInk : AppTheme.muted)
+                        .foregroundStyle(filter == item ? Color.white : AppTheme.muted)
                         .frame(maxWidth: .infinity, minHeight: 38)
                         .background(filter == item ? AppTheme.accent : AppTheme.surfaceStrong, in: Capsule())
                         .overlay(Capsule().stroke(filter == item ? AppTheme.accent : AppTheme.border))

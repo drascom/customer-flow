@@ -58,7 +58,7 @@ struct AgentCasesView: View {
                             } label: {
                                 Label("New", systemImage: "plus")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(AppTheme.accentInk)
+                                    .foregroundStyle(.white)
                                     .padding(.horizontal, 14)
                                     .frame(minHeight: 40)
                                     .background(AppTheme.accent, in: Capsule())

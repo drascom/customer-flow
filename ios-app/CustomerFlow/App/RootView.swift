@@ -39,7 +39,7 @@ struct RootView: View {
             }
         }
         .background(AppTheme.background.ignoresSafeArea())
-        .tint(AppTheme.accent)
+        .tint(AppTheme.brand)
         .overlay {
             if state.isRefreshingAfterForeground {
                 ZStack {

@@ -50,7 +50,7 @@ struct AppTourView: View {
             VStack(spacing: 22) {
                 Image(systemName: step.icon)
                     .font(.system(size: 48, weight: .medium))
-                    .foregroundStyle(AppTheme.accentInk)
+                    .foregroundStyle(.white)
                     .frame(width: 112, height: 112)
                     .background(AppTheme.accent, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
                     .shadow(color: AppTheme.accent.opacity(0.2), radius: 22, y: 10)

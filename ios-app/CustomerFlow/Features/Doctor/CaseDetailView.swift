@@ -201,7 +201,9 @@ struct CaseDetailView: View {
                         Task { await openNativePreview(photoID: item.photoIDs[photoIndex], caseID: item.id) }
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
+                    .foregroundStyle(.white)
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.accent)
                 }
             }
         }
@@ -291,7 +293,7 @@ struct CaseDetailView: View {
                     } label: {
                         Image(systemName: "arrow.up")
                             .font(.headline.bold())
-                            .foregroundStyle(AppTheme.accentInk)
+                            .foregroundStyle(.white)
                             .frame(width: 42, height: 42)
                             .background(AppTheme.accent, in: Circle())
                     }
