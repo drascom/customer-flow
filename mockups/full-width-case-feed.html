@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Customer Flow — Full-width case feed</title>
+  <style>
+    :root {
+      --ink: #123c38;
+      --muted: #69817d;
+      --teal: #0c8f89;
+      --line: rgba(18, 60, 56, .14);
+      --cream: #fffdfa;
+      --canvas: #f3eee6;
+      --amber: #d38b2f;
+      --amber-dark: #8b5615;
+      --green: #24856f;
+      --green-dark: #155547;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 10%, #d8e9ff 0, transparent 34%),
+        radial-gradient(circle at 88% 8%, #ffe0aa 0, transparent 36%),
+        #e9e4dc;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    button, input { font: inherit; }
+
+    .phone {
+      width: min(100%, 430px);
+      min-height: 100vh;
+      margin: 0 auto;
+      overflow: hidden;
+      background: var(--canvas);
+      box-shadow: 0 0 60px rgba(48, 36, 22, .14);
+    }
+
+    .top {
+      padding: 22px 18px 18px;
+      background: linear-gradient(110deg, rgba(218, 234, 255, .95), rgba(255, 221, 168, .92));
+      border-bottom: 1px solid rgba(255,255,255,.7);
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: 0 3px 10px rgba(0, 75, 74, .18);
+    }
+
+    .brand {
+      font-size: 25px;
+      font-weight: 700;
+      letter-spacing: -.7px;
+    }
+
+    .profile {
+      margin-left: auto;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #ffe1b1;
+      background: #238680;
+      font-size: 22px;
+    }
+
+    .search {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 52px;
+      padding: 0 16px;
+      border: 1px solid rgba(18, 60, 56, .08);
+      border-radius: 18px;
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 5px 18px rgba(73, 55, 32, .05);
+    }
+
+    .search span { font-size: 25px; color: var(--muted); }
+    .search input { width: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 18px; }
+    .search input::placeholder { color: #a7aaa8; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 14px 14px 16px;
+    }
+
+    .filter, .new {
+      height: 48px;
+      border: 0;
+      border-radius: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .filter {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid rgba(18, 60, 56, .07);
+    }
+
+    .count {
+      min-width: 26px;
+      height: 26px;
+      padding: 0 7px;
+      border-radius: 99px;
+      display: grid;
+      place-items: center;
+      background: #ebe8e3;
+    }
+
+    .new {
+      padding: 0 19px;
+      color: #fff;
+      background: var(--amber);
+      box-shadow: 0 7px 16px rgba(211,139,47,.22);
+    }
+
+    .feed {
+      display: grid;
+      gap: 12px;
+      padding-bottom: 34px;
+    }
+
+    .case {
+      background: var(--cream);
+      border-top: 1px solid rgba(255,255,255,.8);
+      border-bottom: 1px solid rgba(18, 60, 56, .12);
+      box-shadow: 0 6px 18px rgba(65, 46, 24, .05);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 48px;
+      padding: 0 18px;
+      color: white;
+      font-weight: 750;
+      letter-spacing: -.1px;
+    }
+
+    .status.waiting { background: var(--amber); }
+    .status.confirmed { background: var(--green); }
+    .status-icon {
+      width: 25px;
+      height: 25px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--amber-dark);
+      background: rgba(255,255,255,.94);
+      font-size: 14px;
+    }
+    .confirmed .status-icon { color: var(--green-dark); }
+
+    .case-head {
+      display: grid;
+      gap: 7px;
+      padding: 17px 18px 15px;
+      cursor: pointer;
+    }
+
+    .name-row, .agency-row, .latest-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .patient-name {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 20px;
+      font-weight: 750;
+      letter-spacing: -.25px;
+    }
+
+    .age {
+      flex: none;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .chevron {
+      flex: none;
+      width: 25px;
+      height: 25px;
+      border: 0;
+      color: var(--muted);
+      background: transparent;
+      font-size: 17px;
+      cursor: pointer;
+      transition: transform .22s ease;
+    }
+
+    .collapsed .chevron { transform: rotate(180deg); }
+
+    .agency-row { color: var(--muted); font-size: 15px; }
+    .agency-row .agent {
+      min-width: 0;
+      margin-left: auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+      font-weight: 600;
+    }
+
+    .case-body { overflow: hidden; }
+    .collapsed .case-body { display: none; }
+
+    .photo {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1.28 / 1;
+      overflow: hidden;
+      background:
+        linear-gradient(145deg, rgba(63,27,13,.05), rgba(255,187,112,.08)),
+        url("https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1000&q=88") center 42% / cover;
+    }
+
+    .photo.second {
+      background-image:
+        linear-gradient(145deg, rgba(63,27,13,.08), rgba(255,187,112,.06)),
+        url("https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1000&q=88");
+    }
+
+    .photo-count {
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      padding: 7px 11px;
+      border-radius: 99px;
+      color: white;
+      background: rgba(15, 20, 18, .72);
+      backdrop-filter: blur(12px);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .details { padding: 17px 18px 18px; }
+    .description { margin: 0 0 15px; color: #476862; font-size: 17px; line-height: 1.35; }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      padding: 13px 14px;
+      border-radius: 14px;
+      background: #f7f2ea;
+    }
+
+    .metric label {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
+
+    .metric strong { font-size: 20px; letter-spacing: -.2px; }
+
+    .open-case {
+      display: block;
+      margin-left: auto;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 99px;
+      color: white;
+      background: var(--teal);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .latest {
+      padding: 0 18px 17px;
+    }
+
+    .latest-row {
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--ink);
+    }
+
+    .bubble { color: var(--teal); font-size: 19px; }
+    .sender { flex: none; font-weight: 700; }
+    .excerpt { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #476862; }
+    .when { flex: none; color: var(--muted); font-size: 13px; }
+
+    .prototype-note {
+      margin: 4px 14px 18px;
+      padding: 10px 12px;
+      border: 1px dashed rgba(18,60,56,.2);
+      border-radius: 12px;
+      color: #667b77;
+      background: rgba(255,255,255,.48);
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: center;
+    }
+
+    @media (min-width: 600px) {
+      body { padding: 30px 0; }
+      .phone { min-height: 900px; border-radius: 34px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <header class="top">
+      <div class="brand-row">
+        <img class="brand-mark" src="../ios-app/CustomerFlow/Resources/Assets.xcassets/BrandMark.imageset/BrandMark@2x.png" alt="" />
+        <div class="brand">Customer Flow</div>
+        <div class="profile" aria-label="Profile">●</div>
+      </div>
+      <label class="search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search patients" />
+      </label>
+    </header>
+
+    <section class="controls" aria-label="Case controls">
+      <button class="filter">Waiting for Doctor <span class="count">2</span>⌄</button>
+      <button class="new">＋ New</button>
+    </section>
+
+    <section class="feed">
+      <article class="case" data-case>
+        <div class="status waiting"><span class="status-icon">◷</span>Waiting for Doctor</div>
+        <div class="case-head" data-toggle>
+          <div class="name-row">
+            <div class="patient-name">Alessandro (Ale) Paoloni</div>
+            <div class="age">26 min</div>
+            <button class="chevron" aria-label="Collapse case">⌃</button>
+          </div>
+          <div class="agency-row"><span>▦</span><span>Hairline</span><span class="agent">Anzal Qurbain</span></div>
+        </div>
+        <div class="case-body">
+          <div class="photo"><span class="photo-count">1 / 4</span></div>
+          <div class="details">
+            <p class="description">Diffuse thinning consultation. Please advise on treatment planning and graft distribution.</p>
+            <div class="metrics">
+              <div class="metric"><label>Estimated grafts</label><strong>3,000</strong></div>
+              <div class="metric"><label>Estimated price</label><strong>£3,500</strong></div>
+            </div>
+            <button class="open-case">Open case ↗</button>
+          </div>
+          <div class="latest">
+            <div class="latest-row"><span class="bubble">▢</span><span class="sender">Anzal</span><span class="excerpt">Patient photos and consultation uploaded.</span><span class="when">Today</span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="case collapsed" data-case>
+        <div class="status confirmed"><span class="status-icon">✓</span>Confirmed</div>
+        <div class="case-head" data-toggle>
+          <div class="name-row">
+            <div class="patient-name">Test patient 2</div>
+            <div class="age">1 day</div>
+            <button class="chevron" aria-label="Expand case">⌃</button>
+          </div>
+          <div class="agency-row"><span>▦</span><span>Magic Smile</span><span class="agent">Mazlum Çağrı</span></div>
+        </div>
+        <div class="case-body">
+          <div class="photo second"><span class="photo-count">1 / 3</span></div>
+          <div class="details">
+            <p class="description">Hairline assessment and treatment plan requested.</p>
+            <div class="metrics">
+              <div class="metric"><label>Confirmed grafts</label><strong>3,200</strong></div>
+              <div class="metric"><label>Confirmed price</label><strong>£2,850</strong></div>
+            </div>
+            <button class="open-case">Open case ↗</button>
+          </div>
+          <div class="latest">
+            <div class="latest-row"><span class="bubble">▢</span><span class="sender">Doctor 1</span><span class="excerpt">Treatment plan confirmed.</span><span class="when">Yesterday</span></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <div class="prototype-note">Prototype: tap a patient header to expand or collapse the full-width post.</div>
+  </main>
+
+  <script>
+    document.querySelectorAll('[data-toggle]').forEach((header) => {
+      header.addEventListener('click', (event) => {
+        if (event.target.closest('.open-case')) return;
+        header.closest('[data-case]').classList.toggle('collapsed');
+      });
+    });
+  </script>
+</body>
+</html>

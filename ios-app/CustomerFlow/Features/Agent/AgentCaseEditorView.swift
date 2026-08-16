@@ -29,7 +29,6 @@ struct AgentCasesView: View {
 
     private var myCases: [ConsultationCase] {
         state.cases
-            .filter { $0.agentName == state.currentAgentName }
             .filter { item in
                 switch filter {
                 case .all: true
@@ -67,10 +66,12 @@ struct AgentCasesView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 12)
 
                         if myCases.isEmpty {
                             ContentUnavailableView("No cases", systemImage: "tray", description: Text("No cases match this view."))
                                 .frame(minHeight: 300)
+                                .padding(.horizontal, 12)
                         } else {
                             ForEach(myCases) { item in
                                 AgentCaseListCard(
@@ -87,7 +88,6 @@ struct AgentCasesView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
                     .padding(.bottom, 18)
                 } header: {
                     searchHeader
@@ -154,7 +154,6 @@ struct AgentCasesView: View {
 
     private func count(for filter: AgentCaseFilter) -> Int {
         state.cases.filter { item in
-            guard item.agentName == state.currentAgentName else { return false }
             switch filter {
             case .all: return true
             case .waiting: return item.status == .waiting
@@ -184,52 +183,51 @@ private struct AgentCaseListCard: View {
                     }
                 }
 
-            VStack(alignment: .leading, spacing: 0) {
-                Group {
-                    if isCollapsible {
-                        Button(action: onToggle) { summaryHeader }
-                            .buttonStyle(.plain)
-                    } else {
-                        summaryHeader
-                    }
+            Group {
+                if isCollapsible {
+                    Button(action: onToggle) { summaryHeader }
+                        .buttonStyle(.plain)
+                } else {
+                    summaryHeader
                 }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
 
-                if isExpanded {
-                    Divider().padding(.vertical, 12)
-
-                    Group {
-                        if item.photoCount == 0 {
-                            NoPhotosView()
-                        } else {
-                            TabView(selection: $photoIndex) {
-                                ForEach(0..<item.photoCount, id: \.self) { index in
-                                    CasePhotoView(
-                                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                                        index: index
-                                    )
-                                    .tag(index)
-                                }
-                            }
-                            .tabViewStyle(.page(indexDisplayMode: .never))
-                            .overlay(alignment: .bottomTrailing) {
-                                Text("\(photoIndex + 1) / \(item.photoCount)")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 6)
-                                    .background(.black.opacity(0.6), in: Capsule())
-                                    .padding(10)
+            if isExpanded {
+                Group {
+                    if item.photoCount == 0 {
+                        NoPhotosView()
+                            .padding(.horizontal, 16)
+                    } else {
+                        TabView(selection: $photoIndex) {
+                            ForEach(0..<item.photoCount, id: \.self) { index in
+                                CasePhotoView(
+                                    photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                    index: index
+                                )
+                                .tag(index)
                             }
                         }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .overlay(alignment: .bottomTrailing) {
+                            Text("\(photoIndex + 1) / \(item.photoCount)")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(.black.opacity(0.6), in: Capsule())
+                                .padding(12)
+                        }
                     }
-                    .frame(height: 250)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                .frame(height: 300)
 
+                VStack(alignment: .leading, spacing: 0) {
                     Text(item.agentNote)
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.muted)
                         .lineLimit(2)
-                        .padding(.top, 12)
 
                     HStack(spacing: 8) {
                         metric("Estimated grafts", item.agentGrafts)
@@ -254,11 +252,13 @@ private struct AgentCaseListCard: View {
                             .padding(.top, 12)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
 
-                if let latestMessage {
+            if let latestMessage {
+                VStack(spacing: 10) {
                     Divider()
-                        .padding(.top, isExpanded ? 14 : 8)
-                        .padding(.bottom, 8)
                     LatestMessagePreview(
                         author: latestMessage.author,
                         text: latestMessage.text,
@@ -266,14 +266,16 @@ private struct AgentCaseListCard: View {
                         hasPhoto: latestMessage.attachmentPhotoID != nil
                     )
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
             }
-            .padding(14)
         }
         .foregroundStyle(AppTheme.ink)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AppTheme.border))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .background(AppTheme.surfaceStrong)
+        .overlay(alignment: .top) { Rectangle().fill(AppTheme.border).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(AppTheme.border).frame(height: 1) }
+        .contentShape(Rectangle())
         .onTapGesture {
             if !isCollapsible { onOpen() }
         }
@@ -305,10 +307,9 @@ private struct AgentCaseListCard: View {
             }
 
             HStack(spacing: 6) {
-                Image(systemName: "building.2")
-                Text(item.agencyName ?? "No agency").lineLimit(1)
-                Spacer(minLength: 12)
-                Text(item.agentName).lineLimit(1)
+                Image(systemName: "person.crop.circle")
+                Text(item.agentName)
+                    .lineLimit(1)
             }
             .font(.system(size: 13))
             .foregroundStyle(AppTheme.muted)
@@ -327,16 +328,7 @@ private struct AgentCaseListCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity)
-        .background(
-            statusBandColor,
-            in: UnevenRoundedRectangle(
-                topLeadingRadius: 20,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 20,
-                style: .continuous
-            )
-        )
+        .background(statusBandColor)
         .accessibilityElement(children: .combine)
     }
 
@@ -436,6 +428,14 @@ struct AgentCaseEditorView: View {
     }
 
     private var isEditMode: Bool { editingCaseID != nil }
+
+    private var canEditCase: Bool {
+        guard let editCase else { return true }
+        if let agentID = editCase.agentID {
+            return agentID == state.currentUser?.id
+        }
+        return editCase.agentName == state.currentAgentName
+    }
 
     private var editCase: ConsultationCase? {
         guard let editingCaseID else { return nil }
@@ -970,10 +970,18 @@ struct AgentCaseEditorView: View {
                     .font(.headline)
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
-                Button(detailsExpanded ? "Done" : "Edit", systemImage: detailsExpanded ? "checkmark" : "pencil") {
-                    withAnimation(.easeInOut(duration: 0.2)) { detailsExpanded.toggle() }
+                if canEditCase {
+                    Button(detailsExpanded ? "Done" : "Edit", systemImage: detailsExpanded ? "checkmark" : "pencil") {
+                        withAnimation(.easeInOut(duration: 0.2)) { detailsExpanded.toggle() }
+                    }
+                    .font(.caption.weight(.semibold))
                 }
-                .font(.caption.weight(.semibold))
+            }
+
+            if let editCase {
+                Label("Added by \(editCase.agentName)", systemImage: "person.crop.circle")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
             }
 
             Text(agentNote)
@@ -1046,7 +1054,7 @@ struct AgentCaseEditorView: View {
                     .foregroundStyle(AppTheme.muted)
             }
 
-            if photoCount > 0 {
+            if photoCount > 0, canEditCase {
                 PhotoSourceButton(
                     selectedPhotos: $selectedPhotos,
                     onCameraPhoto: importCameraPhoto
@@ -1067,14 +1075,19 @@ struct AgentCaseEditorView: View {
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
                 if photoCount == 0 {
-                    PhotoSourceButton(
-                        selectedPhotos: $selectedPhotos,
-                        onCameraPhoto: importCameraPhoto
-                    ) {
-                        EmptyPhotoAddCard()
+                    if canEditCase {
+                        PhotoSourceButton(
+                            selectedPhotos: $selectedPhotos,
+                            onCameraPhoto: importCameraPhoto
+                        ) {
+                            EmptyPhotoAddCard()
+                        }
+                        .buttonStyle(.plain)
+                        .frame(height: 92)
+                    } else {
+                        NoPhotosView()
+                            .frame(maxWidth: .infinity, minHeight: 92)
                     }
-                    .buttonStyle(.plain)
-                    .frame(height: 92)
                 }
                 ForEach(0..<photoCount, id: \.self) { index in
                     let photoID = editCase?.photoIDs.indices.contains(index) == true ? editCase?.photoIDs[index] : nil
@@ -1082,7 +1095,7 @@ struct AgentCaseEditorView: View {
                         photoID: photoID,
                         index: index,
                         reloadToken: photoReloadToken,
-                        onDelete: photoDeleteAction(for: photoID),
+                        onDelete: canEditCase ? photoDeleteAction(for: photoID) : nil,
                         onTap: photoPreviewAction(for: photoID)
                     )
                         .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92)
@@ -1106,23 +1119,25 @@ struct AgentCaseEditorView: View {
                         onDelete: { pendingMessageDeletion = message }
                     )
                 }
-                labeledField("Add an update or question", required: false) {
-                    TextField("Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
-                        .lineLimit(3...6)
-                        .textFieldStyle(.roundedBorder)
-                }
-                if !updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button("Send to doctor") {
-                        Task {
-                            if await state.sendAgentUpdate(caseID: editCase.id, text: updateText) {
-                                updateText = ""
-                                returnedToDoctor = true
-                                statusText = "Waiting for Doctor · Update sent"
+                if canEditCase {
+                    labeledField("Add an update or question", required: false) {
+                        TextField("Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
+                            .lineLimit(3...6)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    if !updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("Send to doctor") {
+                            Task {
+                                if await state.sendAgentUpdate(caseID: editCase.id, text: updateText) {
+                                    updateText = ""
+                                    returnedToDoctor = true
+                                    statusText = "Waiting for Doctor · Update sent"
+                                }
                             }
                         }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }
@@ -1169,7 +1184,7 @@ struct AgentCaseEditorView: View {
                     summaryMetric("Final grafts", item.finalGrafts ?? item.agentGrafts)
                     summaryMetric("Final price", AppCurrency.amount(item.finalPrice ?? item.agentPrice))
                 }
-            } else {
+            } else if canEditCase {
                 Text("Using the doctor’s recommendation, enter the graft number and price agreed with the patient.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
@@ -1191,6 +1206,10 @@ struct AgentCaseEditorView: View {
                         }
                     }
                 }
+            } else {
+                Label("\(item.agentName) will confirm the final agreed plan.", systemImage: "lock")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
             }
         }
         .padding(14)
@@ -1199,7 +1218,7 @@ struct AgentCaseEditorView: View {
     }
 
     private func photoDeleteAction(for photoID: String?) -> (() -> Void)? {
-        guard let photoID else { return nil }
+        guard canEditCase, let photoID else { return nil }
         return { pendingPhotoDeletionID = photoID }
     }
 
@@ -1222,7 +1241,7 @@ struct AgentCaseEditorView: View {
                 photoIDs: photoIDs,
                 photoData: photoData,
                 initialIndex: photoIDs.firstIndex(of: photoID) ?? 0,
-                allowsEditing: true
+                allowsEditing: canEditCase
             )
         } catch {
             state.errorMessage = "The photo could not be opened."
@@ -1231,6 +1250,7 @@ struct AgentCaseEditorView: View {
 
     @MainActor
     private func sendAnnotatedPhoto(_ data: Data, contentType: String, caseID: UUID) async {
+        guard canEditCase else { return }
         statusText = "Sending annotated photo…"
         if await state.sendPhotoMessage(caseID: caseID, data: data, contentType: contentType) {
             statusText = "Waiting for Doctor · Annotated photo sent"
@@ -1256,12 +1276,14 @@ struct AgentCaseEditorView: View {
 
     @ViewBuilder
     private var actionBar: some View {
-        if isEditMode {
-            if detailsExpanded || (editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor) {
-                editActionBar
+        if canEditCase {
+            if isEditMode {
+                if detailsExpanded || (editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor) {
+                    editActionBar
+                }
+            } else {
+                wizardActionBar
             }
-        } else {
-            wizardActionBar
         }
     }
 

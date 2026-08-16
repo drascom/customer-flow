@@ -29,9 +29,9 @@ struct DoctorQueueView: View {
                     Section {
                         VStack(spacing: 10) {
                             filterMenu
+                                .padding(.horizontal, 12)
                             caseGrid(minimumEmptyHeight: max(320, proxy.size.height - 125))
                         }
-                        .padding(.horizontal, 12)
                     } header: {
                         searchHeader
                     }
@@ -125,7 +125,7 @@ struct DoctorQueueView: View {
             ContentUnavailableView("No cases", systemImage: "tray", description: Text("No cases match this view."))
                 .frame(maxWidth: .infinity, minHeight: minimumEmptyHeight)
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 14)], spacing: 14) {
+            LazyVStack(spacing: 14) {
                 ForEach(filteredCases) { item in
                     CaseCardView(
                         item: item,
@@ -181,54 +181,53 @@ private struct CaseCardView: View {
                     }
                 }
 
-            VStack(alignment: .leading, spacing: 0) {
-                Group {
-                    if isCollapsible {
-                        Button(action: onToggle) {
-                            summaryHeader
-                        }
-                        .buttonStyle(.plain)
-                    } else {
+            Group {
+                if isCollapsible {
+                    Button(action: onToggle) {
                         summaryHeader
                     }
+                    .buttonStyle(.plain)
+                } else {
+                    summaryHeader
                 }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
 
-                if isExpanded {
-                    Divider().padding(.vertical, 12)
-
-                    Group {
-                        if item.photoCount == 0 {
-                            NoPhotosView()
-                        } else {
-                            TabView(selection: $photoIndex) {
-                                ForEach(0..<item.photoCount, id: \.self) { index in
-                                    CasePhotoView(
-                                        photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
-                                        index: index
-                                    )
-                                    .tag(index)
-                                }
-                            }
-                            .tabViewStyle(.page(indexDisplayMode: .never))
-                            .overlay(alignment: .bottomTrailing) {
-                                Text("\(photoIndex + 1) / \(item.photoCount)")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 6)
-                                    .background(.black.opacity(0.6), in: Capsule())
-                                    .padding(10)
+            if isExpanded {
+                Group {
+                    if item.photoCount == 0 {
+                        NoPhotosView()
+                            .padding(.horizontal, 16)
+                    } else {
+                        TabView(selection: $photoIndex) {
+                            ForEach(0..<item.photoCount, id: \.self) { index in
+                                CasePhotoView(
+                                    photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
+                                    index: index
+                                )
+                                .tag(index)
                             }
                         }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .overlay(alignment: .bottomTrailing) {
+                            Text("\(photoIndex + 1) / \(item.photoCount)")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(.black.opacity(0.6), in: Capsule())
+                                .padding(12)
+                        }
                     }
-                    .frame(height: 250)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                .frame(height: 300)
 
+                VStack(alignment: .leading, spacing: 0) {
                     Text(item.agentNote)
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.muted)
                         .lineLimit(2)
-                        .padding(.top, 12)
 
                     HStack(spacing: 8) {
                         metric("Estimated grafts", item.agentGrafts)
@@ -253,11 +252,13 @@ private struct CaseCardView: View {
                             .padding(.top, 12)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
 
-                if let latestMessage {
+            if let latestMessage {
+                VStack(spacing: 10) {
                     Divider()
-                        .padding(.top, isExpanded ? 14 : 8)
-                        .padding(.bottom, 8)
                     LatestMessagePreview(
                         author: latestMessage.author,
                         text: latestMessage.text,
@@ -265,14 +266,16 @@ private struct CaseCardView: View {
                         hasPhoto: latestMessage.attachmentPhotoID != nil
                     )
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
             }
-            .padding(14)
         }
         .foregroundStyle(AppTheme.ink)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AppTheme.border))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .background(AppTheme.surfaceStrong)
+        .overlay(alignment: .top) { Rectangle().fill(AppTheme.border).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(AppTheme.border).frame(height: 1) }
+        .contentShape(Rectangle())
         .onTapGesture {
             if !isCollapsible {
                 onOpen()
@@ -331,16 +334,7 @@ private struct CaseCardView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity)
-        .background(
-            statusBandColor,
-            in: UnevenRoundedRectangle(
-                topLeadingRadius: 20,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 20,
-                style: .continuous
-            )
-        )
+        .background(statusBandColor)
         .accessibilityElement(children: .combine)
     }
 

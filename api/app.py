@@ -738,7 +738,10 @@ class Database:
     def fetch_cases(self, user: sqlite3.Row) -> list[dict]:
         where, params = "", []
         if user["role"] == "agent":
-            where, params = "WHERE c.agent_id=?", [user["id"]]
+            if user["agency_id"]:
+                where, params = "WHERE u.agency_id=?", [user["agency_id"]]
+            else:
+                where, params = "WHERE c.agent_id=?", [user["id"]]
         with self.connect() as conn:
             rows = conn.execute(
                 f"SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
@@ -1161,8 +1164,8 @@ class Database:
     def get_photo(self, photo_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
         with self.connect() as conn:
             photo = conn.execute(
-                "SELECT p.*,c.agent_id,c.assigned_doctor_id FROM photos p "
-                "JOIN cases c ON c.id=p.case_id WHERE p.id=?",
+                "SELECT p.*,c.agent_id,c.assigned_doctor_id,u.agency_id case_agency_id FROM photos p "
+                "JOIN cases c ON c.id=p.case_id JOIN users u ON u.id=c.agent_id WHERE p.id=?",
                 (photo_id,),
             ).fetchone()
             if not photo:
@@ -1292,8 +1295,9 @@ class Database:
     def get_message_photo(self, message_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
         with self.connect() as conn:
             message = conn.execute(
-                "SELECT m.attachment_path,m.attachment_content_type,m.deleted_at,c.agent_id,c.assigned_doctor_id "
-                "FROM messages m JOIN cases c ON c.id=m.case_id WHERE m.id=?",
+                "SELECT m.attachment_path,m.attachment_content_type,m.deleted_at,c.agent_id,c.assigned_doctor_id,"
+                "u.agency_id case_agency_id FROM messages m JOIN cases c ON c.id=m.case_id "
+                "JOIN users u ON u.id=c.agent_id WHERE m.id=?",
                 (message_id,),
             ).fetchone()
             if not message or not message["attachment_path"] or not message["attachment_content_type"]:
@@ -1680,8 +1684,11 @@ class Database:
 
     @staticmethod
     def _assert_case_visible(case: sqlite3.Row, user: sqlite3.Row) -> None:
-        if user["role"] == "agent" and case["agent_id"] != user["id"]:
-            raise APIError(403, "forbidden", "This case belongs to another agent.")
+        if user["role"] != "agent" or case["agent_id"] == user["id"]:
+            return
+        if user["agency_id"] and case["case_agency_id"] == user["agency_id"]:
+            return
+        raise APIError(403, "forbidden", "This case belongs to another agency.")
 
     @staticmethod
     def _audit(conn: sqlite3.Connection, actor: str, action: str, entity_type: str, entity_id: str, detail: dict) -> None:
@@ -1693,7 +1700,8 @@ class Database:
         row = conn.execute(
             "SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
             "p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
-            "u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
+            "u.display_name agent_name, u.agency_id case_agency_id, a.name agency_name "
+            "FROM cases c JOIN patients p ON p.id=c.patient_id "
             "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id WHERE c.id=?", (case_id,),
         ).fetchone()
         if not row:
@@ -1720,7 +1728,7 @@ class Database:
                         "gender": row["gender"], "phone": row["phone"], "email": row["email"],
                         "address": row["address"], "occupation": row["occupation"],
                         "profileNote": row["profile_note"]},
-            "agentName": row["agent_name"], "agencyName": row["agency_name"],
+            "agentID": row["agent_id"], "agentName": row["agent_name"], "agencyName": row["agency_name"],
             "assignedDoctorID": row["assigned_doctor_id"],
             "uploadedAt": row["uploaded_at"], "status": row["status"], "photoCount": len(photos),
             "agentNote": row["agent_note"], "agentGrafts": row["agent_grafts"],

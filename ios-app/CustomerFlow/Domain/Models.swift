@@ -173,6 +173,7 @@ struct ConsultationCase: Identifiable, Hashable, Codable, Sendable {
     let id: UUID
     let reference: String
     var patient: Patient
+    var agentID: String? = nil
     let agentName: String
     var agencyName: String? = nil
     var assignedDoctorID: String?

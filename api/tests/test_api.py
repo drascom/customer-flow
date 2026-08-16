@@ -567,6 +567,36 @@ class APITestCase(unittest.TestCase):
                               token=agent, expected=403)
         self.assertEqual("forbidden", result["error"]["code"])
 
+    def test_agents_can_view_but_not_edit_cases_from_their_agency(self):
+        admin = self.login("admin", "demo123")
+        owner = self.login("user1", "demo123")
+        agency = next(item for item in self.request("GET", "/admin/agencies", token=admin)["agencies"]
+                      if item["name"] == "Acenta 1")
+        username = "agency-peer-" + uuid.uuid4().hex[:8]
+        peer = self.request("POST", "/admin/users", {
+            "username": username, "displayName": "Agency Peer", "role": "agent",
+            "agencyID": agency["id"], "password": "Temporary!789",
+        }, token=admin, expected=201)["user"]
+        peer_token = self.login(username, "Temporary!789")
+
+        created = self.request("POST", "/cases", {
+            "patientName": "Shared Agency Patient", "grafts": "2400", "currency": "GBP",
+            "price": "2300", "note": "Visible to agency colleagues", "photoCount": 2,
+        }, token=owner, expected=201)["case"]
+
+        peer_cases = self.request("GET", "/cases", token=peer_token)["cases"]
+        shared = next(item for item in peer_cases if item["id"] == created["id"])
+        self.assertEqual("Selin Arslan", shared["agentName"])
+        self.assertEqual(created["agentID"], shared["agentID"])
+        self.assertEqual(created["id"], self.request(
+            "GET", f"/cases/{created['id']}", token=peer_token,
+        )["case"]["id"])
+
+        blocked = self.request("PATCH", f"/cases/{created['id']}/agent-values", {
+            "patientName": created["patient"]["name"], "grafts": "1", "currency": "GBP", "price": "1",
+        }, token=peer_token, expected=403)
+        self.assertEqual("forbidden", blocked["error"]["code"])
+
     def test_admin_user_lifecycle_and_role_protection(self):
         doctor = self.login("doctor1", "demo123")
         forbidden = self.request("GET", "/admin/users", token=doctor, expected=403)
