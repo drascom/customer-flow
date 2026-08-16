@@ -282,24 +282,27 @@ private struct AgentCaseListCard: View {
 
     private var summaryHeader: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(item.patient.name)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(AppTheme.ink)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(item.patient.name)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
 
-            HStack(spacing: 5) {
-                Image(systemName: "clock")
-                Text(item.uploadedAt.compactRelativeText)
-                Spacer(minLength: 4)
-                if isCollapsible {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                HStack(spacing: 5) {
+                    Image(systemName: "clock")
+                    Text(item.uploadedAt.compactRelativeText)
+                    if isCollapsible {
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    }
                 }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.muted)
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(AppTheme.muted)
 
             HStack(spacing: 6) {
                 Image(systemName: "building.2")
