@@ -878,19 +878,14 @@ struct LatestMessagePreview: View {
 extension Date {
     var compactRelativeText: String {
         let elapsed = max(0, Int(Date.now.timeIntervalSince(self)))
-        let minutes = elapsed / 60
-        let hours = minutes / 60
-        let days = hours / 24
+        let roundedMinutes = Int((Double(elapsed) / 60).rounded())
+        guard roundedMinutes > 0 else { return "Now" }
+        guard roundedMinutes >= 60 else { return "\(roundedMinutes) min" }
 
-        if days > 0 {
-            let remainingHours = hours % 24
-            let dayLabel = days == 1 ? "1 day" : "\(days) days"
-            return remainingHours == 0 ? dayLabel : "\(dayLabel), \(remainingHours) hr"
-        }
-        if hours > 0 {
-            let remainingMinutes = minutes % 60
-            return remainingMinutes == 0 ? "\(hours) hr" : "\(hours) hr, \(remainingMinutes) min"
-        }
-        return minutes == 0 ? "Now" : "\(minutes) min"
+        let roundedHours = Int((Double(elapsed) / 3_600).rounded())
+        guard roundedHours >= 24 else { return "\(roundedHours) hr" }
+
+        let roundedDays = max(1, Int((Double(elapsed) / 86_400).rounded()))
+        return roundedDays == 1 ? "1 day" : "\(roundedDays) days"
     }
 }
