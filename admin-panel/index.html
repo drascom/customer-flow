@@ -32,6 +32,7 @@
   <div id="appView" class="app-shell" hidden>
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>C</b>ustomer <b>F</b>low</span></div>
+      <label class="search topbar-search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" aria-label="Search workspace" placeholder="Search patients or cases"></label>
       <div class="account">
         <button id="profileButton" class="account-button" type="button"><span id="accountAvatar">CF</span><span><strong id="accountName"></strong><small id="accountRole"></small></span></button>
         <button id="logoutButton" class="quiet">Sign out</button>
@@ -53,7 +54,6 @@
           <button class="tab management-only" data-view="agencies">Agencies</button>
         </nav>
         <div class="workspace-actions">
-          <label class="search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search patients or cases"></label>
           <button id="newCaseButton" class="primary compact agent-only" hidden>+ New case</button>
           <button id="addUserButton" class="primary compact admin-only" hidden>+ Add user</button>
         </div>

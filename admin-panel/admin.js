@@ -233,8 +233,7 @@ function renderCaseDetail(item) {
   const details = [["Date of birth", formatDOB(patient.dateOfBirth)], ["Age", patient.age], ["Gender", prettyGender(patient.gender)], ["Phone", patient.phone], ["Email", patient.email], ["Address", patient.address], ["Occupation", patient.occupation], ["Info", patient.profileNote]].filter(([, v]) => v !== null && v !== undefined && v !== "");
   const mayEdit = canEditAgentCase(item);
   $("caseDialogContent").innerHTML = `<section class="case-hero"><div><span class="status ${escapeHTML(item.status)}">${escapeHTML(status.label)}</span><h3>${escapeHTML(patient.name)}</h3><p>${escapeHTML(caseNote(item) || "Patient consultation")}</p></div><div class="case-metrics"><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} price</small><strong>£${escapeHTML(casePrice(item))}</strong></span></div></section>
-    ${details.length ? `<section class="detail-section"><h3>Patient details</h3><dl class="patient-details">${details.map(([k, v]) => `<dt>${escapeHTML(k)}</dt><dd>${escapeHTML(v)}</dd>`).join("")}</dl></section>` : ""}
-    ${mayEdit && item.status !== "closed" ? editCaseForm(item, patient) : ""}
+    ${details.length || mayEdit ? patientDetailCard(item, patient, details, mayEdit && item.status !== "closed") : ""}
     <section class="detail-section"><div class="section-heading"><h3>Photos</h3><span>${ids.length} photos</span></div><div class="photo-grid">${renderPhotos(item)}</div>${mayEdit ? `<label class="upload-button">+ Add photos<input id="detailPhotoUpload" type="file" accept="image/*" multiple hidden></label>` : ""}</section>
     <section id="conversationSection" class="detail-section"><div class="section-heading"><h3>Conversation</h3><span>${messages.length} updates</span></div><div class="conversation">${messages.map((m) => messageHTML(item, m)).join("") || `<p>No messages yet.</p>`}</div>${conversationForm(item)}</section>
     ${mayEdit && item.status === "answered" ? closeCaseForm(item) : ""}`;
@@ -243,15 +242,18 @@ function renderCaseDetail(item) {
 
 function canEditAgentCase(item) { return state.user.role === "agent" && (item.agentID === state.user.id || (!item.agentID && item.agentName === state.user.displayName)); }
 
-function editCaseForm(item, patient) {
-  return `<section class="detail-section"><details><summary>Edit case details</summary><form id="editCaseForm" class="inline-form edit-case-form">
+function patientDetailCard(item, patient, details, editable) {
+  return `<section class="detail-section patient-flip-card"><div id="patientFlipper" class="patient-flipper">
+    <div class="patient-face patient-view-face"><div class="section-heading"><h3>Patient details</h3>${editable ? `<button id="showPatientEdit" class="row-action" type="button">Edit</button>` : ""}</div><dl class="patient-details">${details.map(([k, v]) => `<dt>${escapeHTML(k)}</dt><dd>${escapeHTML(v)}</dd>`).join("") || `<dd>No additional patient information.</dd>`}</dl></div>
+    <div class="patient-face patient-edit-face"><form id="editCaseForm" class="inline-form edit-case-form"><div class="section-heading"><h3>Edit patient details</h3><button id="cancelPatientEdit" class="row-action" type="button">Cancel</button></div>
     <label>Patient name<input id="editPatientName" value="${escapeHTML(patient.name)}" required></label>
     <div class="inline-fields"><label>Estimated grafts<input id="editGrafts" value="${escapeHTML(item.agentGrafts || item.grafts || "")}" required></label><label>Estimated price (£)<input id="editPrice" value="${escapeHTML(item.agentPrice || item.price || "")}" required></label></div>
     <div class="inline-fields"><label>Date of birth<input id="editDOB" type="date" value="${escapeHTML(patient.dateOfBirth || "")}"></label><label>Age<input id="editAge" type="number" min="0" max="130" value="${escapeHTML(patient.statedAge || "")}"></label></div>
     <div class="inline-fields"><label>Gender<select id="editGender"><option value="">Not specified</option>${["male","female","non_binary","other","prefer_not_to_say"].map((v) => `<option value="${v}" ${patient.gender === v ? "selected" : ""}>${prettyGender(v)}</option>`).join("")}</select></label><label>Phone<input id="editPhone" value="${escapeHTML(patient.phone || "")}"></label></div>
     <div class="inline-fields"><label>Email<input id="editEmail" type="email" value="${escapeHTML(patient.email || "")}"></label><label>Occupation<input id="editOccupation" value="${escapeHTML(patient.occupation || "")}"></label></div>
     <label>Address<input id="editAddress" value="${escapeHTML(patient.address || "")}"></label><label>Short patient information<textarea id="editProfileNote" rows="2">${escapeHTML(patient.profileNote || "")}</textarea></label>
-    <div class="section-actions"><button class="primary" type="submit">Save details</button></div></form></details></section>`;
+    <div class="section-actions"><button class="primary" type="submit">Save details</button></div></form></div>
+  </div></section>`;
 }
 
 function prettyGender(value) { return value ? String(value).replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()) : ""; }
@@ -283,6 +285,7 @@ function closeCaseForm(item) {
 }
 
 function bindDetailActions(item) {
+  bindPatientFlipper();
   loadDetailImages(item);
   $("detailPhotoUpload")?.addEventListener("change", uploadDetailPhotos);
   $("doctorReplyForm")?.addEventListener("submit", submitDoctorReply);
@@ -292,6 +295,17 @@ function bindDetailActions(item) {
   document.querySelectorAll("[data-delete-message]").forEach((b) => b.onclick = deleteMessage);
   document.querySelectorAll("[data-delete-photo]").forEach((b) => b.onclick = deletePhoto);
   document.querySelectorAll("[data-purge-photo]").forEach((b) => b.onclick = purgePhoto);
+}
+
+function bindPatientFlipper() {
+  const flipper = $("patientFlipper"); if (!flipper) return;
+  const front = flipper.querySelector(".patient-view-face"), back = flipper.querySelector(".patient-edit-face");
+  const fit = (face) => { flipper.style.height = `${face.scrollHeight}px`; };
+  fit(front);
+  $("showPatientEdit")?.addEventListener("click", () => { fit(back); flipper.classList.add("is-editing"); setTimeout(() => $("editPatientName")?.focus(), 220); });
+  $("cancelPatientEdit")?.addEventListener("click", () => { fit(front); flipper.classList.remove("is-editing"); });
+  const observer = new ResizeObserver(() => fit(flipper.classList.contains("is-editing") ? back : front));
+  observer.observe(front); observer.observe(back);
 }
 
 async function submitCaseEdit(event) {

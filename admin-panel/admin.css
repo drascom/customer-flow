@@ -70,8 +70,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--amber); box-shad
 .form-error { min-height: 18px; color: var(--red); font-size: 13px; }
 
 .app-shell { min-height: 100vh; }
-.topbar { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: space-between; min-height: 68px; padding: 10px clamp(16px, 4vw, 54px); background: color-mix(in srgb, var(--surface-strong), transparent 7%); border-bottom: 1px solid var(--border); backdrop-filter: blur(20px); }
+.topbar { position: sticky; z-index: 20; top: 0; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(280px, 540px) minmax(max-content, 1fr); align-items: center; gap: 20px; min-height: 68px; padding: 10px clamp(16px, 4vw, 54px); background: color-mix(in srgb, var(--surface-strong), transparent 7%); border-bottom: 1px solid var(--border); backdrop-filter: blur(20px); }
 .account { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
+.topbar .account { justify-self: end; }
 .account .quiet { min-height: 34px; padding: 6px 11px; }
 .content { width: min(1460px, calc(100% - 32px)); margin: 28px auto 60px; }
 .overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
@@ -86,6 +87,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--amber); box-shad
 .search { display: flex; align-items: center; gap: 7px; min-width: 260px; padding-left: 11px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-strong); }
 .search span { font-size: 21px; color: var(--muted); }
 .search input { min-width: 0; width: 100%; border: 0; background: transparent; box-shadow: none; }
+.topbar-search { justify-self: center; width: 100%; }
 .panel { overflow: hidden; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); backdrop-filter: blur(18px); }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--border); }
 .panel-heading p { margin-top: 3px; font-size: 13px; }
@@ -189,6 +191,18 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .patient-details { display: grid; grid-template-columns: minmax(95px, auto) 1fr; gap: 8px 14px; margin: 0; font-size: 13px; }
 .patient-details dt { color: var(--muted); font-weight: 650; }
 .patient-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.patient-flip-card { perspective: 1400px; }
+.patient-flipper { position: relative; min-height: 70px; transform-style: preserve-3d; transition: height .42s ease, transform .58s cubic-bezier(.2,.75,.2,1); }
+.patient-face { position: absolute; inset: 0 0 auto; display: grid; align-content: start; gap: 13px; width: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.patient-view-face { transform: rotateY(0deg); }
+.patient-edit-face { pointer-events: none; transform: rotateY(180deg); }
+.patient-flipper.is-editing { transform: rotateY(180deg); }
+.patient-flipper.is-editing .patient-view-face { pointer-events: none; }
+.patient-flipper.is-editing .patient-edit-face { pointer-events: auto; }
+.edit-case-form { padding-bottom: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .patient-flipper { transition: none; }
+}
 .case-header-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
 .detail-card { display: grid; gap: 11px; padding: 15px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
 .detail-card h3 { margin: 0; font-size: 15px; }
@@ -258,6 +272,8 @@ hr { width: 100%; border: 0; border-top: 1px solid var(--border); }
 .loading { display: grid; place-items: center; min-height: 180px; color: var(--muted); }
 
 @media (max-width: 800px) {
+  .topbar { grid-template-columns: 1fr auto; gap: 8px 12px; }
+  .topbar-search { grid-column: 1 / -1; grid-row: 2; }
   .content { width: min(100% - 20px, 1460px); margin-top: 16px; }
   .overview { grid-template-columns: repeat(2, 1fr); }
   .workspace-bar { align-items: stretch; flex-direction: column; }
