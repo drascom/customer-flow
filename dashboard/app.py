@@ -2,6 +2,8 @@
 """Private staging dashboard with a server-side Customer Flow admin session."""
 
 import argparse
+import base64
+import hmac
 import json
 import mimetypes
 import os
@@ -81,16 +83,19 @@ class AdminAPIClient:
 class DashboardServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, admin_dir, api_client):
+    def __init__(self, address, admin_dir, api_client, dashboard_pin):
         super().__init__(address, DashboardHandler)
         self.admin_dir = Path(admin_dir).resolve()
         self.api_client = api_client
+        self.dashboard_pin = dashboard_pin
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "CustomerFlowDashboard/1.0"
 
     def do_GET(self):
+        if not self._authorized():
+            return self._request_pin()
         if self.path in {"/", "/admin", "/admin/"}:
             return self._serve_index()
         if self.path in {"/admin/admin.css", "/admin/admin.js"}:
@@ -100,13 +105,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return self._proxy("GET") if self._route_allowed("GET") else self._not_found()
 
     def do_POST(self):
+        if not self._authorized():
+            return self._request_pin()
         return self._proxy_mutation("POST")
 
     def do_PATCH(self):
+        if not self._authorized():
+            return self._request_pin()
         return self._proxy_mutation("PATCH")
 
     def do_DELETE(self):
+        if not self._authorized():
+            return self._request_pin()
         return self._proxy_mutation("DELETE")
+
+    def _authorized(self):
+        header = self.headers.get("Authorization", "")
+        if not header.startswith("Basic "):
+            return False
+        try:
+            username, pin = base64.b64decode(header[6:], validate=True).decode("utf-8").split(":", 1)
+        except (ValueError, UnicodeDecodeError):
+            return False
+        return hmac.compare_digest(username, "admin") and hmac.compare_digest(pin, self.server.dashboard_pin)
+
+    def _request_pin(self):
+        payload = b"Customer Flow dashboard PIN required."
+        self.send_response(401)
+        self._security_headers()
+        self.send_header("WWW-Authenticate", 'Basic realm="Customer Flow Admin", charset="UTF-8"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     def _proxy_mutation(self, method):
         if not self._route_allowed(method):
@@ -193,11 +225,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         print(f"{self.address_string()} - {fmt % args}")
 
 
-def create_server(host, port, api_url, admin_dir, username, password):
+def create_server(host, port, api_url, admin_dir, username, password, dashboard_pin):
     return DashboardServer(
         (host, port),
         admin_dir,
         AdminAPIClient(api_url, username, password),
+        dashboard_pin,
     )
 
 
@@ -210,7 +243,10 @@ def main():
     args = parser.parse_args()
     username = os.environ.get("CF_DASHBOARD_ADMIN_USERNAME", "admin")
     password = os.environ.get("CF_DASHBOARD_ADMIN_PASSWORD", "demo123")
-    server = create_server(args.host, args.port, args.api_url, args.admin_dir, username, password)
+    dashboard_pin = os.environ.get("CF_DASHBOARD_PIN")
+    if not dashboard_pin:
+        raise SystemExit("CF_DASHBOARD_PIN must be set")
+    server = create_server(args.host, args.port, args.api_url, args.admin_dir, username, password, dashboard_pin)
     print(f"Customer Flow dashboard listening on http://{args.host}:{args.port}")
     server.serve_forever()
 
