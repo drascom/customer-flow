@@ -33,11 +33,21 @@
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>C</b>ustomer <b>F</b>low</span></div>
       <label class="search topbar-search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" aria-label="Search workspace" placeholder="Search patients or cases"></label>
-      <div id="accountMenu" class="account">
-        <button id="accountMenuButton" class="account-button" type="button" aria-haspopup="menu" aria-expanded="false"><span id="accountAvatar">CF</span><span class="account-copy"><strong id="accountName"></strong><small id="accountRole"></small></span><span class="account-chevron" aria-hidden="true">⌄</span></button>
-        <div id="accountDropdown" class="account-dropdown" role="menu" hidden>
-          <button id="profileButton" class="account-menu-item" type="button" role="menuitem"><span aria-hidden="true">◎</span><span><strong>Profile</strong><small>Personal details and password</small></span></button>
-          <button id="logoutButton" class="account-menu-item danger" type="button" role="menuitem"><span aria-hidden="true">↪</span><span><strong>Sign out</strong><small>End this session</small></span></button>
+      <div class="topbar-actions">
+        <div id="notificationMenu" class="notification-menu">
+          <button id="notificationButton" class="notification-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Notifications"><span aria-hidden="true">🔔</span><b id="notificationBadge" hidden>0</b></button>
+          <section id="notificationDropdown" class="notification-dropdown" aria-label="Notifications" hidden>
+            <header><div><strong>Notifications</strong><small id="notificationSummary">You're all caught up</small></div><button id="markAllNotificationsRead" type="button">Mark all read</button></header>
+            <div id="notificationList" class="notification-list"></div>
+            <p id="notificationEmpty" class="notification-empty">No notifications yet.</p>
+          </section>
+        </div>
+        <div id="accountMenu" class="account">
+          <button id="accountMenuButton" class="account-button" type="button" aria-haspopup="menu" aria-expanded="false"><span id="accountAvatar">CF</span><span class="account-copy"><strong id="accountName"></strong><small id="accountRole"></small></span><span class="account-chevron" aria-hidden="true">⌄</span></button>
+          <div id="accountDropdown" class="account-dropdown" role="menu" hidden>
+            <button id="profileButton" class="account-menu-item" type="button" role="menuitem"><span aria-hidden="true">◎</span><span><strong>Profile</strong><small>Personal details and password</small></span></button>
+            <button id="logoutButton" class="account-menu-item danger" type="button" role="menuitem"><span aria-hidden="true">↪</span><span><strong>Sign out</strong><small>End this session</small></span></button>
+          </div>
         </div>
       </div>
     </header>

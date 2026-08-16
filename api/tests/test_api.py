@@ -335,6 +335,125 @@ class APITestCase(unittest.TestCase):
         self.assertEqual(created["id"], update["event"]["entityID"])
         self.request("GET", "/events?since=-1", expected=401)
 
+    def test_notifications_follow_management_agency_and_doctor_assignment_rules(self):
+        admin = self.login("admin", "demo123")
+        manager = self.login("manager", "demo123")
+        doctor1 = self.login("doctor1", "demo123")
+        doctor2 = self.login("doctor2", "demo123")
+        agent1 = self.login("user1", "demo123")
+        other_agency_agent = self.login("user2", "demo123")
+        peer_username = "notify-peer-" + uuid.uuid4().hex[:8]
+        self.request("POST", "/admin/users", {
+            "username": peer_username, "displayName": "Notification Peer", "role": "agent",
+            "agencyID": "agency-drascom", "password": "Temporary!123",
+        }, token=admin, expected=201)
+        peer_agent = self.login(peer_username, "Temporary!123")
+
+        def inbox(token):
+            return self.request("GET", "/notifications", token=token)
+
+        def clear(token):
+            self.request("POST", "/notifications/read", {"all": True}, token=token)
+
+        for token in (admin, manager, doctor1, doctor2, agent1, other_agency_agent, peer_agent):
+            clear(token)
+        push_token = "cd" * 32
+        self.request("POST", "/notification-devices", {
+            "token": push_token, "platform": "ios", "environment": "sandbox",
+        }, token=doctor2)
+
+        created = self.request("POST", "/cases", {
+            "patientName": "Notification Patient " + uuid.uuid4().hex[:6],
+            "grafts": "2400", "currency": "GBP", "price": "2300",
+            "note": "Notification routing test", "photoCount": 0,
+        }, token=agent1, expected=201)["case"]
+
+        for token in (admin, manager, doctor1, doctor2, peer_agent):
+            latest = inbox(token)
+            self.assertGreater(latest["unreadCount"], 0)
+            self.assertEqual(created["id"], latest["notifications"][0]["caseID"])
+            self.assertEqual("case.created", latest["notifications"][0]["kind"])
+        self.assertEqual(0, inbox(agent1)["unreadCount"])
+        self.assertEqual(0, inbox(other_agency_agent)["unreadCount"])
+        with self.server.database.connect() as conn:
+            pending_delivery = conn.execute(
+                "SELECT pd.status FROM notification_push_deliveries pd "
+                "JOIN notification_devices d ON d.id=pd.device_id WHERE d.token=?",
+                (push_token,),
+            ).fetchone()
+        self.assertIsNotNone(pending_delivery)
+        self.assertEqual("pending", pending_delivery["status"])
+
+        for token in (admin, manager, doctor1, doctor2, peer_agent):
+            clear(token)
+        self.request(
+            "POST", f"/cases/{created['id']}/agent-updates", {"text": "Unassigned update"},
+            token=agent1,
+        )
+        for token in (admin, manager, peer_agent):
+            self.assertEqual("message.created", inbox(token)["notifications"][0]["kind"])
+        self.assertEqual(0, inbox(doctor1)["unreadCount"])
+        self.assertEqual(0, inbox(doctor2)["unreadCount"])
+
+        for token in (admin, manager, peer_agent):
+            clear(token)
+        self.request(
+            "POST", f"/cases/{created['id']}/doctor-messages", {"text": "Doctor claimed this case"},
+            token=doctor1,
+        )
+        for token in (admin, manager, agent1, peer_agent):
+            self.assertEqual("message.created", inbox(token)["notifications"][0]["kind"])
+        self.assertEqual(0, inbox(doctor1)["unreadCount"])
+        self.assertEqual(0, inbox(doctor2)["unreadCount"])
+
+        for token in (admin, manager, agent1, peer_agent):
+            clear(token)
+        self.request(
+            "POST", f"/cases/{created['id']}/agent-updates",
+            {"text": "@doctor1 please review the new details"}, token=agent1,
+        )
+        assigned_doctor_inbox = inbox(doctor1)
+        self.assertEqual("mention", assigned_doctor_inbox["notifications"][0]["kind"])
+        self.assertEqual(0, inbox(doctor2)["unreadCount"])
+        self.assertEqual(0, inbox(other_agency_agent)["unreadCount"])
+
+        notification_id = assigned_doctor_inbox["notifications"][0]["id"]
+        self.request(
+            "POST", "/notifications/read", {"notificationIDs": [notification_id]}, token=doctor1
+        )
+        refreshed = inbox(doctor1)
+        self.assertEqual(0, refreshed["unreadCount"])
+        self.assertIsNotNone(refreshed["notifications"][0]["readAt"])
+        self.request(
+            "POST", "/notification-devices/unregister", {"token": push_token}, token=doctor2
+        )
+
+    def test_notification_device_registration_is_user_scoped(self):
+        first_user = self.login("user1", "demo123")
+        second_user = self.login("user2", "demo123")
+        token = ("ab" * 32)
+        device = self.request("POST", "/notification-devices", {
+            "token": token, "platform": "ios", "environment": "sandbox",
+        }, token=first_user)["device"]
+        self.assertTrue(device["registered"])
+        self.request("POST", "/notification-devices", {
+            "token": token, "platform": "ios", "environment": "production",
+        }, token=second_user)
+        with self.server.database.connect() as conn:
+            stored = conn.execute(
+                "SELECT user_id,environment FROM notification_devices WHERE token=?", (token,)
+            ).fetchone()
+        self.assertEqual("agent-mert", stored["user_id"])
+        self.assertEqual("production", stored["environment"])
+        result = self.request(
+            "POST", "/notification-devices/unregister", {"token": token}, token=first_user
+        )
+        self.assertFalse(result["removed"])
+        result = self.request(
+            "POST", "/notification-devices/unregister", {"token": token}, token=second_user
+        )
+        self.assertTrue(result["removed"])
+
     def test_logout_consumes_body_before_next_login_on_same_connection(self):
         connection = HTTPConnection("127.0.0.1", self.server.server_port)
         try:

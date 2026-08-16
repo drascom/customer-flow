@@ -27,4 +27,9 @@ The app validates `/api/v1/health` automatically. Release builds require HTTPS. 
 - **Admin:** compact mobile case/user management, filters, agencies and doctor assignment.
 - **Profile:** contact details, password change and role-specific quick tour.
 
-Authentication and roles are controlled by the server. Session tokens are stored in iOS Keychain. Password recovery is delivered by the server through SMTP; Firebase is not used. Push notifications are designed to use APNs through a separate notification adapter.
+Authentication and roles are controlled by the server. Session tokens are stored in iOS Keychain. Password recovery is delivered by the server through SMTP; Firebase is not used.
+
+The app includes an in-app notification centre and APNs device registration.
+The selected Apple Development Team and provisioning profile must allow Push
+Notifications for the `com.customerflow.client` bundle identifier. The server
+provider-key setup is documented in [`../api/README.md`](../api/README.md).

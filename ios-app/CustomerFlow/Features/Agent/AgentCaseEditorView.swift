@@ -89,6 +89,11 @@ struct AgentCasesView: View {
         }
         .background(AppTheme.background)
         .refreshable { await state.load() }
+        .onChange(of: state.pendingNotificationCaseID) { _, caseID in
+            guard let caseID, state.cases.contains(where: { $0.id == caseID }) else { return }
+            selectedCaseID = caseID
+            state.consumePendingNotificationCase()
+        }
         .sheet(
             isPresented: Binding(
                 get: { selectedCaseID != nil },

@@ -38,6 +38,11 @@
 		A1000000000000000000001E /* UserDefaultsAppTourStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001F /* UserDefaultsAppTourStore.swift */; };
 		A1000000000000000000001F /* AppTourModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* AppTourModel.swift */; };
 		A10000000000000000000020 /* AppTourView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* AppTourView.swift */; };
+		A10000000000000000000021 /* AppNotification.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* AppNotification.swift */; };
+		A10000000000000000000022 /* NotificationInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* NotificationInbox.swift */; };
+		A10000000000000000000023 /* PushNotificationAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* PushNotificationAppDelegate.swift */; };
+		A10000000000000000000024 /* NotificationCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* NotificationCenterView.swift */; };
+		A10000000000000000000025 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -74,6 +79,12 @@
 		B1000000000000000000001F /* UserDefaultsAppTourStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsAppTourStore.swift; sourceTree = "<group>"; };
 		B10000000000000000000020 /* AppTourModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourModel.swift; sourceTree = "<group>"; };
 		B10000000000000000000021 /* AppTourView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTourView.swift; sourceTree = "<group>"; };
+		B10000000000000000000022 /* AppNotification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotification.swift; sourceTree = "<group>"; };
+		B10000000000000000000023 /* NotificationInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInbox.swift; sourceTree = "<group>"; };
+		B10000000000000000000024 /* PushNotificationAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationAppDelegate.swift; sourceTree = "<group>"; };
+		B10000000000000000000025 /* NotificationCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCenterView.swift; sourceTree = "<group>"; };
+		B10000000000000000000026 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		B10000000000000000000027 /* CustomerFlow.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CustomerFlow.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +132,8 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000004 /* Models.swift */,
+				B10000000000000000000022 /* AppNotification.swift */,
+				B10000000000000000000023 /* NotificationInbox.swift */,
 				D1000000000000000000000C /* Admin */,
 				D1000000000000000000000F /* AppTour */,
 			);
@@ -133,6 +146,7 @@
 				B10000000000000000000005 /* ServiceProtocols.swift */,
 				B10000000000000000000006 /* MockServices.swift */,
 				B1000000000000000000000E /* RemoteServices.swift */,
+				B10000000000000000000024 /* PushNotificationAppDelegate.swift */,
 				D1000000000000000000000D /* Admin */,
 				D10000000000000000000010 /* AppTour */,
 			);
@@ -149,6 +163,7 @@
 			isa = PBXGroup;
 			children = (
 				B1000000000000000000000F /* OnboardingView.swift */,
+				B10000000000000000000025 /* NotificationCenterView.swift */,
 				D10000000000000000000008 /* Doctor */,
 				D10000000000000000000009 /* Agent */,
 				D1000000000000000000000E /* Admin */,
@@ -177,7 +192,11 @@
 		};
 		D1000000000000000000000A /* Resources */ = {
 			isa = PBXGroup;
-			children = (B1000000000000000000000C /* Assets.xcassets */);
+			children = (
+				B1000000000000000000000C /* Assets.xcassets */,
+				B10000000000000000000026 /* Localizable.xcstrings */,
+				B10000000000000000000027 /* CustomerFlow.entitlements */,
+			);
 			path = Resources;
 			sourceTree = "<group>";
 		};
@@ -274,7 +293,14 @@
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
-				TargetAttributes = { E10000000000000000000001 = { CreatedOnToolsVersion = 26.6; }; };
+				TargetAttributes = {
+					E10000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
+						SystemCapabilities = {
+							com.apple.Push = { enabled = 1; };
+						};
+					};
+				};
 			};
 			buildConfigurationList = F10000000000000000000001 /* Build configuration list for PBXProject "CustomerFlow" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -293,7 +319,10 @@
 		C10000000000000000000003 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A1000000000000000000000C /* Assets.xcassets in Resources */);
+			files = (
+				A1000000000000000000000C /* Assets.xcassets in Resources */,
+				A10000000000000000000025 /* Localizable.xcstrings in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -334,6 +363,10 @@
 				A1000000000000000000001E /* UserDefaultsAppTourStore.swift in Sources */,
 				A1000000000000000000001F /* AppTourModel.swift in Sources */,
 				A10000000000000000000020 /* AppTourView.swift in Sources */,
+				A10000000000000000000021 /* AppNotification.swift in Sources */,
+				A10000000000000000000022 /* NotificationInbox.swift in Sources */,
+				A10000000000000000000023 /* PushNotificationAppDelegate.swift in Sources */,
+				A10000000000000000000024 /* NotificationCenterView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,8 +375,8 @@
 /* Begin XCBuildConfiguration section */
 		F10000000000000000000011 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_OPTIMIZATION_LEVEL = 0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
 		F10000000000000000000012 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; GCC_C_LANGUAGE_STANDARD = gnu17; MTL_ENABLE_DEBUG_INFO = NO; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; }; name = Release; };
-		F10000000000000000000021 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES; INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos."; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
-		F10000000000000000000022 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos."; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		F10000000000000000000021 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {APS_ENVIRONMENT = development; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = CustomerFlow/Resources/CustomerFlow.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES; INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos."; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		F10000000000000000000022 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {APS_ENVIRONMENT = production; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = CustomerFlow/Resources/CustomerFlow.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos."; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */

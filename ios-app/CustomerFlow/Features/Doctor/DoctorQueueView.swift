@@ -42,6 +42,11 @@ struct DoctorQueueView: View {
         .background(AppTheme.background)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: state.pendingNotificationCaseID) { _, caseID in
+            guard let caseID, let item = state.cases.first(where: { $0.id == caseID }) else { return }
+            selectedCase = item
+            state.consumePendingNotificationCase()
+        }
         .sheet(item: $selectedCase) { item in
             CaseDetailView(caseID: item.id)
                 .environmentObject(state)

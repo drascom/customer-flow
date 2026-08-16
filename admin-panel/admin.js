@@ -1,7 +1,8 @@
 const API = "/api/v1";
 const state = {
   token: localStorage.getItem("cfToken") || sessionStorage.getItem("cfToken"),
-  user: null, users: [], agencies: [], cases: [], view: "cases", selectedCaseID: null,
+  user: null, users: [], agencies: [], cases: [], notifications: [], unreadNotifications: 0,
+  view: "cases", selectedCaseID: null,
   pendingFiles: [], duplicate: { matches: [], confirmed: false, existingPatientID: null }, blobURLs: new Map(),
   photoItems: [], photoIndex: 0, liveRevision: -1, liveGeneration: 0,
   filters: { caseStatus: "", caseAssignment: "", caseAgency: "", caseDoctor: "", userRole: "", userStatus: "", userAgency: "" }
@@ -78,7 +79,8 @@ async function signOut(callServer = true) {
   state.liveGeneration += 1;
   if (callServer && state.token) await api("/auth/logout", { method: "POST", body: {} }).catch(() => {});
   localStorage.removeItem("cfToken"); sessionStorage.removeItem("cfToken");
-  state.token = null; state.user = null; state.cases = []; showLogin();
+  state.token = null; state.user = null; state.cases = []; state.notifications = [];
+  state.unreadNotifications = 0; showLogin();
 }
 
 async function restore() {
@@ -94,6 +96,7 @@ async function restore() {
 async function loadData({ silent = false } = {}) {
   if (!silent) $("refreshButton").disabled = true;
   try {
+    const notificationRequest = api("/notifications?limit=40");
     if (isManagement()) {
       const [users, agencies, cases] = await Promise.all([api("/admin/users"), api("/admin/agencies"), api("/admin/cases")]);
       state.users = users.users; state.agencies = agencies.agencies; state.cases = cases.cases;
@@ -101,8 +104,50 @@ async function loadData({ silent = false } = {}) {
     } else {
       state.cases = (await api("/cases")).cases;
     }
-    renderFilterChips(); updateOverview(); renderCurrentView();
+    const inbox = await notificationRequest;
+    state.notifications = inbox.notifications; state.unreadNotifications = inbox.unreadCount;
+    renderFilterChips(); updateOverview(); renderCurrentView(); renderNotifications();
   } finally { $("refreshButton").disabled = false; }
+}
+
+function notificationTime(value) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return "Now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)} day`;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+}
+
+function renderNotifications() {
+  const unread = state.unreadNotifications;
+  $("notificationBadge").hidden = unread === 0;
+  $("notificationBadge").textContent = unread > 99 ? "99+" : String(unread);
+  $("notificationSummary").textContent = unread ? `${unread} unread` : "You're all caught up";
+  $("markAllNotificationsRead").hidden = unread === 0;
+  $("notificationEmpty").hidden = state.notifications.length > 0;
+  $("notificationList").innerHTML = state.notifications.map((item) => `
+    <button class="notification-item ${item.readAt ? "" : "unread"}" type="button"
+      data-notification-id="${escapeHTML(item.id)}" data-notification-case="${escapeHTML(item.caseID || "")}">
+      <strong>${escapeHTML(item.title)}</strong>
+      <p>${escapeHTML(item.body)}</p>
+      <footer><span>${escapeHTML(item.caseReference || "Customer Flow")}</span><time>${escapeHTML(notificationTime(item.createdAt))}</time></footer>
+    </button>`).join("");
+  document.querySelectorAll("[data-notification-id]").forEach((button) => {
+    button.onclick = () => openNotification(button.dataset.notificationId, button.dataset.notificationCase);
+  });
+}
+
+async function openNotification(notificationID, caseID) {
+  const item = state.notifications.find((entry) => entry.id === notificationID);
+  if (item && !item.readAt) {
+    item.readAt = new Date().toISOString();
+    state.unreadNotifications = Math.max(0, state.unreadNotifications - 1);
+    renderNotifications();
+    await api("/notifications/read", { method: "POST", body: { notificationIDs: [notificationID] } }).catch(() => {});
+  }
+  setNotificationMenu(false);
+  if (caseID) await openCase(caseID);
 }
 
 function startLiveUpdates() {
@@ -444,10 +489,13 @@ let toastTimer; function toast(message) { clearTimeout(toastTimer); $("toast").t
 // Authentication and global navigation.
 $("loginForm").onsubmit = async (event) => { event.preventDefault(); const submit = event.currentTarget.querySelector("button[type=submit]"); submit.disabled = true; $("loginError").textContent = ""; try { const result = await api("/auth/login", { method: "POST", body: { username: $("loginUsername").value.trim(), password: $("loginPassword").value } }); state.token = result.token; state.user = result.user; const storage = $("rememberSession").checked ? localStorage : sessionStorage; storage.setItem("cfToken", state.token); $("loginPassword").value = ""; showApp(); await loadData(); startLiveUpdates(); } catch (error) { $("loginError").textContent = error.message; } finally { submit.disabled = false; } };
 function setAccountMenu(open) { $("accountDropdown").hidden = !open; $("accountMenuButton").setAttribute("aria-expanded", String(open)); }
-$("accountMenuButton").onclick = () => setAccountMenu($("accountDropdown").hidden);
+function setNotificationMenu(open) { $("notificationDropdown").hidden = !open; $("notificationButton").setAttribute("aria-expanded", String(open)); }
+$("accountMenuButton").onclick = () => { setNotificationMenu(false); setAccountMenu($("accountDropdown").hidden); };
 $("accountMenuButton").onkeydown = (event) => { if (event.key === "ArrowDown") { event.preventDefault(); setAccountMenu(true); $("profileButton").focus(); } };
-document.addEventListener("click", (event) => { if (!$("accountMenu").contains(event.target)) setAccountMenu(false); });
-document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("accountDropdown").hidden) { setAccountMenu(false); $("accountMenuButton").focus(); } });
+$("notificationButton").onclick = () => { setAccountMenu(false); setNotificationMenu($("notificationDropdown").hidden); };
+$("markAllNotificationsRead").onclick = async () => { await api("/notifications/read", { method: "POST", body: { all: true } }); state.notifications.forEach((item) => { item.readAt ||= new Date().toISOString(); }); state.unreadNotifications = 0; renderNotifications(); };
+document.addEventListener("click", (event) => { if (!$("accountMenu").contains(event.target)) setAccountMenu(false); if (!$("notificationMenu").contains(event.target)) setNotificationMenu(false); });
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") { if (!$("accountDropdown").hidden) { setAccountMenu(false); $("accountMenuButton").focus(); } if (!$("notificationDropdown").hidden) { setNotificationMenu(false); $("notificationButton").focus(); } } });
 $("logoutButton").onclick = () => { setAccountMenu(false); signOut(true); }; $("refreshButton").onclick = () => loadData(); $("searchInput").oninput = renderCurrentView; $("newCaseButton").onclick = openNewCase;
 document.querySelectorAll(".tab").forEach((b) => b.onclick = () => switchView(b.dataset.view)); document.querySelectorAll("[data-overview-filter]").forEach((node) => node.onclick = () => { state.filters.caseStatus = node.dataset.overviewFilter === "all" ? "" : node.dataset.overviewFilter; renderFilterChips(); switchView("cases"); });
 $("clearCaseFilters").onclick = () => { Object.assign(state.filters, { caseStatus: "", caseAssignment: "", caseAgency: "", caseDoctor: "" }); renderFilterChips(); renderCases(); };

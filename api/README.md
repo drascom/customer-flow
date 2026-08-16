@@ -61,6 +61,33 @@ updates and case photo uploads. All other authenticated routes return
 `403 mcp_scope_forbidden`. MCP writes therefore pass through the same API event,
 validation and idempotency paths as mobile/web writes.
 
+## Notifications and Apple Push Notifications
+
+Notifications are stored in the API database and appear in both the web and
+iOS notification centres. Recipient scope is enforced by the API:
+
+- admins and managers receive every case event;
+- active members of the case's agency receive that agency's case events;
+- every active doctor receives a new-case notification;
+- after assignment, only the assigned doctor receives later case events;
+- the user who performed the action is excluded from that action's recipients.
+
+The iOS app registers its APNs device token after sign-in. Background and lock
+screen delivery is enabled when the API service has an Apple provider key:
+
+```bash
+export CF_APNS_KEY_ID='APPLE_KEY_ID'
+export CF_APNS_TEAM_ID='APPLE_TEAM_ID'
+export CF_APNS_PRIVATE_KEY='/secure/path/AuthKey_KEYID.p8'
+export CF_APNS_TOPIC='com.customerflow.client'
+```
+
+Without these four values, notifications remain fully available in-app and on
+the dashboard; only the external Apple push delivery worker stays disabled.
+The provider key must remain outside the repository with read access limited to
+the API service user. Delivery attempts use a durable outbox and invalid APNs
+device tokens are removed automatically.
+
 ## Password recovery by email
 
 Set these variables before starting the server:

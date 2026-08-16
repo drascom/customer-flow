@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var tourModel: AppTourModel
     @State private var showsProfile = false
+    @State private var showsNotifications = false
 
     var body: some View {
         Group {
@@ -22,7 +23,9 @@ struct RootView: View {
                                     repository: repository,
                                     currentUserID: user.id,
                                     isReadOnly: user.role == .manager,
-                                    liveRevision: state.liveRevision
+                                    liveRevision: state.liveRevision,
+                                    notificationCaseID: state.pendingNotificationCaseID,
+                                    consumeNotificationCase: state.consumePendingNotificationCase
                                 )
                             } else {
                                 ProgressView()
@@ -60,6 +63,17 @@ struct RootView: View {
                     role: user.role
                 )
             }
+        }
+        .sheet(isPresented: $showsNotifications) {
+            NotificationCenterView(
+                notifications: state.notifications,
+                unreadCount: state.unreadNotificationCount,
+                onMarkAllRead: { await state.markAllNotificationsRead() },
+                onSelect: { notification in await state.openNotification(notification) }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            .presentationCornerRadius(28)
         }
         .fullScreenCover(isPresented: $tourModel.isPresented) {
             AppTourView(model: tourModel)
@@ -103,6 +117,28 @@ struct RootView: View {
             .accessibilityLabel("Customer Flow")
 
             Spacer(minLength: 8)
+
+            Button {
+                showsNotifications = true
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: state.unreadNotificationCount > 0 ? "bell.fill" : "bell")
+                        .font(.system(size: 20, weight: .semibold))
+                        .frame(width: 34, height: 34)
+                    if state.unreadNotificationCount > 0 {
+                        Text(state.unreadNotificationCount > 99 ? "99+" : "\(state.unreadNotificationCount)")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 18, minHeight: 18)
+                            .background(Color.red, in: Capsule())
+                            .offset(x: 5, y: -4)
+                    }
+                }
+                .foregroundStyle(AppTheme.brand)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "notifications.title", defaultValue: "Notifications"))
 
             Menu {
                 if let user = state.currentUser {

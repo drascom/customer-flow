@@ -98,6 +98,46 @@ actor RemoteAPIClient {
         )
     }
 
+    func fetchNotifications() async throws -> NotificationInbox {
+        try await get("notifications?limit=50")
+    }
+
+    func markNotificationsRead(_ notificationIDs: [String]) async throws {
+        struct Body: Encodable, Sendable { let notificationIDs: [String] }
+        struct Response: Decodable, Sendable { let ok: Bool; let updatedCount: Int }
+        let _: Response = try await send(
+            "POST", path: "notifications/read", body: Body(notificationIDs: notificationIDs)
+        )
+    }
+
+    func markAllNotificationsRead() async throws {
+        struct Body: Encodable, Sendable { let all: Bool }
+        struct Response: Decodable, Sendable { let ok: Bool; let updatedCount: Int }
+        let _: Response = try await send("POST", path: "notifications/read", body: Body(all: true))
+    }
+
+    func registerNotificationDevice(token: String, environment: String) async throws {
+        struct Body: Encodable, Sendable {
+            let token: String
+            let platform: String
+            let environment: String
+        }
+        struct Device: Decodable, Sendable { let registered: Bool }
+        struct Response: Decodable, Sendable { let device: Device }
+        let _: Response = try await send(
+            "POST", path: "notification-devices",
+            body: Body(token: token, platform: "ios", environment: environment)
+        )
+    }
+
+    func unregisterNotificationDevice(token: String) async throws {
+        struct Body: Encodable, Sendable { let token: String }
+        struct Response: Decodable, Sendable { let ok: Bool; let removed: Bool }
+        let _: Response = try await send(
+            "POST", path: "notification-devices/unregister", body: Body(token: token)
+        )
+    }
+
     func updateProfile(displayName: String, email: String, phone: String) async throws -> AuthenticatedUser {
         struct Body: Encodable, Sendable { let displayName: String; let email: String; let phone: String }
         struct Envelope: Decodable, Sendable { let user: AuthenticatedUser }

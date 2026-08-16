@@ -10,6 +10,8 @@ struct AdminDashboardView: View {
     @State private var model: AdminDashboardModel
     private let isReadOnly: Bool
     private let liveRevision: Int
+    private let notificationCaseID: UUID?
+    private let consumeNotificationCase: () -> Void
     @State private var showsFilters = false
     @State private var showsNewUser = false
     @State private var showsAgencyManagement = false
@@ -29,10 +31,14 @@ struct AdminDashboardView: View {
         repository: any AdminRepository,
         currentUserID: String,
         isReadOnly: Bool = false,
-        liveRevision: Int = 0
+        liveRevision: Int = 0,
+        notificationCaseID: UUID? = nil,
+        consumeNotificationCase: @escaping () -> Void = {}
     ) {
         self.isReadOnly = isReadOnly
         self.liveRevision = liveRevision
+        self.notificationCaseID = notificationCaseID
+        self.consumeNotificationCase = consumeNotificationCase
         _model = State(initialValue: AdminDashboardModel(repository: repository, currentUserID: currentUserID))
     }
 
@@ -58,6 +64,11 @@ struct AdminDashboardView: View {
         .task { await model.load() }
         .onChange(of: liveRevision) {
             Task { await model.load() }
+        }
+        .onChange(of: notificationCaseID) { _, caseID in
+            guard let caseID else { return }
+            expandedCaseID = caseID.uuidString.lowercased()
+            consumeNotificationCase()
         }
         .sheet(isPresented: $showsNewUser) {
             AdminCreateUserSheet(agencies: model.agencies) { username, displayName, role, password, agencyID in

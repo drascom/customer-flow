@@ -15,6 +15,7 @@ import hmac
 import http.client
 import json
 import os
+import re
 import secrets
 import shutil
 import smtplib
@@ -28,6 +29,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+from apns import APNSPushDispatcher
 
 
 API_PREFIX = "/api/v1"
@@ -368,6 +371,46 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
   created_at TEXT NOT NULL,
   PRIMARY KEY(actor_id, operation, idempotency_key)
 );
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  case_id TEXT REFERENCES cases(id) ON DELETE CASCADE,
+  case_reference TEXT,
+  created_at TEXT NOT NULL,
+  read_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_time
+  ON notifications(recipient_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread
+  ON notifications(recipient_user_id, read_at, created_at DESC);
+CREATE TABLE IF NOT EXISTS notification_devices (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  platform TEXT NOT NULL CHECK(platform IN ('ios')),
+  environment TEXT NOT NULL CHECK(environment IN ('sandbox','production')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notification_devices_user ON notification_devices(user_id);
+CREATE TABLE IF NOT EXISTS notification_push_deliveries (
+  id TEXT PRIMARY KEY,
+  notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+  device_id TEXT NOT NULL REFERENCES notification_devices(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK(status IN ('pending','sent','failed')) DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  attempted_at TEXT,
+  delivered_at TEXT,
+  UNIQUE(notification_id, device_id)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_push_pending
+  ON notification_push_deliveries(status, attempts, created_at);
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY,
   value INTEGER NOT NULL
@@ -463,6 +506,264 @@ class Database:
             self.ensure_demo_agencies()
             if seed:
                 self.seed_demo()
+
+    def notifications(self, user: sqlite3.Row, limit: int = 50) -> dict:
+        limit = max(1, min(limit, 100))
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT n.*,u.display_name actor_name FROM notifications n "
+                "LEFT JOIN users u ON u.id=n.actor_user_id "
+                "WHERE n.recipient_user_id=? ORDER BY n.created_at DESC,n.rowid DESC LIMIT ?",
+                (user["id"], limit),
+            ).fetchall()
+            unread_count = conn.execute(
+                "SELECT COUNT(*) FROM notifications WHERE recipient_user_id=? AND read_at IS NULL",
+                (user["id"],),
+            ).fetchone()[0]
+        return {
+            "notifications": [{
+                "id": row["id"], "kind": row["kind"], "title": row["title"],
+                "body": row["body"], "caseID": row["case_id"],
+                "caseReference": row["case_reference"], "actorName": row["actor_name"],
+                "createdAt": row["created_at"], "readAt": row["read_at"],
+            } for row in rows],
+            "unreadCount": unread_count,
+        }
+
+    def mark_notifications_read(self, payload: dict, user: sqlite3.Row) -> dict:
+        mark_all = bool(payload.get("all"))
+        raw_ids = payload.get("notificationIDs", [])
+        if not mark_all and not isinstance(raw_ids, list):
+            raise APIError(422, "invalid_notification_ids", "Notification IDs must be a list.")
+        notification_ids = [str(value).strip().lower() for value in raw_ids if str(value).strip()]
+        if not mark_all and not notification_ids:
+            raise APIError(422, "notifications_required", "Select notifications to mark as read.")
+        if len(notification_ids) > 100:
+            raise APIError(422, "too_many_notifications", "Mark no more than 100 notifications at once.")
+        now = iso(utc_now())
+        with self.connect() as conn:
+            if mark_all:
+                cursor = conn.execute(
+                    "UPDATE notifications SET read_at=? WHERE recipient_user_id=? AND read_at IS NULL",
+                    (now, user["id"]),
+                )
+            else:
+                placeholders = ",".join("?" for _ in notification_ids)
+                cursor = conn.execute(
+                    f"UPDATE notifications SET read_at=? WHERE recipient_user_id=? "
+                    f"AND read_at IS NULL AND id IN ({placeholders})",
+                    (now, user["id"], *notification_ids),
+                )
+        return {"ok": True, "updatedCount": cursor.rowcount}
+
+    def register_notification_device(self, payload: dict, user: sqlite3.Row) -> dict:
+        token = str(payload.get("token", "")).strip().lower()
+        platform = str(payload.get("platform", "ios")).strip().lower()
+        environment = str(payload.get("environment", "sandbox")).strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64,200}", token):
+            raise APIError(422, "invalid_device_token", "The notification device token is invalid.")
+        if platform != "ios" or environment not in {"sandbox", "production"}:
+            raise APIError(422, "invalid_notification_device", "The notification device is invalid.")
+        now = iso(utc_now())
+        with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT id,created_at FROM notification_devices WHERE token=?", (token,)
+            ).fetchone()
+            device_id = existing["id"] if existing else str(uuid.uuid4())
+            created_at = existing["created_at"] if existing else now
+            conn.execute(
+                "INSERT INTO notification_devices(id,user_id,token,platform,environment,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET "
+                "user_id=excluded.user_id,platform=excluded.platform,environment=excluded.environment,"
+                "updated_at=excluded.updated_at",
+                (device_id, user["id"], token, platform, environment, created_at, now),
+            )
+        return {"id": device_id, "platform": platform, "environment": environment, "registered": True}
+
+    def unregister_notification_device(self, payload: dict, user: sqlite3.Row) -> dict:
+        token = str(payload.get("token", "")).strip().lower()
+        if not token:
+            raise APIError(422, "device_token_required", "The notification device token is required.")
+        with self.connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM notification_devices WHERE token=? AND user_id=?", (token, user["id"])
+            )
+        return {"ok": True, "removed": cursor.rowcount > 0}
+
+    def pending_push_deliveries(self, limit: int = 20) -> list[dict]:
+        cutoff = iso(utc_now() - timedelta(hours=24))
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT pd.id delivery_id,pd.attempts,d.id device_id,d.token,d.environment,"
+                "n.title,n.body,n.kind,n.case_id,n.recipient_user_id "
+                "FROM notification_push_deliveries pd "
+                "JOIN notification_devices d ON d.id=pd.device_id "
+                "JOIN notifications n ON n.id=pd.notification_id "
+                "WHERE pd.status='pending' AND pd.attempts<5 AND pd.created_at>=? "
+                "ORDER BY pd.created_at LIMIT ?",
+                (cutoff, max(1, min(limit, 100))),
+            ).fetchall()
+            result = []
+            for row in rows:
+                unread_count = conn.execute(
+                    "SELECT COUNT(*) FROM notifications WHERE recipient_user_id=? AND read_at IS NULL",
+                    (row["recipient_user_id"],),
+                ).fetchone()[0]
+                result.append({**dict(row), "unread_count": unread_count})
+            return result
+
+    def complete_push_delivery(
+        self, delivery_id: str, *, delivered: bool, error: str | None = None,
+        invalid_device_id: str | None = None,
+    ) -> None:
+        now = iso(utc_now())
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    "SELECT attempts FROM notification_push_deliveries WHERE id=?", (delivery_id,)
+                ).fetchone()
+                if not row:
+                    conn.execute("COMMIT")
+                    return
+                attempts = row["attempts"] + 1
+                status = "sent" if delivered else ("failed" if attempts >= 5 or invalid_device_id else "pending")
+                conn.execute(
+                    "UPDATE notification_push_deliveries SET status=?,attempts=?,last_error=?,"
+                    "attempted_at=?,delivered_at=? WHERE id=?",
+                    (status, attempts, error[:500] if error else None, now, now if delivered else None, delivery_id),
+                )
+                if invalid_device_id:
+                    conn.execute("DELETE FROM notification_devices WHERE id=?", (invalid_device_id,))
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def create_event_notifications(
+        self, kind: str, entity_id: str | None, actor: sqlite3.Row
+    ) -> list[str]:
+        if not entity_id or kind not in {
+            "case.created", "message.created", "photo.created", "doctor.assigned", "case.closed"
+        }:
+            return []
+        with self.connect() as conn:
+            if kind == "doctor.assigned":
+                case = conn.execute(
+                    "SELECT c.*,p.name patient_name,u.agency_id FROM cases c "
+                    "JOIN patients p ON p.id=c.patient_id JOIN users u ON u.id=c.agent_id "
+                    "WHERE c.patient_id=? AND c.status!='closed' ORDER BY c.uploaded_at DESC LIMIT 1",
+                    (entity_id,),
+                ).fetchone()
+            else:
+                case = conn.execute(
+                    "SELECT c.*,p.name patient_name,u.agency_id FROM cases c "
+                    "JOIN patients p ON p.id=c.patient_id JOIN users u ON u.id=c.agent_id WHERE c.id=?",
+                    (entity_id,),
+                ).fetchone()
+            if not case:
+                return []
+
+            recipients = {
+                row["id"] for row in conn.execute(
+                    "SELECT id FROM users WHERE active=1 AND role IN ('admin','manager')"
+                ).fetchall()
+            }
+            if case["agency_id"]:
+                recipients.update(row["id"] for row in conn.execute(
+                    "SELECT id FROM users WHERE active=1 AND role='agent' AND agency_id=?",
+                    (case["agency_id"],),
+                ).fetchall())
+            else:
+                recipients.add(case["agent_id"])
+            if kind == "case.created":
+                recipients.update(row["id"] for row in conn.execute(
+                    "SELECT id FROM users WHERE active=1 AND role='doctor'"
+                ).fetchall())
+            elif case["assigned_doctor_id"]:
+                doctor = conn.execute(
+                    "SELECT id FROM users WHERE id=? AND active=1 AND role='doctor'",
+                    (case["assigned_doctor_id"],),
+                ).fetchone()
+                if doctor:
+                    recipients.add(doctor["id"])
+            recipients.discard(actor["id"])
+            if not recipients:
+                return []
+
+            title, body = self._notification_copy(conn, kind, case, actor)
+            latest_message = None
+            if kind == "message.created":
+                latest_message = conn.execute(
+                    "SELECT text FROM messages WHERE case_id=? AND deleted_at IS NULL "
+                    "ORDER BY created_at DESC,rowid DESC LIMIT 1", (case["id"],)
+                ).fetchone()
+            mentions = set(re.findall(r"(?<![\\w.])@([A-Za-z0-9._-]{2,64})", latest_message["text"] if latest_message else ""))
+            mentioned_ids = set()
+            if mentions:
+                placeholders = ",".join("?" for _ in mentions)
+                mentioned_ids = {
+                    row["id"] for row in conn.execute(
+                        f"SELECT id FROM users WHERE active=1 AND username COLLATE NOCASE IN ({placeholders})",
+                        tuple(mentions),
+                    ).fetchall()
+                } & recipients
+
+            now = iso(utc_now())
+            notification_ids = []
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                for recipient_id in sorted(recipients):
+                    notification_id = str(uuid.uuid4())
+                    recipient_title = f"{actor['display_name']} mentioned you" if recipient_id in mentioned_ids else title
+                    conn.execute(
+                        "INSERT INTO notifications(id,recipient_user_id,actor_user_id,kind,title,body,"
+                        "case_id,case_reference,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                        (notification_id, recipient_id, actor["id"],
+                         "mention" if recipient_id in mentioned_ids else kind, recipient_title, body,
+                         case["id"], case["reference"], now),
+                    )
+                    devices = conn.execute(
+                        "SELECT id FROM notification_devices WHERE user_id=?", (recipient_id,)
+                    ).fetchall()
+                    for device in devices:
+                        conn.execute(
+                            "INSERT INTO notification_push_deliveries(id,notification_id,device_id,created_at) "
+                            "VALUES (?,?,?,?)",
+                            (str(uuid.uuid4()), notification_id, device["id"], now),
+                        )
+                    notification_ids.append(notification_id)
+                conn.execute("COMMIT")
+                return notification_ids
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    @staticmethod
+    def _notification_copy(
+        conn: sqlite3.Connection, kind: str, case: sqlite3.Row, actor: sqlite3.Row
+    ) -> tuple[str, str]:
+        patient_name = case["patient_name"]
+        if kind == "case.created":
+            return "New patient application", f"{patient_name} was added by {actor['display_name']}."
+        if kind == "doctor.assigned":
+            doctor = conn.execute(
+                "SELECT display_name FROM users WHERE id=?", (case["assigned_doctor_id"],)
+            ).fetchone() if case["assigned_doctor_id"] else None
+            assignment = doctor["display_name"] if doctor else "Unassigned"
+            return "Doctor assignment updated", f"{patient_name} is now assigned to {assignment}."
+        if kind == "photo.created":
+            return f"New photo for {patient_name}", f"{actor['display_name']} added a patient photo."
+        if kind == "case.closed":
+            return "Case confirmed", f"The final plan for {patient_name} was confirmed."
+        message = conn.execute(
+            "SELECT text,attachment_path FROM messages WHERE case_id=? AND deleted_at IS NULL "
+            "ORDER BY created_at DESC,rowid DESC LIMIT 1", (case["id"],)
+        ).fetchone()
+        preview = (message["text"] if message else "New message").strip().replace("\n", " ")
+        if len(preview) > 140:
+            preview = preview[:137].rstrip() + "…"
+        return f"New message for {patient_name}", f"{actor['display_name']}: {preview}"
 
     @staticmethod
     def _ensure_manager_role(conn: sqlite3.Connection) -> None:
@@ -2111,6 +2412,14 @@ class APIServer(ThreadingHTTPServer):
         super().__init__(address, APIHandler)
         self.database = database
         self.changes = ChangeBroker()
+        self.push_dispatcher = APNSPushDispatcher(database)
+        self.push_dispatcher.start()
+
+    def server_close(self) -> None:
+        push_dispatcher = getattr(self, "push_dispatcher", None)
+        if push_dispatcher:
+            push_dispatcher.stop()
+        super().server_close()
 
 
 class APIHandler(BaseHTTPRequestHandler):
@@ -2142,7 +2451,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "agency-scoping", "idempotent-writes", "agency-mcp"]})
+                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
                 payload = self._read_json()
                 return self._json(200, self.server.database.login(str(payload.get("username", "")), str(payload.get("password", ""))))
@@ -2169,6 +2478,24 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._changed(200, {"user": updated}, "user.updated", updated["id"], user)
             if method == "POST" and path == f"{API_PREFIX}/auth/change-password":
                 return self._json(200, self.server.database.change_password(self._read_json(), user, token))
+            if method == "GET" and path == f"{API_PREFIX}/notifications":
+                raw_limit = parse_qs(parsed.query).get("limit", ["50"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    raise APIError(422, "invalid_limit", "The notification limit must be a number.")
+                return self._json(200, self.server.database.notifications(user, limit))
+            if method == "POST" and path == f"{API_PREFIX}/notifications/read":
+                result = self.server.database.mark_notifications_read(self._read_json(), user)
+                return self._changed(200, result, "notifications.read", user["id"], user)
+            if method == "POST" and path == f"{API_PREFIX}/notification-devices":
+                return self._json(
+                    200, {"device": self.server.database.register_notification_device(self._read_json(), user)}
+                )
+            if method == "POST" and path == f"{API_PREFIX}/notification-devices/unregister":
+                return self._json(
+                    200, self.server.database.unregister_notification_device(self._read_json(), user)
+                )
             if method == "GET" and path == f"{API_PREFIX}/admin/users":
                 return self._json(200, {"users": self.server.database.admin_users(user)})
             if method == "POST" and path == f"{API_PREFIX}/admin/users":
@@ -2473,7 +2800,12 @@ class APIHandler(BaseHTTPRequestHandler):
         entity_id: str | None,
         user: sqlite3.Row,
     ) -> None:
+        try:
+            self.server.database.create_event_notifications(kind, entity_id, user)
+        except Exception as exc:
+            self.log_error("Notification creation failed for %s/%s: %r", kind, entity_id, exc)
         self.server.changes.publish(kind, entity_id, user["id"])
+        self.server.push_dispatcher.wake()
         self._json(status, payload)
 
     def _binary(self, status: int, body: bytes, content_type: str) -> None:

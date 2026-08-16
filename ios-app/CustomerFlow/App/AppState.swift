@@ -13,6 +13,9 @@ final class AppState: ObservableObject {
     @Published private(set) var currentUser: AuthenticatedUser?
     @Published private(set) var connectedServerName = "Customer Flow Server"
     @Published private(set) var cases: [ConsultationCase] = []
+    @Published private(set) var notifications: [AppNotification] = []
+    @Published private(set) var unreadNotificationCount = 0
+    @Published var pendingNotificationCaseID: UUID?
     @Published private(set) var liveRevision = 0
     @Published private(set) var isRefreshingAfterForeground = false
     @Published var errorMessage: String?
@@ -34,6 +37,7 @@ final class AppState: ObservableObject {
     private var liveUpdatesTask: Task<Void, Never>?
     private var caseLoadInProgress = false
     private var caseReloadRequested = false
+    private var deviceTokenHex: String?
     private let photoCache = NSCache<NSString, NSData>()
     private let serverAddressKey = "customerFlow.serverAddress"
 
@@ -61,6 +65,7 @@ final class AppState: ObservableObject {
                 let user = try await client.restoreSession()
                 activate(client: client, user: user)
                 phase = .authenticated
+                await registerPendingNotificationDevice()
                 await load()
             } catch {
                 SecureTokenStore.clear()
@@ -105,6 +110,7 @@ final class AppState: ObservableObject {
             try SecureTokenStore.save(session.token)
             activate(client: remoteClient, user: session.user)
             phase = .authenticated
+            await registerPendingNotificationDevice()
             await load()
             return true
         } catch {
@@ -117,10 +123,14 @@ final class AppState: ObservableObject {
         isWorking = true
         liveUpdatesTask?.cancel()
         liveUpdatesTask = nil
+        await unregisterNotificationDevice()
         await remoteClient?.logout()
         SecureTokenStore.clear()
         currentUser = nil
         cases = []
+        notifications = []
+        unreadNotificationCount = 0
+        pendingNotificationCaseID = nil
         photoCache.removeAllObjects()
         adminRepository = nil
         repository = MockCaseRepository()
@@ -190,12 +200,16 @@ final class AppState: ObservableObject {
     func changeServer() async {
         liveUpdatesTask?.cancel()
         liveUpdatesTask = nil
+        await unregisterNotificationDevice()
         await remoteClient?.logout()
         SecureTokenStore.clear()
         UserDefaults.standard.removeObject(forKey: serverAddressKey)
         remoteClient = nil
         currentUser = nil
         cases = []
+        notifications = []
+        unreadNotificationCount = 0
+        pendingNotificationCaseID = nil
         photoCache.removeAllObjects()
         adminRepository = nil
         connectedServerName = "Customer Flow Server"
@@ -217,6 +231,7 @@ final class AppState: ObservableObject {
                 let updatedCases = try await repository.fetchCases()
                 guard phase == .authenticated else { return }
                 cases = updatedCases
+                await loadNotifications()
             } catch {
                 guard !Self.isCancellation(error) else { return }
                 errorMessage = error.localizedDescription
@@ -405,6 +420,64 @@ final class AppState: ObservableObject {
         catch { errorMessage = error.localizedDescription }
     }
 
+    func receiveDeviceToken(_ token: Data) async {
+        deviceTokenHex = token.map { String(format: "%02x", $0) }.joined()
+        await registerPendingNotificationDevice()
+    }
+
+    func loadNotifications() async {
+        guard phase == .authenticated, let remoteClient else { return }
+        do {
+            let inbox = try await remoteClient.fetchNotifications()
+            notifications = inbox.notifications
+            unreadNotificationCount = inbox.unreadCount
+        } catch {
+            guard !Self.isCancellation(error) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func markAllNotificationsRead() async {
+        guard let remoteClient, unreadNotificationCount > 0 else { return }
+        do {
+            try await remoteClient.markAllNotificationsRead()
+            let now = Date()
+            notifications = notifications.map { item in
+                var updated = item
+                if updated.readAt == nil { updated.readAt = now }
+                return updated
+            }
+            unreadNotificationCount = 0
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func openNotification(_ notification: AppNotification) async {
+        if notification.readAt == nil, let remoteClient {
+            do {
+                try await remoteClient.markNotificationsRead([notification.id])
+                if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+                    notifications[index].readAt = Date()
+                }
+                unreadNotificationCount = max(0, unreadNotificationCount - 1)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+        await load()
+        pendingNotificationCaseID = notification.caseID
+    }
+
+    func openNotificationCase(_ caseID: UUID) async {
+        await load()
+        pendingNotificationCaseID = caseID
+    }
+
+    func consumePendingNotificationCase() {
+        pendingNotificationCaseID = nil
+    }
+
     private func activate(client: RemoteAPIClient, user: AuthenticatedUser) {
         repository = RemoteCaseRepository(client: client)
         patientMatcher = RemotePatientMatchingService(client: client)
@@ -413,6 +486,31 @@ final class AppState: ObservableObject {
             : nil
         currentUser = user
         startLiveUpdates(client: client)
+    }
+
+    private func registerPendingNotificationDevice() async {
+        guard phase == .authenticated, let remoteClient, let deviceTokenHex else { return }
+        do {
+            try await remoteClient.registerNotificationDevice(
+                token: deviceTokenHex, environment: Self.notificationEnvironment
+            )
+        } catch {
+            guard !Self.isCancellation(error) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func unregisterNotificationDevice() async {
+        guard let remoteClient, let deviceTokenHex else { return }
+        try? await remoteClient.unregisterNotificationDevice(token: deviceTokenHex)
+    }
+
+    private static var notificationEnvironment: String {
+        #if DEBUG
+        "sandbox"
+        #else
+        "production"
+        #endif
     }
 
     private func startLiveUpdates(client: RemoteAPIClient) {
