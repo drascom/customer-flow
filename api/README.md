@@ -161,6 +161,22 @@ Implicit TLS is used by default. Set `CF_SMTP_SSL=0` to use STARTTLS. Firebase i
 - Never commit the SQLite database, uploaded patient media or SMTP credentials.
 - The optional systemd unit in `deploy/` is an example and may need path changes for your server.
 
+### Automatic deployment
+
+The managed production and public demo installations can check `origin/main`
+once per minute and restart their API service after a clean fast-forward update.
+The deployment scripts refuse to overwrite tracked local changes, verify the
+local health endpoint after restart, and roll the application checkout back if
+the new revision does not become healthy. Database files, uploaded media and
+environment files are untracked or stored outside the repository and are not
+changed by deploys.
+
+- Production user units and script: `deploy/production/`
+- Public demo system units and script: `deploy/demo/`
+
+The public demo deploy and hourly reset scripts share a maintenance lock so a
+code update cannot race with a database reset.
+
 ## Tests
 
 ```bash

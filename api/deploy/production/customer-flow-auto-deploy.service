@@ -1,0 +1,10 @@
+[Unit]
+Description=Deploy the latest Customer Flow release
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/customer-flow-auto-deploy
+Nice=10
+TimeoutStartSec=180

@@ -6,6 +6,10 @@ readonly data_root="/var/lib/customer-flow-demo"
 readonly database_name="customer-flow.sqlite3"
 readonly database_path="${data_root}/${database_name}"
 readonly media_root="${data_root}/media"
+readonly lock_path="/run/lock/customer-flow-demo-maintenance.lock"
+
+exec 9>"${lock_path}"
+flock -w 120 9
 
 if [[ "${data_root}" != "/var/lib/customer-flow-demo" ]]; then
     echo "Refusing to reset an unexpected data directory." >&2
