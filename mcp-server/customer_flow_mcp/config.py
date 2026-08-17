@@ -81,7 +81,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         allow_insecure = _boolean("CF_MCP_ALLOW_INSECURE_HTTP")
         public_base_url = _public_base_url(
-            os.getenv("CF_PUBLIC_BASE_URL", "https://flow.drascom.uk"), allow_insecure
+            os.getenv("CF_PUBLIC_BASE_URL", "https://customer-flow.example.com"), allow_insecure
         )
         enable_writes = _boolean("CF_MCP_ENABLE_WRITES")
         enable_photo_uploads = _boolean("CF_MCP_ENABLE_PHOTO_UPLOADS")

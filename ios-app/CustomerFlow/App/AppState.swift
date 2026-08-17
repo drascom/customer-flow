@@ -26,7 +26,7 @@ final class AppState: ObservableObject {
     var currentDoctorName: String { role == .doctor ? currentUser?.displayName ?? "Doctor" : "Doctor" }
     var currentAgentName: String { role == .agent ? currentUser?.displayName ?? "Agent" : "Agent" }
     var savedServerAddress: String {
-        UserDefaults.standard.string(forKey: serverAddressKey) ?? "https://flow.drascom.uk"
+        UserDefaults.standard.string(forKey: serverAddressKey) ?? "https://flow-demo.drascom.uk"
     }
 
     private(set) var patientMatcher: any PatientMatchingService = MockPatientMatchingService()

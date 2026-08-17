@@ -5,16 +5,19 @@ Wants=network-online.target customer-flow-api.service
 
 [Service]
 Type=simple
-WorkingDirectory=/home/dr/customer-flow/mcp-server
-EnvironmentFile=/home/dr/.config/customer-flow/mcp.env
-ExecStart=/home/dr/customer-flow/mcp-server/.venv/bin/customer-flow-mcp
+User=customer-flow
+Group=customer-flow
+WorkingDirectory=/opt/customer-flow/mcp-server
+EnvironmentFile=/etc/customer-flow/mcp.env
+ExecStart=/opt/customer-flow/mcp-server/.venv/bin/customer-flow-mcp
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/dr/customer-flow/api/data /home/dr/customer-flow/api/media
+ProtectHome=true
+ReadOnlyPaths=/opt/customer-flow
+ReadWritePaths=/var/lib/customer-flow
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

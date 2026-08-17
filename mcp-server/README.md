@@ -1,7 +1,8 @@
 # Customer Flow agency MCP server
 
 This is the shared Streamable HTTP MCP endpoint for agency LLM and automation
-systems. Every client connects to `https://flow.drascom.uk/mcp` and sends the
+systems. Every client connects to its deployment's common endpoint, such as
+`https://customer-flow.example.com/mcp`, and sends the
 single bearer token generated for its agency by a Customer Flow administrator.
 
 ## Security boundary
@@ -58,7 +59,7 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Copy `.env.example` to `/home/dr/.config/customer-flow/mcp.env`, keep it mode
+Copy `.env.example` to `/etc/customer-flow/mcp.env`, keep it mode
 `0600`, point the database/module paths at the deployed API, and keep
 `CF_API_BASE_URL` on loopback. No agency token belongs in the service
 environment.
@@ -78,7 +79,7 @@ Use the common URL and an authorization header:
 
 ```json
 {
-  "url": "https://flow.drascom.uk/mcp",
+  "url": "https://customer-flow.example.com/mcp",
   "headers": { "Authorization": "Bearer cfmcp_REPLACE_WITH_ONE_TIME_TOKEN" }
 }
 ```

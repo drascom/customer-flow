@@ -157,7 +157,7 @@ class APITestCase(unittest.TestCase):
             "POST", f"/admin/agencies/{agency['id']}/mcp/rotate", {}, token=admin
         )["connection"]
         self.assertTrue(first["configured"])
-        self.assertEqual("https://flow.drascom.uk/mcp", first["endpointURL"])
+        self.assertEqual("https://customer-flow.example.com/mcp", first["endpointURL"])
         self.assertTrue(first["accessToken"].startswith("cfmcp_"))
 
         with self.server.database.connect() as conn:

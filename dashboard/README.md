@@ -7,7 +7,8 @@ It is intended for the private staging network. Keep the PIN separate from the A
 Run locally on a high port:
 
 ```sh
-CF_DASHBOARD_ADMIN_PASSWORD=demo123 CF_DASHBOARD_PIN=change-me python3 dashboard/app.py --port 18080
+CF_DASHBOARD_ADMIN_PASSWORD=change-me CF_DASHBOARD_PIN=change-me-too python3 dashboard/app.py --port 18080
 ```
 
-The systemd unit reads optional overrides from `/home/dr/customer-flow/dashboard/dashboard.env`. Without overrides, it uses the staging seed account `admin / demo123`.
+The systemd unit reads optional overrides from `/etc/customer-flow/dashboard.env`.
+Set a strong API admin password and a separate browser PIN before starting it.

@@ -44,8 +44,9 @@ the header is optional.
 The agency MCP connector and its deployment guide are in
 [`../mcp-server/`](../mcp-server/).
 
-Set `CF_PUBLIC_BASE_URL=https://flow.drascom.uk` so admin connection details use
-the correct common endpoint. Only an admin may call:
+Set `CF_PUBLIC_BASE_URL=https://customer-flow.example.com` to the HTTPS address
+of your own deployment so admin connection details use the correct common
+endpoint. Only an admin may call:
 
 - `GET /api/v1/admin/agencies/{agencyID}/mcp` — endpoint and rotation status,
   never the token.
@@ -91,31 +92,29 @@ This deployment uses Production APNs for TestFlight and App Store builds.
    Team ID is also displayed beside the team name in the developer portal.
 
 Keep the downloaded key outside the repository and restrict it to the API
-service user. For the provided user-level systemd service, one suitable layout
-is:
+service user. For the provided system-level service, one suitable layout is:
 
 ```bash
-install -d -m 700 ~/.config/customer-flow/apns
-install -m 600 /path/to/AuthKey_KEYID.p8 ~/.config/customer-flow/apns/
-install -d -m 700 ~/.config/systemd/user/customer-flow-api.service.d
+sudo install -d -o customer-flow -g customer-flow -m 700 /etc/customer-flow/apns
+sudo install -o customer-flow -g customer-flow -m 600 \
+  /path/to/AuthKey_KEYID.p8 /etc/customer-flow/apns/
 ```
 
-Create `~/.config/systemd/user/customer-flow-api.service.d/apns.conf` with:
+Add these values to the protected `/etc/customer-flow/api.env` file:
 
-```ini
-[Service]
-Environment=CF_APNS_KEY_ID=APPLE_KEY_ID
-Environment=CF_APNS_TEAM_ID=APPLE_TEAM_ID
-Environment=CF_APNS_PRIVATE_KEY=/home/API_USER/.config/customer-flow/apns/AuthKey_KEYID.p8
-Environment=CF_APNS_TOPIC=com.customerflow.client
+```bash
+CF_APNS_KEY_ID=APPLE_KEY_ID
+CF_APNS_TEAM_ID=APPLE_TEAM_ID
+CF_APNS_PRIVATE_KEY=/etc/customer-flow/apns/AuthKey_KEYID.p8
+CF_APNS_TOPIC=com.example.customerflow
 ```
 
 Reload and restart the API:
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user restart customer-flow-api
-systemctl --user is-active customer-flow-api
+sudo systemctl daemon-reload
+sudo systemctl restart customer-flow-api
+sudo systemctl is-active customer-flow-api
 ```
 
 The same values can be exported directly when the API is run without systemd:

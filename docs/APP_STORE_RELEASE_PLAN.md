@@ -11,12 +11,11 @@
 
 ## Public demo server
 
-- Deployment workspace: `/Users/drascom/Documents/work/oracle/stage/`
 - Public address: `https://flow-demo.drascom.uk`
 - The separate Customer Flow server and database were deployed on 17 August
   2026 and are managed by `customer-flow-demo.service`.
-- The service listens on NetBird destination `http://100.111.58.102:8080` and
-  is exposed publicly only through the HTTPS proxy.
+- The service listens behind a private reverse-proxy destination and is exposed
+  publicly only through the HTTPS address above.
 - Health check: `https://flow-demo.drascom.uk/api/v1/health`
 - Web client: `https://flow-demo.drascom.uk/admin/`
 - Keep the service available throughout TestFlight Beta App Review and App

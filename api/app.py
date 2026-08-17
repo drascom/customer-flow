@@ -191,7 +191,7 @@ def mcp_token_hash(token: str) -> str:
 
 
 def public_mcp_url() -> str:
-    base_url = os.getenv("CF_PUBLIC_BASE_URL", "https://flow.drascom.uk").strip().rstrip("/")
+    base_url = os.getenv("CF_PUBLIC_BASE_URL", "https://customer-flow.example.com").strip().rstrip("/")
     parsed = urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
         raise RuntimeError("CF_PUBLIC_BASE_URL must be an absolute HTTP(S) URL without a query or fragment.")
