@@ -106,15 +106,23 @@ struct RootView: View {
                 .clipShape(Circle())
                 .accessibilityLabel("Customer Flow logo")
 
-            (
-                Text("C").font(.system(size: 20, weight: .bold))
-                + Text("ustomer ").font(.system(size: 20, weight: .light))
-                + Text("F").font(.system(size: 20, weight: .bold))
-                + Text("low").font(.system(size: 20, weight: .light))
-            )
-            .foregroundStyle(AppTheme.ink)
+            VStack(alignment: .leading, spacing: 0) {
+                (
+                    Text("C").font(.system(size: 20, weight: .bold))
+                    + Text("ustomer ").font(.system(size: 20, weight: .light))
+                    + Text("F").font(.system(size: 20, weight: .bold))
+                    + Text("low").font(.system(size: 20, weight: .light))
+                )
+                .foregroundStyle(AppTheme.ink)
+
+                Text("by NatChatt")
+                    .font(.system(size: 8, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(AppTheme.muted)
+            }
             .fixedSize(horizontal: true, vertical: false)
-            .accessibilityLabel("Customer Flow")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Customer Flow by NatChatt")
 
             Spacer(minLength: 8)
 

@@ -1,4 +1,4 @@
-# Customer Flow
+# Customer Flow by NatChatt
 
 Customer Flow is a self-hosted clinical consultation workflow for clinics, authorised agents and doctors. Agents create patient cases with notes, estimates and photos; doctors review the cases and send clinical recommendations; administrators manage users, agencies, assignments and reporting access.
 

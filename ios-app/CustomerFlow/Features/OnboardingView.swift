@@ -44,13 +44,20 @@ struct OnboardingView: View {
                 .frame(width: 46, height: 46)
                 .clipShape(Circle())
 
-            (
-                Text("C").font(.system(size: 26, weight: .bold))
-                + Text("ustomer ").font(.system(size: 26, weight: .light))
-                + Text("F").font(.system(size: 26, weight: .bold))
-                + Text("low").font(.system(size: 26, weight: .light))
-            )
-            .foregroundStyle(AppTheme.ink)
+            VStack(alignment: .leading, spacing: 1) {
+                (
+                    Text("C").font(.system(size: 26, weight: .bold))
+                    + Text("ustomer ").font(.system(size: 26, weight: .light))
+                    + Text("F").font(.system(size: 26, weight: .bold))
+                    + Text("low").font(.system(size: 26, weight: .light))
+                )
+                .foregroundStyle(AppTheme.ink)
+
+                Text("by NatChatt")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.7)
+                    .foregroundStyle(AppTheme.muted)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
