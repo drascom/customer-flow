@@ -32,6 +32,11 @@
 - The demo deployment intentionally has no NatChatt APNs private key. Realtime
   updates and in-app notifications remain available; external Apple push is
   verified on the separate NatChatt staging deployment.
+- A systemd timer resets the disposable database, uploaded media, sessions and
+  notifications every day at 04:00 UTC, then recreates the fictional seed data
+  and review accounts. Public documentation may expose only the agent and
+  doctor demo credentials; keep the admin review credential in App Store
+  Connect Review Information.
 - Verify login, case creation, photo upload, doctor response, agent
   confirmation, realtime updates and role-scoped notifications before each
   submission.

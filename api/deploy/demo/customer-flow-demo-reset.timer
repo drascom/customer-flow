@@ -1,0 +1,10 @@
+[Unit]
+Description=Reset Customer Flow public demo data every day
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+Unit=customer-flow-demo-reset.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=Customer Flow public demo API
+After=network-online.target netbird.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/customer-flow-demo/api
+EnvironmentFile=/home/ubuntu/.config/customer-flow-demo/api.env
+ExecStart=/usr/bin/python3 /home/ubuntu/customer-flow-demo/api/app.py --host 0.0.0.0 --port 8080 --db /var/lib/customer-flow-demo/customer-flow.sqlite3 --media /var/lib/customer-flow-demo/media
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/customer-flow-demo
+ReadOnlyPaths=/home/ubuntu/customer-flow-demo /home/ubuntu/.config/customer-flow-demo
+
+[Install]
+WantedBy=multi-user.target

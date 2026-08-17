@@ -1,0 +1,9 @@
+[Unit]
+Description=Reset Customer Flow public demo data
+Requires=customer-flow-demo.service
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/customer-flow-demo-reset
+Nice=10
