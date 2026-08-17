@@ -18,6 +18,23 @@ The iOS app is a client and **does not work without a running Customer Flow serv
 
 For production use, the server must be placed behind HTTPS and configured with secure passwords, protected storage, backups and SMTP for password recovery. Patient photos and the SQLite database are intentionally excluded from this repository.
 
+## Public demo
+
+A continuously available disposable demo is hosted at
+<https://flow-demo.drascom.uk>. The same responsive client is available at
+<https://flow-demo.drascom.uk/admin/>.
+
+Use either of these accounts:
+
+- Agency user: `user1` / `demo123`
+- Doctor: `doctor1` / `demo123`
+
+The demo contains fictional seed data. Its database, uploaded media, sessions
+and notifications are erased and recreated every day at **04:00 UTC**. Never
+upload real patient, personal or confidential information. Realtime updates
+and in-app notifications work in the demo; external Apple push delivery is not
+enabled there.
+
 ## Quick start
 
 1. Install and start the [API](api/README.md).
