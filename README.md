@@ -48,3 +48,8 @@ For lock-screen and background notifications, complete the
 running. In-app and dashboard notifications work without an Apple key.
 
 This software supports consultation workflow and record handling. It does not replace professional medical judgement or local clinical, privacy and regulatory obligations.
+
+## Privacy and support
+
+- [Privacy Policy](PRIVACY.md)
+- [Support and issue reporting](https://github.com/drascom/customer-flow/issues)
