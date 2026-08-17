@@ -1,8 +1,8 @@
 [Unit]
-Description=Reset Customer Flow public demo data every day
+Description=Reset Customer Flow public demo data every hour
 
 [Timer]
-OnCalendar=*-*-* 04:00:00 UTC
+OnCalendar=hourly
 Persistent=true
 Unit=customer-flow-demo-reset.service
 

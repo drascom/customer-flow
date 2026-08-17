@@ -30,10 +30,11 @@ Use either of these accounts:
 - Doctor: `doctor1` / `demo123`
 
 The demo contains fictional seed data. Its database, uploaded media, sessions
-and notifications are erased and recreated every day at **04:00 UTC**. Never
-upload real patient, personal or confidential information. Realtime updates
-and in-app notifications work in the demo; external Apple push delivery is not
-enabled there.
+and notifications are erased and recreated **at the start of every hour**.
+Active demo sessions are signed out during each reset. Never upload real
+patient, personal or confidential information. Realtime updates and in-app
+notifications work in the demo; external Apple push delivery is not enabled
+there.
 
 ## Quick start
 
