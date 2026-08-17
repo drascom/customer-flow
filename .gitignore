@@ -4,6 +4,7 @@
 !.env.example
 *.pem
 *.p12
+*.p8
 *.mobileprovision
 
 # Python and API runtime data
