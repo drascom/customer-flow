@@ -59,16 +59,19 @@ struct CaseDetailView: View {
                                 }
                             }
 
-                            detailSection("Conversation") {
-                                VStack(spacing: 10) {
-                                    ForEach(item.messages) { message in
-                                        MessageBubble(
-                                            message: message,
-                                            canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
-                                            onDelete: { pendingMessageDeletion = message }
-                                        )
-                                        .id(message.id)
-                                    }
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("CONVERSATION")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(AppTheme.muted)
+                                    .padding(.horizontal, 4)
+
+                                ForEach(item.messages) { message in
+                                    MessageBubble(
+                                        message: message,
+                                        canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
+                                        onDelete: { pendingMessageDeletion = message }
+                                    )
+                                    .id(message.id)
                                 }
                             }
 
@@ -466,49 +469,65 @@ private struct MessageBubble: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Text(authorBadge)
-                .font(.caption2.bold())
-                .frame(width: 32, height: 32)
-                .background((message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.14), in: Circle())
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text(message.author).font(.caption.bold())
-                    Spacer()
-                    if canDelete {
-                        Button(action: onDelete) {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("Remove comment")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(message.author)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text(message.createdAt.compactRelativeText)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+                    .lineLimit(1)
+
+                if canDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .frame(width: 28, height: 28)
+                            .background(.red.opacity(0.09), in: Circle())
                     }
-                    Text(message.createdAt.compactRelativeText).font(.caption2).foregroundStyle(AppTheme.muted)
-                }
-                Text(message.text).font(.body)
-                if let attachmentPhotoID = message.attachmentPhotoID {
-                    MessagePhotoView(messageID: attachmentPhotoID)
-                }
-                if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
-                    HStack {
-                        Text("Approx. \(grafts) grafts")
-                        Text("Recommended \(AppCurrency.amount(price))")
-                    }
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.brand)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove comment")
                 }
             }
-            .padding(11)
-            .background((message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+
+            if !message.text.isEmpty {
+                Text(message.text)
+                    .font(.body)
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let attachmentPhotoID = message.attachmentPhotoID {
+                MessagePhotoView(messageID: attachmentPhotoID)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
+                HStack(spacing: 10) {
+                    Text("Approx. \(grafts) grafts")
+                    Text("Recommended \(AppCurrency.amount(price))")
+                }
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.brand)
+            }
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(bubbleColor, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.border.opacity(0.65))
         }
     }
 
-    private var authorBadge: String {
-        switch message.role {
-        case .doctor: "DR"
-        case .agent: "AG"
-        case .admin: "AD"
-        case .system: "SY"
-        }
+    private var bubbleColor: Color {
+        (message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.1)
     }
 }
