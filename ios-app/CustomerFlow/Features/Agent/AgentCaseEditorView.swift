@@ -341,6 +341,7 @@ struct AgentCaseEditorView: View {
     @State private var photoReloadToken = 0
     @State private var pendingPhotoDeletionID: String?
     @State private var pendingMessageDeletion: ConsultationMessage?
+    @State private var messageScrollTarget: UUID?
     @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var matchCandidate: PatientMatchCandidate?
     @State private var isMatchDetailsPresented = false
@@ -351,6 +352,7 @@ struct AgentCaseEditorView: View {
     @State private var patientVerification: PatientVerification = .idle
     @State private var isSubmitting = false
     @FocusState private var isPatientNameFocused: Bool
+    @FocusState private var isUpdateTextFocused: Bool
 
     init(caseID: UUID? = nil) {
         _editingCaseID = State(initialValue: caseID)
@@ -414,23 +416,35 @@ struct AgentCaseEditorView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                header
-                if isEditMode {
-                    caseDetails
-                    patientPhotos
-                    conversationSection
-                    if let editCase,
-                       editCase.status == .closed || (editCase.status == .answered && latestDoctorRecommendation != nil) {
-                        finalPlanSection(editCase)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    if isEditMode {
+                        caseDetails
+                        patientPhotos
+                        conversationSection
+                        if let editCase,
+                           editCase.status == .closed || (editCase.status == .answered && latestDoctorRecommendation != nil) {
+                            finalPlanSection(editCase)
+                        }
+                    } else {
+                        createStepContent
                     }
-                } else {
-                    createStepContent
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .onChange(of: messageScrollTarget) { _, target in
+                guard let target else { return }
+                Task { @MainActor in
+                    await Task.yield()
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                    messageScrollTarget = nil
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
         }
         .background(AppTheme.background)
         .navigationTitle("")
@@ -1126,12 +1140,14 @@ struct AgentCaseEditorView: View {
                         canDelete: message.role == .agent && message.authorID == state.currentUser?.id,
                         onDelete: { pendingMessageDeletion = message }
                     )
+                    .id(message.id)
                 }
 
                 if canEditCase {
                     VStack(alignment: .leading, spacing: 8) {
                         labeledField("Add an update or question", required: false) {
                             TextField("Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
+                                .focused($isUpdateTextFocused)
                                 .lineLimit(3...6)
                                 .textFieldStyle(.roundedBorder)
                         }
@@ -1140,9 +1156,11 @@ struct AgentCaseEditorView: View {
                             Button("Send to doctor") {
                                 Task {
                                     if await state.sendAgentUpdate(caseID: editCase.id, text: updateText) {
+                                        isUpdateTextFocused = false
                                         updateText = ""
                                         returnedToDoctor = true
                                         statusText = "Waiting for Doctor · Update sent"
+                                        await scrollToLatestMessage(caseID: editCase.id)
                                     }
                                 }
                             }
@@ -1269,11 +1287,20 @@ struct AgentCaseEditorView: View {
         ) {
             statusText = "Waiting for Doctor · Annotated photo sent"
             returnedToDoctor = true
+            await scrollToLatestMessage(caseID: caseID)
             return true
         } else {
             statusText = "Annotated photo could not be sent"
             return false
         }
+    }
+
+    @MainActor
+    private func scrollToLatestMessage(caseID: UUID) async {
+        await Task.yield()
+        messageScrollTarget = state.cases
+            .first(where: { $0.id == caseID })?
+            .messages.last?.id
     }
 
     @MainActor
