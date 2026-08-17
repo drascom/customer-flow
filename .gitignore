@@ -28,3 +28,6 @@ xcuserdata/
 .vscode/
 .idea/
 *~
+
+# Local App Store review credentials
+demoaccounts.md
