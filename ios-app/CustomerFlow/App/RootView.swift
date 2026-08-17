@@ -186,6 +186,7 @@ struct ProfileView: View {
     @State private var passwordConfirmation = ""
     @State private var profileMessage = ""
     @State private var passwordMessage = ""
+    @State private var showsPasswordChangeConfirmation = false
 
     let onShowTour: () -> Void
 
@@ -221,19 +222,28 @@ struct ProfileView: View {
                 }
 
                 Section {
-                    SecureField("Current password", text: $currentPassword)
-                        .textContentType(.password)
-                    SecureField("New password", text: $newPassword)
-                        .textContentType(.newPassword)
-                    SecureField("Confirm new password", text: $passwordConfirmation)
-                        .textContentType(.newPassword)
+                    RevealablePasswordField(
+                        "Current password",
+                        text: $currentPassword,
+                        textContentType: .password
+                    )
+                    RevealablePasswordField(
+                        "New password",
+                        text: $newPassword,
+                        textContentType: .newPassword
+                    )
+                    RevealablePasswordField(
+                        "Confirm new password",
+                        text: $passwordConfirmation,
+                        textContentType: .newPassword
+                    )
                     if !passwordMessage.isEmpty {
                         Text(passwordMessage)
                             .font(.caption)
-                            .foregroundStyle(passwordMessage == "Password updated." ? AppTheme.brandDark : .red)
+                            .foregroundStyle(.red)
                     }
                     Button {
-                        changePassword()
+                        requestPasswordChange()
                     } label: {
                         actionLabel("Change password")
                     }
@@ -241,7 +251,7 @@ struct ProfileView: View {
                 } header: {
                     Text("Security")
                 } footer: {
-                    Text("Use at least 10 characters. Changing your password signs out your other sessions.")
+                    Text("Use at least 10 characters. After changing it, you will be signed out and must sign in with the new password.")
                 }
 
                 if state.role != .admin && state.role != .manager {
@@ -267,6 +277,14 @@ struct ProfileView: View {
         }
         .interactiveDismissDisabled(state.isWorking)
         .onAppear(perform: loadProfile)
+        .alert("Change password and sign out?", isPresented: $showsPasswordChangeConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Change & Sign Out", role: .destructive) {
+                changePasswordAndSignOut()
+            }
+        } message: {
+            Text("Your password will be changed immediately. You will then return to the sign-in screen and must use your new password.")
+        }
     }
 
     private func actionLabel(_ title: String) -> some View {
@@ -299,7 +317,7 @@ struct ProfileView: View {
         }
     }
 
-    private func changePassword() {
+    private func requestPasswordChange() {
         passwordMessage = ""
         guard newPassword.count >= 10 else {
             passwordMessage = "The new password must be at least 10 characters."
@@ -309,12 +327,18 @@ struct ProfileView: View {
             passwordMessage = "The passwords do not match."
             return
         }
+        showsPasswordChangeConfirmation = true
+    }
+
+    private func changePasswordAndSignOut() {
+        passwordMessage = ""
         Task {
             if await state.changePassword(currentPassword: currentPassword, newPassword: newPassword) {
-                currentPassword = ""
-                newPassword = ""
-                passwordConfirmation = ""
-                passwordMessage = "Password updated."
+                dismiss()
+                await Task.yield()
+                await state.logout()
+            } else {
+                passwordMessage = "The password could not be changed. Check your current password and try again."
             }
         }
     }

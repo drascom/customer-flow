@@ -121,12 +121,19 @@ struct OnboardingView: View {
                     .onSubmit { focusedField = .password }
                     .textFieldStyle(.roundedBorder)
 
-                SecureField("Password", text: $password)
-                    .textContentType(.password)
-                    .focused($focusedField, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit(signIn)
-                    .textFieldStyle(.roundedBorder)
+                RevealablePasswordField(
+                    "Password",
+                    text: $password,
+                    textContentType: .password,
+                    focus: $focusedField,
+                    equals: .password,
+                    submitLabel: .go,
+                    onSubmit: signIn
+                )
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
 
                 Button(action: signIn) {
                     actionLabel("Sign in", systemImage: "arrow.right", loading: state.isWorking)
@@ -240,10 +247,16 @@ struct PasswordResetView: View {
                         TextField("6-digit code", text: $code)
                             .keyboardType(.numberPad)
                             .textContentType(.oneTimeCode)
-                        SecureField("New password", text: $newPassword)
-                            .textContentType(.newPassword)
-                        SecureField("Confirm new password", text: $confirmation)
-                            .textContentType(.newPassword)
+                        RevealablePasswordField(
+                            "New password",
+                            text: $newPassword,
+                            textContentType: .newPassword
+                        )
+                        RevealablePasswordField(
+                            "Confirm new password",
+                            text: $confirmation,
+                            textContentType: .newPassword
+                        )
                         if !formError.isEmpty {
                             Text(formError).font(.caption).foregroundStyle(.red)
                         }

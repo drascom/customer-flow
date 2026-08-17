@@ -630,7 +630,7 @@ class APITestCase(unittest.TestCase):
         )
         self.assertEqual("invalid_idempotency_key", invalid["error"]["code"])
 
-    def test_doctors_can_view_every_case_but_cannot_change_another_doctors_case(self):
+    def test_doctors_can_view_and_message_every_case_without_overwriting_assignment(self):
         doctor = self.login("doctor1", "demo123")
         other_doctor = self.login("doctor2", "demo123")
         agent = self.login("user1", "demo123")
@@ -644,9 +644,10 @@ class APITestCase(unittest.TestCase):
             content_type="image/jpeg", token=agent, expected=201,
         )
         photo_id = json.loads(uploaded_body)["case"]["photoIDs"][0]
-        self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+        claimed = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
             "text": "Claimed by the second doctor",
-        }, token=other_doctor)
+        }, token=other_doctor)["case"]
+        assigned_doctor_id = claimed["assignedDoctorID"]
 
         visible_cases = self.request("GET", "/cases", token=doctor)["cases"]
         self.assertTrue(any(item["id"] == created["id"] for item in visible_cases))
@@ -654,10 +655,23 @@ class APITestCase(unittest.TestCase):
             "GET", f"/cases/{created['id']}", token=doctor,
         )["case"]["id"])
         self.assertEqual(photo, self.raw_request("GET", f"/photos/{photo_id}", token=doctor)[0])
-        blocked = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
-            "text": "Should not overwrite the assigned doctor",
-        }, token=doctor, expected=409)
-        self.assertEqual("case_changed", blocked["error"]["code"])
+        updated = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "A second doctor can join the conversation",
+        }, token=doctor)["case"]
+        self.assertEqual(assigned_doctor_id, updated["assignedDoctorID"])
+        self.assertEqual("A second doctor can join the conversation", updated["messages"][-1]["text"])
+
+        annotated_photo = b"\xff\xd8second-doctor-annotation\xff\xd9"
+        photo_message_body, _ = self.raw_request(
+            "POST", f"/cases/{created['id']}/message-photos", body=annotated_photo,
+            content_type="image/jpeg", token=doctor, expected=201,
+            extra_headers={
+                "X-Message-Text": base64.b64encode("Second doctor photo note".encode()).decode()
+            },
+        )
+        photo_updated = json.loads(photo_message_body)["case"]
+        self.assertEqual(assigned_doctor_id, photo_updated["assignedDoctorID"])
+        self.assertEqual("Second doctor photo note", photo_updated["messages"][-1]["text"])
 
     def test_agent_create_doctor_response_and_agent_close(self):
         doctor = self.login("doctor1", "demo123")

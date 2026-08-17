@@ -1,7 +1,8 @@
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
-	classes = {};
+	classes = {
+	};
 	objectVersion = 56;
 	objects = {
 
@@ -91,7 +92,8 @@
 		C10000000000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -155,7 +157,9 @@
 		};
 		D10000000000000000000006 /* Shared */ = {
 			isa = PBXGroup;
-			children = (B10000000000000000000007 /* AppTheme.swift */);
+			children = (
+				B10000000000000000000007 /* AppTheme.swift */,
+			);
 			path = Shared;
 			sourceTree = "<group>";
 		};
@@ -202,7 +206,9 @@
 		};
 		D1000000000000000000000B /* Products */ = {
 			isa = PBXGroup;
-			children = (B1000000000000000000000D /* CustomerFlow.app */);
+			children = (
+				B1000000000000000000000D /* CustomerFlow.app */,
+			);
 			name = Products;
 			sourceTree = "<group>";
 		};
@@ -277,8 +283,10 @@
 				C10000000000000000000001 /* Frameworks */,
 				C10000000000000000000003 /* Resources */,
 			);
-			buildRules = ();
-			dependencies = ();
+			buildRules = (
+			);
+			dependencies = (
+			);
 			name = CustomerFlow;
 			productName = CustomerFlow;
 			productReference = B1000000000000000000000D /* CustomerFlow.app */;
@@ -297,7 +305,9 @@
 					E10000000000000000000001 = {
 						CreatedOnToolsVersion = 26.6;
 						SystemCapabilities = {
-							com.apple.Push = { enabled = 1; };
+							com.apple.Push = {
+								enabled = 1;
+							};
 						};
 					};
 				};
@@ -306,12 +316,17 @@
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (en, Base);
+			knownRegions = (
+				en,
+				Base,
+			);
 			mainGroup = D10000000000000000000001;
 			productRefGroup = D1000000000000000000000B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (E10000000000000000000001 /* CustomerFlow */);
+			targets = (
+				E10000000000000000000001 /* CustomerFlow */,
+			);
 		};
 /* End PBXProject section */
 
@@ -373,15 +388,127 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		F10000000000000000000011 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_OPTIMIZATION_LEVEL = 0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
-		F10000000000000000000012 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; GCC_C_LANGUAGE_STANDARD = gnu17; MTL_ENABLE_DEBUG_INFO = NO; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; }; name = Release; };
-		F10000000000000000000021 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {APS_ENVIRONMENT = development; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = CustomerFlow/Resources/CustomerFlow.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES; INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos."; INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 NatChatt"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
-		F10000000000000000000022 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {APS_ENVIRONMENT = production; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_ENTITLEMENTS = CustomerFlow/Resources/CustomerFlow.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = 59P494J56R; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical"; INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos."; INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 NatChatt"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		F10000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		F10000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		F10000000000000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APS_ENVIRONMENT = development;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CustomerFlow/Resources/CustomerFlow.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = 59P494J56R;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 NatChatt";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.2.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F10000000000000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APS_ENVIRONMENT = production;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CustomerFlow/Resources/CustomerFlow.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = 59P494J56R;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Customer Flow";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take patient consultation photos.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 NatChatt";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.2.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.customerflow.client;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F10000000000000000000001 /* Build configuration list for PBXProject "CustomerFlow" */ = {isa = XCConfigurationList; buildConfigurations = (F10000000000000000000011 /* Debug */, F10000000000000000000012 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		F10000000000000000000002 /* Build configuration list for PBXNativeTarget "CustomerFlow" */ = {isa = XCConfigurationList; buildConfigurations = (F10000000000000000000021 /* Debug */, F10000000000000000000022 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		F10000000000000000000001 /* Build configuration list for PBXProject "CustomerFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000011 /* Debug */,
+				F10000000000000000000012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F10000000000000000000002 /* Build configuration list for PBXNativeTarget "CustomerFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000021 /* Debug */,
+				F10000000000000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 	};
 	rootObject = E10000000000000000000002 /* Project object */;

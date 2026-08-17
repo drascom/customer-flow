@@ -1,30 +1,901 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
+    "  %@" : {
+
+    },
+    "·" : {
+
+    },
+    "@%@" : {
+
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ · %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$lld"
+          }
+        }
+      }
+    },
+    "%@ · Conversation" : {
+
+    },
+    "%@ quick tour" : {
+
+    },
+    "%@ will confirm the final agreed plan." : {
+
+    },
+    "%@, %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$lld"
+          }
+        }
+      }
+    },
+    "%@, %lld cases" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$lld cases"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld / %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld / %2$lld"
+          }
+        }
+      }
+    },
+    "%lld %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld %2$@"
+          }
+        }
+      }
+    },
+    "%lld deleted" : {
+
+    },
+    "%lld linked user%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld linked user%2$@"
+          }
+        }
+      }
+    },
+    "%lld messages" : {
+
+    },
+    "%lld photos" : {
+
+    },
+    "%lld/%lld · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld · %3$@"
+          }
+        }
+      }
+    },
+    "•" : {
+
+    },
+    "2,850" : {
+
+    },
+    "3,200" : {
+
+    },
+    "6-digit code" : {
+
+    },
+    "99+" : {
+
+    },
+    "A patient with this name is already in your records." : {
+
+    },
+    "A patient with this name is already registered." : {
+
+    },
+    "A previous consultation was found. Is this the same patient?" : {
+
+    },
+    "A role with consultation history cannot be changed." : {
+
+    },
+    "A short reason is required when changing or removing an existing assignment." : {
+
+    },
+    "Account" : {
+
+    },
+    "Accounts are created by your server administrator. There is no public registration in the app." : {
+
+    },
+    "Active" : {
+
+    },
+    "Add" : {
+
+    },
+    "Add a patient photo" : {
+
+    },
+    "Add photo" : {
+
+    },
+    "Add photos" : {
+
+    },
+    "Added by %@" : {
+
+    },
+    "Address, city or region" : {
+
+    },
+    "Admin action failed" : {
+
+    },
+    "Admin section" : {
+
+    },
+    "Age if date of birth is unknown" : {
+
+    },
+    "Agencies" : {
+
+    },
+    "Agency name" : {
+
+    },
+    "Annotated patient photo" : {
+
+    },
+    "Approx. %@ grafts" : {
+
+    },
+    "Approx. %@ grafts · Recommended %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Approx. %1$@ grafts · Recommended %2$@"
+          }
+        }
+      }
+    },
+    "Assigned doctor" : {
+
+    },
+    "At least 10 characters" : {
+
+    },
+    "Back" : {
+
+    },
+    "Back to Cases" : {
+
+    },
+    "Back to Possible Match" : {
+
+    },
+    "by NatChatt" : {
+
+    },
+    "C" : {
+
+    },
+    "Calculated automatically from the date of birth." : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Change & Sign Out" : {
+
+    },
+    "Change assigned doctor" : {
+
+    },
+    "Change password and sign out?" : {
+
+    },
+    "Change server" : {
+
+    },
+    "Checking patient records…" : {
+
+    },
+    "Choose from Photo Library" : {
+
+    },
+    "Clear" : {
+
+    },
+    "Close" : {
+
+    },
+    "Close case details" : {
+
+    },
+    "Close conversation" : {
+
+    },
+    "CONFIDENTIAL · DO NOT SHARE" : {
+
+    },
+    "Confirm" : {
+
+    },
+    "Confirm new password" : {
+
+    },
+    "Confirm that you checked the profile photo and this is a different person. The decision will be recorded and may be verified later." : {
+
+    },
+    "Confirmed" : {
+
+    },
+    "Connect to server" : {
+
+    },
+    "Connecting…" : {
+
+    },
+    "Consultation already exists" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Continue with New Patient" : {
+
+    },
+    "Conversation" : {
+
+    },
+    "Copy this token now. It will not be shown again." : {
+
+    },
+    "Copy token" : {
+
+    },
+    "Create agency" : {
+
+    },
+    "Create case" : {
+
+    },
+    "Create user" : {
+
+    },
+    "Current password" : {
+
+    },
+    "Customer Flow" : {
+
+    },
+    "Customer Flow by NatChatt" : {
+
+    },
+    "Customer Flow logo" : {
+
+    },
+    "DD/MM/YYYY" : {
+
+    },
+    "Deactivate" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete %@" : {
+
+    },
+    "Delete permanently" : {
+
+    },
+    "Delete photo permanently" : {
+
+    },
+    "Deleted by %@" : {
+
+    },
+    "Deleted by agent" : {
+
+    },
+    "Different patient confirmed." : {
+
+    },
+    "Display name" : {
+
+    },
+    "Doctor recommendation" : {
+
+    },
+    "Done" : {
+
+    },
+    "e.g. 2,600" : {
+
+    },
+    "e.g. 2,700" : {
+
+    },
+    "Edit" : {
+
+    },
+    "Edit agency" : {
+
+    },
+    "Edit Photo" : {
+
+    },
+    "Edit user" : {
+
+    },
+    "Email" : {
+
+    },
+    "Enlarge" : {
+
+    },
+    "Enlarge & Mark Up" : {
+
+    },
+    "Enter agency name" : {
+
+    },
+    "Enter an age between 0 and 130." : {
+
+    },
+    "Enter first and last name to check records." : {
+
+    },
+    "Enter the address supplied by your organisation. The app checks the server before asking for your login." : {
+
+    },
+    "Enter the date as DD/MM/YYYY." : {
+
+    },
+    "Enter the patient's full name" : {
+
+    },
+    "Existing patient selected." : {
+
+    },
+    "F" : {
+
+    },
+    "Female" : {
+
+    },
+    "Filters" : {
+
+    },
+    "Final agreed plan" : {
+
+    },
+    "Forgot password?" : {
+
+    },
+    "Gender" : {
+
+    },
+    "Generate access token" : {
+
+    },
+    "Generate MCP access token?" : {
+
+    },
+    "Generate token" : {
+
+    },
+    "Generated from the full name. A number is added automatically if it is already used." : {
+
+    },
+    "Give this endpoint and token only to the agency's approved system administrator. The token can access this agency's patient data." : {
+
+    },
+    "Grafts (optional)" : {
+
+    },
+    "Hair loss pattern, expectations and question for the doctor" : {
+
+    },
+    "Help" : {
+
+    },
+    "Hide password" : {
+
+    },
+    "https://server.example.com" : {
+
+    },
+    "Inactive" : {
+
+    },
+    "Leave blank to keep current password" : {
+
+    },
+    "Loading connection…" : {
+
+    },
+    "low" : {
+
+    },
+    "Male" : {
+
+    },
+    "Manage agencies" : {
+
+    },
+    "Manager access is read-only. All records are visible, but changes are disabled." : {
+
+    },
+    "MCP connected" : {
+
+    },
+    "MCP connection" : {
+
+    },
+    "MCP not configured" : {
+
+    },
+    "Minimum 2" : {
+
+    },
+    "New" : {
+
+    },
+    "New agency" : {
+
+    },
+    "New password" : {
+
+    },
+    "New temporary password (optional)" : {
+
+    },
+    "New user" : {
+
+    },
+    "Newest first" : {
+
+    },
+    "Next" : {
+
+    },
+    "No — Different Patient" : {
+
+    },
+    "No cases" : {
+
+    },
+    "No cases match this view." : {
+
+    },
+    "No conversation yet" : {
+
+    },
+    "No matching patient found." : {
+
+    },
+    "No patient photos uploaded" : {
+
+    },
+    "No patients" : {
+
+    },
+    "No patients match this view." : {
+
+    },
+    "No photos uploaded" : {
+
+    },
+    "Non-binary" : {
+
+    },
+    "Not configured" : {
+
+    },
+    "Not specified" : {
+
+    },
     "notifications.close" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Close notifications" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close notifications"
+          }
+        }
       }
     },
     "notifications.empty.message" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "New case activity will appear here." } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New case activity will appear here."
+          }
+        }
       }
     },
     "notifications.empty.title" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "No notifications" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No notifications"
+          }
+        }
       }
     },
     "notifications.mark_all" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Mark all read" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark all read"
+          }
+        }
       }
     },
     "notifications.title" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Notifications" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications"
+          }
+        }
       }
+    },
+    "OK" : {
+
+    },
+    "Oldest first" : {
+
+    },
+    "Only inactive users without consultation history can be permanently deleted." : {
+
+    },
+    "Open Patient" : {
+
+    },
+    "Opens case details" : {
+
+    },
+    "Opens patient details" : {
+
+    },
+    "Opens the reply fields and focuses the message" : {
+
+    },
+    "Optional" : {
+
+    },
+    "Other" : {
+
+    },
+    "Password" : {
+
+    },
+    "Patient details" : {
+
+    },
+    "PATIENT DETAILS" : {
+
+    },
+    "Patient email address" : {
+
+    },
+    "Patient name" : {
+
+    },
+    "Patient note *" : {
+
+    },
+    "Patient occupation" : {
+
+    },
+    "Patient phone number" : {
+
+    },
+    "Patient photo %lld" : {
+
+    },
+    "Patient review" : {
+
+    },
+    "Permanently delete this photo?" : {
+
+    },
+    "Phone" : {
+
+    },
+    "Photo unavailable" : {
+
+    },
+    "Photos" : {
+
+    },
+    "Prefer not to say" : {
+
+    },
+    "Preparing photos…" : {
+
+    },
+    "Previous consultation found" : {
+
+    },
+    "Price (optional)" : {
+
+    },
+    "Profile" : {
+
+    },
+    "Reactivate" : {
+
+    },
+    "Ready" : {
+
+    },
+    "Reason" : {
+
+    },
+    "Recommended %@" : {
+
+    },
+    "Relevant personal context" : {
+
+    },
+    "Remove comment" : {
+
+    },
+    "Remove photo" : {
+
+    },
+    "Remove photo %lld" : {
+
+    },
+    "Remove selected photo %lld" : {
+
+    },
+    "Remove this comment?" : {
+
+    },
+    "Remove this photo?" : {
+
+    },
+    "Reply below to send your assessment to the agent." : {
+
+    },
+    "Reply to agent" : {
+
+    },
+    "Required" : {
+
+    },
+    "Reset password" : {
+
+    },
+    "Role" : {
+
+    },
+    "Role: %@" : {
+
+    },
+    "Rotate access token" : {
+
+    },
+    "Rotate MCP access token?" : {
+
+    },
+    "Rotate token" : {
+
+    },
+    "Rotating immediately invalidates the previous token. Active agency integrations must be updated with the new token." : {
+
+    },
+    "Save changes" : {
+
+    },
+    "Save Final Plan & Close" : {
+
+    },
+    "Search" : {
+
+    },
+    "Search patients, agencies or notes" : {
+
+    },
+    "Security" : {
+
+    },
+    "Selected patient photo %lld" : {
+
+    },
+    "Send and take patient" : {
+
+    },
+    "Send another code" : {
+
+    },
+    "Send message" : {
+
+    },
+    "Send to doctor" : {
+
+    },
+    "Sending your first message assigns the patient to you." : {
+
+    },
+    "Share" : {
+
+    },
+    "Show app tour again" : {
+
+    },
+    "Show details" : {
+
+    },
+    "Show password" : {
+
+    },
+    "Sign in" : {
+
+    },
+    "Sign out" : {
+
+    },
+    "Skip" : {
+
+    },
+    "Something changed" : {
+
+    },
+    "Start using the app" : {
+
+    },
+    "Submit" : {
+
+    },
+    "Swipe to review all photos" : {
+
+    },
+    "Take Photo" : {
+
+    },
+    "Temporary password" : {
+
+    },
+    "The agent confirmed and closed this case." : {
+
+    },
+    "The comment will disappear from the conversation, but administrators will retain the record." : {
+
+    },
+    "The photo will disappear for agents and doctors, but administrators will retain access to the original file." : {
+
+    },
+    "The user will be signed out and will no longer be able to access the server." : {
+
+    },
+    "This is your account. Manage personal details from Profile." : {
+
+    },
+    "This patient already has a consultation record. No new case has been created." : {
+
+    },
+    "This patient is already in your records." : {
+
+    },
+    "This removes the retained file from the server and cannot be undone." : {
+
+    },
+    "Try changing the search or filters." : {
+
+    },
+    "Unassigned" : {
+
+    },
+    "Uploading photos…" : {
+
+    },
+    "Use at least 10 characters. After changing it, you will be signed out and must sign in with the new password." : {
+
+    },
+    "Use at least 10 characters. The code expires after 10 minutes." : {
+
+    },
+    "Use this as context; your clinical recommendation can be different." : {
+
+    },
+    "Username" : {
+
+    },
+    "Username or email" : {
+
+    },
+    "Using the doctor’s recommendation, enter the graft number and price agreed with the patient." : {
+
+    },
+    "ustomer " : {
+
+    },
+    "Verification" : {
+
+    },
+    "View conversation" : {
+
+    },
+    "We will send a six-digit verification code to the email saved in your profile." : {
+
+    },
+    "Write a follow-up for the assigned doctor" : {
+
+    },
+    "Write another message" : {
+
+    },
+    "Write your assessment or question" : {
+
+    },
+    "Yes — Same Patient" : {
+
+    },
+    "You can now sign in with your new password." : {
+
+    },
+    "Your existing patient · %@" : {
+
+    },
+    "Your password has been updated." : {
+
+    },
+    "Your password will be changed immediately. You will then return to the sign-in screen and must use your new password." : {
+
     }
   },
   "version" : "1.0"

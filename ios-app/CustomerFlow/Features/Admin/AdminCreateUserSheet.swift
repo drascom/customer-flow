@@ -40,8 +40,11 @@ struct AdminCreateUserSheet: View {
                         Text("Temporary password")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(AppTheme.muted)
-                        SecureField("At least 10 characters", text: $password)
-                            .textContentType(.newPassword)
+                        RevealablePasswordField(
+                            "At least 10 characters",
+                            text: $password,
+                            textContentType: .newPassword
+                        )
                             .padding(12)
                             .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                     }
@@ -211,8 +214,11 @@ struct AdminEditUserSheet: View {
                         Text("New temporary password (optional)")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(AppTheme.muted)
-                        SecureField("Leave blank to keep current password", text: $password)
-                            .textContentType(.newPassword)
+                        RevealablePasswordField(
+                            "Leave blank to keep current password",
+                            text: $password,
+                            textContentType: .newPassword
+                        )
                             .padding(12)
                             .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                     }

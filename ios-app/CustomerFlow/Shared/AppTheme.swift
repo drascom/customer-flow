@@ -2,6 +2,97 @@ import SwiftUI
 import UIKit
 import PencilKit
 
+struct RevealablePasswordField<FocusValue: Hashable>: View {
+    private let title: LocalizedStringKey
+    @Binding private var text: String
+    private let textContentType: UITextContentType?
+    private let focusBinding: FocusState<FocusValue?>.Binding?
+    private let focusValue: FocusValue?
+    private let submitLabel: SubmitLabel
+    private let onSubmit: () -> Void
+
+    @State private var showsPassword = false
+    @FocusState private var isInternallyFocused: Bool
+
+    init(
+        _ title: LocalizedStringKey,
+        text: Binding<String>,
+        textContentType: UITextContentType? = .password,
+        focus: FocusState<FocusValue?>.Binding,
+        equals focusValue: FocusValue,
+        submitLabel: SubmitLabel = .done,
+        onSubmit: @escaping () -> Void = {}
+    ) {
+        self.title = title
+        _text = text
+        self.textContentType = textContentType
+        focusBinding = focus
+        self.focusValue = focusValue
+        self.submitLabel = submitLabel
+        self.onSubmit = onSubmit
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            focusedPasswordInput
+                .textContentType(textContentType)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(submitLabel)
+                .onSubmit(onSubmit)
+
+            Button {
+                showsPassword.toggle()
+            } label: {
+                Image(systemName: showsPassword ? "eye.slash" : "eye")
+                    .foregroundStyle(AppTheme.muted)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showsPassword ? "Hide password" : "Show password")
+        }
+    }
+
+    @ViewBuilder
+    private var focusedPasswordInput: some View {
+        if let focusBinding, let focusValue {
+            passwordInput
+                .focused(focusBinding, equals: focusValue)
+        } else {
+            passwordInput
+                .focused($isInternallyFocused)
+        }
+    }
+
+    @ViewBuilder
+    private var passwordInput: some View {
+        if showsPassword {
+            TextField(title, text: $text)
+        } else {
+            SecureField(title, text: $text)
+        }
+    }
+}
+
+extension RevealablePasswordField where FocusValue == Bool {
+    init(
+        _ title: LocalizedStringKey,
+        text: Binding<String>,
+        textContentType: UITextContentType? = .password,
+        submitLabel: SubmitLabel = .done,
+        onSubmit: @escaping () -> Void = {}
+    ) {
+        self.title = title
+        _text = text
+        self.textContentType = textContentType
+        focusBinding = nil
+        focusValue = nil
+        self.submitLabel = submitLabel
+        self.onSubmit = onSubmit
+    }
+}
+
 enum AppTheme {
     static let brand = adaptive(
         light: UIColor(red: 47 / 255, green: 125 / 255, blue: 118 / 255, alpha: 1),

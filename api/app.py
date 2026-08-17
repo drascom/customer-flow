@@ -1292,13 +1292,12 @@ class Database:
                 row = self._case_row(conn, case_id)
                 if row["status"] == "closed":
                     raise APIError(409, "case_closed", "A closed case cannot receive new messages.")
-                if row["assigned_doctor_id"] not in (None, user["id"]):
-                    raise APIError(409, "case_changed", "This case is assigned to another doctor. Refresh to continue.")
                 now = iso(utc_now())
+                assigned_doctor_id = row["assigned_doctor_id"] or user["id"]
                 conn.execute("UPDATE cases SET assigned_doctor_id=?, status='answered', version=version+1 WHERE id=?",
-                             (user["id"], case_id))
+                             (assigned_doctor_id, case_id))
                 conn.execute("UPDATE patients SET assigned_doctor_id=?, last_updated=? WHERE id=?",
-                             (user["id"], now, row["patient_id"]))
+                             (assigned_doctor_id, now, row["patient_id"]))
                 conn.execute("INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
                              (str(uuid.uuid4()), case_id, user["id"], user["display_name"], "doctor", now,
                               text, approximate_grafts, recommended_price))
@@ -1664,8 +1663,6 @@ class Database:
                 self._assert_case_visible(case, user)
                 if user["role"] == "agent":
                     self._assert_owner(case, user)
-                if user["role"] == "doctor" and case["assigned_doctor_id"] not in (None, user["id"]):
-                    raise APIError(409, "case_changed", "This case is assigned to another doctor.")
                 if case["status"] == "closed":
                     raise APIError(409, "case_closed", "A closed case cannot receive new messages.")
 

@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct CaseDetailView: View {
+    private enum ComposerField: Hashable {
+        case grafts
+        case price
+        case response
+    }
+
     @EnvironmentObject private var state: AppState
     @Environment(\.dismiss) private var dismiss
     let caseID: UUID
@@ -14,6 +20,8 @@ struct CaseDetailView: View {
     @State private var pendingMessageDeletion: ConsultationMessage?
     @State private var pendingSentMessageID: UUID?
     @State private var messageScrollTarget: UUID?
+    @State private var isComposerExpanded = true
+    @FocusState private var focusedComposerField: ComposerField?
 
     private var item: ConsultationCase? { state.cases.first { $0.id == caseID } }
     private var responseReady: Bool {
@@ -278,61 +286,90 @@ struct CaseDetailView: View {
     @ViewBuilder
     private func responseComposer(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("Reply to agent")
-                .font(.subheadline.bold())
-                .foregroundStyle(AppTheme.ink)
+            if isComposerExpanded {
+                Text("Reply to agent")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(AppTheme.ink)
 
-            HStack(spacing: 8) {
-                TextField("Grafts (optional)", text: $grafts)
-                    .keyboardType(.numbersAndPunctuation)
-                    .font(.caption)
+                HStack(spacing: 8) {
+                    TextField("Grafts (optional)", text: $grafts)
+                        .focused($focusedComposerField, equals: .grafts)
+                        .keyboardType(.numbersAndPunctuation)
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 34)
+                        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 10))
+                    HStack(spacing: 6) {
+                        Text(AppCurrency.symbol)
+                            .font(.caption.bold())
+                        TextField("Price (optional)", text: $price)
+                            .focused($focusedComposerField, equals: .price)
+                            .keyboardType(.decimalPad)
+                            .font(.caption)
+                    }
                     .padding(.horizontal, 10)
                     .frame(minHeight: 34)
                     .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 10))
-                HStack(spacing: 6) {
-                    Text(AppCurrency.symbol)
-                        .font(.caption.bold())
-                    TextField("Price (optional)", text: $price)
-                        .keyboardType(.decimalPad)
-                        .font(.caption)
                 }
-                .padding(.horizontal, 10)
-                .frame(minHeight: 34)
-                .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 10))
-            }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Write your assessment or question", text: $response, axis: .vertical)
-                    .lineLimit(1...4)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 9)
-                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13))
-                    .overlay(RoundedRectangle(cornerRadius: 13).stroke(AppTheme.border))
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Write your assessment or question", text: $response, axis: .vertical)
+                        .focused($focusedComposerField, equals: .response)
+                        .lineLimit(1...4)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 9)
+                        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13))
+                        .overlay(RoundedRectangle(cornerRadius: 13).stroke(AppTheme.border))
 
-                if isSending {
-                    ProgressView()
-                        .frame(width: 42, height: 42)
-                } else {
-                    Button {
-                        Task { await sendResponse(for: item) }
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.headline.bold())
-                            .foregroundStyle(.white)
+                    if isSending {
+                        ProgressView()
                             .frame(width: 42, height: 42)
-                            .background(AppTheme.accent, in: Circle())
+                    } else {
+                        Button {
+                            Task { await sendResponse(for: item) }
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.headline.bold())
+                                .foregroundStyle(.white)
+                                .frame(width: 42, height: 42)
+                                .background(AppTheme.accent, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!responseReady)
+                        .opacity(responseReady ? 1 : 0.45)
+                        .accessibilityLabel(item.assignedDoctorID == nil ? "Send and take patient" : "Send message")
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!responseReady)
-                    .opacity(responseReady ? 1 : 0.45)
-                    .accessibilityLabel(item.assignedDoctorID == nil ? "Send and take patient" : "Send message")
                 }
-            }
 
-            if item.assignedDoctorID == nil {
-                Label("Sending your first message assigns the patient to you.", systemImage: "person.badge.plus")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.accent)
+                if item.assignedDoctorID == nil {
+                    Label("Sending your first message assigns the patient to you.", systemImage: "person.badge.plus")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.accent)
+                }
+            } else {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        isComposerExpanded = true
+                    }
+                    Task { @MainActor in
+                        await Task.yield()
+                        focusedComposerField = .response
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "bubble.left")
+                        Text("Write another message")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Image(systemName: "chevron.up")
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens the reply fields and focuses the message")
             }
         }
         .padding(12)
@@ -356,9 +393,17 @@ struct CaseDetailView: View {
         )
         isSending = false
         if sent {
+            focusedComposerField = nil
             grafts = ""
             price = ""
             response = ""
+            withAnimation(.easeInOut(duration: 0.22)) {
+                isComposerExpanded = false
+            }
+            await Task.yield()
+            messageScrollTarget = state.cases
+                .first(where: { $0.id == item.id })?
+                .messages.last?.id
         }
     }
 
