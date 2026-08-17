@@ -66,7 +66,7 @@ struct CaseDetailView: View {
                                     .padding(.horizontal, 4)
 
                                 ForEach(item.messages) { message in
-                                    MessageBubble(
+                                    ConversationMessageBubble(
                                         message: message,
                                         canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
                                         onDelete: { pendingMessageDeletion = message }
@@ -460,74 +460,5 @@ struct CaseDetailView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-}
-
-private struct MessageBubble: View {
-    let message: ConsultationMessage
-    let canDelete: Bool
-    let onDelete: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                Text(message.author)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Text(message.createdAt.compactRelativeText)
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.muted)
-                    .lineLimit(1)
-
-                if canDelete {
-                    Button(action: onDelete) {
-                        Image(systemName: "trash")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.red)
-                            .frame(width: 28, height: 28)
-                            .background(.red.opacity(0.09), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Remove comment")
-                }
-            }
-
-            if !message.text.isEmpty {
-                Text(message.text)
-                    .font(.body)
-                    .foregroundStyle(AppTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let attachmentPhotoID = message.attachmentPhotoID {
-                MessagePhotoView(messageID: attachmentPhotoID)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
-                HStack(spacing: 10) {
-                    Text("Approx. \(grafts) grafts")
-                    Text("Recommended \(AppCurrency.amount(price))")
-                }
-                .font(.caption.bold())
-                .foregroundStyle(AppTheme.brand)
-            }
-        }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(bubbleColor, in: RoundedRectangle(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(AppTheme.border.opacity(0.65))
-        }
-    }
-
-    private var bubbleColor: Color {
-        (message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.1)
     }
 }

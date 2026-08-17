@@ -420,6 +420,7 @@ struct AgentCaseEditorView: View {
                 if isEditMode {
                     caseDetails
                     patientPhotos
+                    conversationSection
                     if let editCase,
                        editCase.status == .closed || (editCase.status == .answered && latestDoctorRecommendation != nil) {
                         finalPlanSection(editCase)
@@ -1104,41 +1105,55 @@ struct AgentCaseEditorView: View {
                 }
             }
 
-            if isEditMode, let editCase {
-                Divider()
-                Text("Conversation").font(.headline)
+        }
+        .padding(14)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+    }
+
+    @ViewBuilder
+    private var conversationSection: some View {
+        if let editCase {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("CONVERSATION")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.muted)
+                    .padding(.horizontal, 4)
+
                 ForEach(editCase.messages) { message in
-                    MessagePreview(
+                    ConversationMessageBubble(
                         message: message,
                         canDelete: message.role == .agent && message.authorID == state.currentUser?.id,
                         onDelete: { pendingMessageDeletion = message }
                     )
                 }
+
                 if canEditCase {
-                    labeledField("Add an update or question", required: false) {
-                        TextField("Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
-                            .lineLimit(3...6)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    if !updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button("Send to doctor") {
-                            Task {
-                                if await state.sendAgentUpdate(caseID: editCase.id, text: updateText) {
-                                    updateText = ""
-                                    returnedToDoctor = true
-                                    statusText = "Waiting for Doctor · Update sent"
+                    VStack(alignment: .leading, spacing: 8) {
+                        labeledField("Add an update or question", required: false) {
+                            TextField("Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
+                                .lineLimit(3...6)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        if !updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button("Send to doctor") {
+                                Task {
+                                    if await state.sendAgentUpdate(caseID: editCase.id, text: updateText) {
+                                        updateText = ""
+                                        returnedToDoctor = true
+                                        statusText = "Waiting for Doctor · Update sent"
+                                    }
                                 }
                             }
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
                     }
+                    .padding(.top, 4)
                 }
             }
         }
-        .padding(14)
-        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
     }
 
     private func finalPlanSection(_ item: ConsultationCase) -> some View {
@@ -1755,39 +1770,5 @@ private struct PendingPhotoThumbnail: View {
             .accessibilityLabel("Remove selected photo \(index + 1)")
         }
         .accessibilityLabel("Selected patient photo \(index + 1)")
-    }
-}
-
-private struct MessagePreview: View {
-    let message: ConsultationMessage
-    let canDelete: Bool
-    let onDelete: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(message.author).font(.caption.bold())
-                Spacer()
-                if canDelete {
-                    Button(action: onDelete) {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.red)
-                    .accessibilityLabel("Remove comment")
-                }
-                Text(message.createdAt.compactRelativeText).font(.caption2).foregroundStyle(AppTheme.muted)
-            }
-            Text(message.text).font(.body)
-            if let attachmentPhotoID = message.attachmentPhotoID {
-                MessagePhotoView(messageID: attachmentPhotoID)
-            }
-            if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
-                Text("Approx. \(grafts) grafts · Recommended \(AppCurrency.amount(price))")
-                    .font(.caption.bold()).foregroundStyle(AppTheme.brand)
-            }
-        }
-        .padding(12)
-        .background((message.role == .doctor ? AppTheme.brand : AppTheme.muted).opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
     }
 }

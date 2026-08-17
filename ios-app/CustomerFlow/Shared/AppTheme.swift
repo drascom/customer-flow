@@ -1132,6 +1132,147 @@ struct MessagePhotoView: View {
     }
 }
 
+struct ConversationMessageBubble: View {
+    let message: ConsultationMessage
+    let canDelete: Bool
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(message.author)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text(message.createdAt.compactRelativeText)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+                    .lineLimit(1)
+
+                if canDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .frame(width: 28, height: 28)
+                            .background(.red.opacity(0.09), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove comment")
+                }
+            }
+
+            if !message.text.isEmpty {
+                ExpandableMessageText(message.text, lineLimit: 6)
+            }
+
+            if let attachmentPhotoID = message.attachmentPhotoID {
+                MessagePhotoView(messageID: attachmentPhotoID)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let grafts = message.approximateGrafts, let price = message.recommendedPrice {
+                HStack(spacing: 10) {
+                    Text("Approx. \(grafts) grafts")
+                    Text("Recommended \(AppCurrency.amount(price))")
+                }
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.brand)
+            }
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(bubbleColor, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.border.opacity(0.65))
+        }
+    }
+
+    private var bubbleColor: Color {
+        (message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.1)
+    }
+}
+
+private struct ExpandableMessageText: View {
+    let text: String
+    let lineLimit: Int
+
+    @State private var isExpanded = false
+    @State private var visibleHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
+
+    init(_ text: String, lineLimit: Int) {
+        self.text = text
+        self.lineLimit = lineLimit
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(text)
+                .font(.body)
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(isExpanded ? nil : lineLimit)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(visibleHeightReader)
+                .background(fullHeightReader)
+
+            if isExpanded || isTruncated {
+                Button(isExpanded ? "Show less" : "Read more") {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        isExpanded.toggle()
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.brandDark)
+                .buttonStyle(.plain)
+            }
+        }
+        .onPreferenceChange(VisibleMessageHeightKey.self) { visibleHeight = $0 }
+        .onPreferenceChange(FullMessageHeightKey.self) { fullHeight = $0 }
+    }
+
+    private var isTruncated: Bool {
+        fullHeight > visibleHeight + 1
+    }
+
+    private var visibleHeightReader: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: VisibleMessageHeightKey.self, value: proxy.size.height)
+        }
+    }
+
+    private var fullHeightReader: some View {
+        Text(text)
+            .font(.body)
+            .fixedSize(horizontal: false, vertical: true)
+            .hidden()
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: FullMessageHeightKey.self, value: proxy.size.height)
+                }
+            }
+    }
+}
+
+private struct VisibleMessageHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct FullMessageHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct LatestMessagePreview: View {
     let author: String
     let text: String
