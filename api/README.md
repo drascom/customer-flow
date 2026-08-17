@@ -73,7 +73,52 @@ iOS notification centres. Recipient scope is enforced by the API:
 - the user who performed the action is excluded from that action's recipients.
 
 The iOS app registers its APNs device token after sign-in. Background and lock
-screen delivery is enabled when the API service has an Apple provider key:
+screen delivery is enabled when the API service has an Apple provider key.
+
+### Production APNs setup
+
+This deployment uses Production APNs for TestFlight and App Store builds.
+
+1. Open [Apple Developer → Certificates, Identifiers & Profiles → Keys](https://developer.apple.com/account/resources/authkeys/list)
+   and select the organisation's Apple Developer team.
+2. Add a key, give it a recognisable name such as `Customer Flow APNs`, and
+   enable **Apple Push Notifications service (APNs)**.
+3. Choose **Production**, then **Topic Specific**, and add the
+   `com.customerflow.client` topic.
+4. Review and register the key, then download the `.p8` file immediately.
+   Apple permits this private key file to be downloaded only once.
+5. Record the Key ID shown by Apple and the team's 10-character Team ID. The
+   Team ID is also displayed beside the team name in the developer portal.
+
+Keep the downloaded key outside the repository and restrict it to the API
+service user. For the provided user-level systemd service, one suitable layout
+is:
+
+```bash
+install -d -m 700 ~/.config/customer-flow/apns
+install -m 600 /path/to/AuthKey_KEYID.p8 ~/.config/customer-flow/apns/
+install -d -m 700 ~/.config/systemd/user/customer-flow-api.service.d
+```
+
+Create `~/.config/systemd/user/customer-flow-api.service.d/apns.conf` with:
+
+```ini
+[Service]
+Environment=CF_APNS_KEY_ID=APPLE_KEY_ID
+Environment=CF_APNS_TEAM_ID=APPLE_TEAM_ID
+Environment=CF_APNS_PRIVATE_KEY=/home/API_USER/.config/customer-flow/apns/AuthKey_KEYID.p8
+Environment=CF_APNS_TOPIC=com.customerflow.client
+```
+
+Reload and restart the API:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart customer-flow-api
+systemctl --user is-active customer-flow-api
+```
+
+The same values can be exported directly when the API is run without systemd:
 
 ```bash
 export CF_APNS_KEY_ID='APPLE_KEY_ID'
@@ -87,6 +132,13 @@ the dashboard; only the external Apple push delivery worker stays disabled.
 The provider key must remain outside the repository with read access limited to
 the API service user. Delivery attempts use a durable outbox and invalid APNs
 device tokens are removed automatically.
+
+Install the app through TestFlight when testing this Production configuration.
+An app launched directly from Xcode with a Debug configuration receives a
+Sandbox device token and therefore does not receive pushes from this
+Production-only key. Never commit `.p8` files; `*.p8` is excluded by the root
+`.gitignore`. Keep a protected offline backup because Apple does not allow the
+private key to be downloaded again.
 
 ## Password recovery by email
 

@@ -25,4 +25,8 @@ For production use, the server must be placed behind HTTPS and configured with s
 3. Open and run the [iOS app](ios-app/README.md).
 4. Enter the reachable server address in the app and sign in with a server-created account.
 
+For lock-screen and background notifications, complete the
+[Production APNs setup](api/README.md#production-apns-setup) after the API is
+running. In-app and dashboard notifications work without an Apple key.
+
 This software supports consultation workflow and record handling. It does not replace professional medical judgement or local clinical, privacy and regulatory obligations.
