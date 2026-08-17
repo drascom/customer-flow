@@ -568,6 +568,8 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
     private let canvasView = PKCanvasView()
     private let toolPicker = PKToolPicker()
     private var textViews: [PhotoTextView] = []
+    private weak var textAwaitingInitialKeyboardPlacement: PhotoTextView?
+    private var keyboardTopInCanvas: CGFloat?
     private var sendButton: UIButton!
 
     init(
@@ -589,6 +591,12 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
 
         let closeButton = controlButton(
             title: "",
@@ -663,6 +671,10 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         let preferredControlsWidth = controlsBackground.widthAnchor.constraint(equalToConstant: 260)
         preferredControlsWidth.priority = .defaultHigh
         preferredControlsWidth.isActive = true
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -797,7 +809,62 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         canvasView.undoManager?.registerUndo(withTarget: self) { target in
             target.removeTextView(textView)
         }
+        textAwaitingInitialKeyboardPlacement = textView
         textView.becomeFirstResponder()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.placePendingTextAboveKeyboard(
+                keyboardFrameInView: self.view.keyboardLayoutGuide.layoutFrame,
+                duration: 0,
+                options: []
+            )
+        }
+    }
+
+    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+            as? NSValue else { return }
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
+            as? TimeInterval ?? 0.25
+        let curveValue = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey]
+            as? UInt ?? UInt(UIView.AnimationCurve.easeInOut.rawValue)
+        let options = UIView.AnimationOptions(rawValue: curveValue << 16)
+            .union(.beginFromCurrentState)
+        placePendingTextAboveKeyboard(
+            keyboardFrameInView: view.convert(keyboardFrame.cgRectValue, from: nil),
+            duration: duration,
+            options: options
+        )
+    }
+
+    private func placePendingTextAboveKeyboard(
+        keyboardFrameInView: CGRect,
+        duration: TimeInterval,
+        options: UIView.AnimationOptions
+    ) {
+        let keyboardFrameInCanvas = canvasView.convert(keyboardFrameInView, from: view)
+        guard keyboardFrameInCanvas.minY < canvasView.bounds.maxY else {
+            keyboardTopInCanvas = nil
+            textAwaitingInitialKeyboardPlacement = nil
+            return
+        }
+        keyboardTopInCanvas = keyboardFrameInCanvas.minY
+        guard let textView = textAwaitingInitialKeyboardPlacement,
+              textView.isFirstResponder else { return }
+
+        let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
+        let margin: CGFloat = 16
+        let halfHeight = textView.bounds.height / 2
+        let visibleBottom = min(imageRect.maxY, keyboardFrameInCanvas.minY - margin)
+        let targetCenter = CGPoint(
+            x: imageRect.midX,
+            y: max(imageRect.minY + halfHeight, visibleBottom - halfHeight)
+        )
+        textAwaitingInitialKeyboardPlacement = nil
+
+        UIView.animate(withDuration: duration, delay: 0, options: options) {
+            textView.center = targetCenter
+        }
     }
 
     @objc private func finishTextEditing() {
@@ -885,10 +952,14 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
     func textViewDidChange(_ textView: UITextView) {
         guard let textView = textView as? PhotoTextView else { return }
         resizeTextViewToFit(textView)
+        keepEditingTextAboveKeyboard(textView)
     }
 
     func textViewDidEndEditing(_ textView: UITextView) {
         guard let textView = textView as? PhotoTextView else { return }
+        if textAwaitingInitialKeyboardPlacement === textView {
+            textAwaitingInitialKeyboardPlacement = nil
+        }
         textView.layer.borderWidth = 0
         if textView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             removeTextView(textView)
@@ -929,6 +1000,18 @@ private final class PhotoMarkupViewController: UIViewController, UITextViewDeleg
         )
         textView.center = center
         keepTextInsideImage(textView)
+    }
+
+    private func keepEditingTextAboveKeyboard(_ textView: PhotoTextView) {
+        guard textView.isFirstResponder,
+              let keyboardTopInCanvas else { return }
+        let imageRect = aspectFitRect(for: sourceImage.size, in: canvasView.bounds)
+        let halfHeight = textView.bounds.height / 2
+        let highestAllowedCenter = min(imageRect.maxY, keyboardTopInCanvas - 16) - halfHeight
+        textView.center.y = max(
+            imageRect.minY + halfHeight,
+            min(textView.center.y, highestAllowedCenter)
+        )
     }
 
     private func keepTextInsideImage(_ textView: PhotoTextView) {
