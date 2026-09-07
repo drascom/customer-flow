@@ -129,15 +129,14 @@ actor RemoteAdminRepository: AdminRepository {
         ))
     }
 
-    func unconfirmCase(caseID: String) async throws -> AdminCase {
+    func unconfirmCase(caseID: String) async throws {
         struct Empty: Encodable, Sendable {}
-        struct Envelope: Decodable, Sendable { let `case`: AdminCase }
-        let response: Envelope = try await client.send(
+        struct Envelope: Decodable, Sendable {}
+        let _: Envelope = try await client.send(
             "POST",
             path: "admin/cases/\(caseID)/unconfirm",
             body: Empty()
         )
-        return response.case
     }
 
     func purgePhoto(id: String) async throws {

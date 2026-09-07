@@ -13,7 +13,7 @@ protocol AdminRepository: Sendable {
     func fetchMCPConnection(agencyID: String) async throws -> AdminMCPConnection
     func rotateMCPToken(agencyID: String) async throws -> AdminMCPConnection
     func assignDoctor(patientID: String, doctorID: String?, reason: String) async throws
-    func unconfirmCase(caseID: String) async throws -> AdminCase
+    func unconfirmCase(caseID: String) async throws
     func purgePhoto(id: String) async throws
     func addOperationalNote(caseID: String, text: String) async throws
 }
