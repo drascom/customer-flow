@@ -9,12 +9,14 @@ struct AdminCaseCard: View {
     let isExpanded: Bool
     let onToggle: () -> Void
     let onAssign: (String?) -> Void
+    let onUndoConfirmation: () -> Void
     let onPurgePhoto: (String) -> Void
     let onSendOperationalNote: (String) async -> AdminCase?
 
     @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var pendingPurgePhotoID: String?
     @State private var showsConversation = false
+    @State private var showsUndoConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -97,6 +99,19 @@ struct AdminCaseCard: View {
                     }
                 }
 
+                if item.status == .closed && !isReadOnly {
+                    Button {
+                        showsUndoConfirmation = true
+                    } label: {
+                        Label("Undo confirmation", systemImage: "arrow.uturn.backward.circle")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 42)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .padding(.top, 10)
+                }
+
                 if !item.photos.isEmpty {
                     adminPhotos
                         .padding(.top, 12)
@@ -148,6 +163,18 @@ struct AdminCaseCard: View {
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(28)
                 .presentationContentInteraction(.scrolls)
+        }
+        .confirmationDialog(
+            "Undo this confirmation?",
+            isPresented: $showsUndoConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Undo confirmation", role: .destructive) {
+                onUndoConfirmation()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The final grafts, price and appointment will be cleared. The case will return to Answered.")
         }
         .confirmationDialog(
             "Permanently delete this photo?",

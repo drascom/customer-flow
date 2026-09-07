@@ -879,6 +879,9 @@
     "The comment will disappear from the conversation, but administrators will retain the record." : {
 
     },
+    "The final grafts, price and appointment will be cleared. The case will return to Answered." : {
+
+    },
     "The photo will disappear for agents and doctors, but administrators will retain access to the original file." : {
 
     },
@@ -914,6 +917,12 @@
 
     },
     "Unassigned" : {
+
+    },
+    "Undo confirmation" : {
+
+    },
+    "Undo this confirmation?" : {
 
     },
     "Update available" : {

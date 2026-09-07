@@ -343,6 +343,7 @@ struct AdminDashboardView: View {
                             withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id }
                         },
                         onAssign: { requestAssignment(for: item, doctorID: $0) },
+                        onUndoConfirmation: { Task { await model.unconfirmCase(item) } },
                         onPurgePhoto: { photoID in Task { await model.purgePhoto(id: photoID) } },
                         onSendOperationalNote: { text in
                             await model.addOperationalNote(to: item, text: text)

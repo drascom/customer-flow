@@ -264,6 +264,19 @@ final class AdminDashboardModel {
         }
     }
 
+    func unconfirmCase(_ item: AdminCase) async {
+        do {
+            let updated = try await repository.unconfirmCase(caseID: item.id)
+            guard let index = cases.firstIndex(where: { $0.id == item.id }) else {
+                await load()
+                return
+            }
+            cases[index] = updated
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func purgePhoto(id: String) async {
         do {
             try await repository.purgePhoto(id: id)
