@@ -444,7 +444,7 @@ struct AgentCaseEditorView: View {
         if grafts.trimmingCharacters(in: .whitespaces).isEmpty { result.append("graft number") }
         if price.trimmingCharacters(in: .whitespaces).isEmpty { result.append("price") }
         if agentNote.trimmingCharacters(in: .whitespaces).isEmpty { result.append("agent note") }
-        if photoCount < 2 { result.append("at least 2 photos") }
+        if photoCount < 1 { result.append("at least 1 photo") }
         return result
     }
 
@@ -653,15 +653,15 @@ struct AgentCaseEditorView: View {
                 }
             }
         case .photos:
-            wizardCard("Photos", info: "At least two photos are required.") {
+            wizardCard("Photos", info: "At least one photo is required.") {
                 HStack {
-                    Text("\(photoCount) photos")
+                    Text(photoCount == 1 ? "1 photo" : "\(photoCount) photos")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.brandDark)
                     Spacer()
-                    Text(photoCount >= 2 ? "Ready" : "Minimum 2")
+                    Text(photoCount >= 1 ? "Ready" : "Minimum 1")
                         .font(.caption)
-                        .foregroundStyle(photoCount >= 2 ? AppTheme.brandDark : AppTheme.accent)
+                        .foregroundStyle(photoCount >= 1 ? AppTheme.brandDark : AppTheme.accent)
                 }
 
                 if photoCount > 0 {

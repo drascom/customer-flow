@@ -231,6 +231,8 @@ function renderCases() {
 function caseCardHTML(item) {
   const latest = latestMessage(item); const status = statusPresentation(item.status, item.completedAt);
   const agent = item.agentName || "Agency representative"; const agency = item.agencyName || "";
+  const bandTone = item.completedAt ? "completed" : item.status === "closed" ? "closed" :
+    ((state.user?.role === "agent" ? item.status === "answered" : item.status === "waiting") ? "needs-action" : "waiting-on-other");
   return `<button class="case-card" data-open-case="${escapeHTML(item.id)}" type="button">
     <div class="case-card-body">
       <div class="case-title-row"><strong>${escapeHTML(patientName(item))}</strong><span>${relativeTime(item.patient?.lastUpdated || item.uploadedAt)}</span></div>
@@ -238,7 +240,7 @@ function caseCardHTML(item) {
       <p class="case-summary">${escapeHTML(caseNote(item) || latest?.text || "Open the consultation to review patient details.")}</p>
       <div class="case-metrics"><span class="metric"><small>Est. grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>Est. price</small><strong>£${escapeHTML(casePrice(item))}</strong></span><span class="metric"><small>Media</small><strong>${photoIDs(item).length} · ${(item.messages || []).length}</strong></span></div>
       ${latest ? `<div class="latest-row"><strong>${escapeHTML(latest.authorName || latest.author || "Update")}</strong><span class="message-preview">${escapeHTML(latest.text || "Photo sent")}</span><time>${relativeTime(latest.createdAt)}</time></div>` : ""}
-    </div><div class="status-band ${escapeHTML(status.className)}">${status.icon} ${escapeHTML(status.label)}</div></button>`;
+    </div><div class="status-band ${escapeHTML(bandTone)}">${status.icon} ${escapeHTML(status.label)}</div></button>`;
 }
 
 function renderManagementCases(rows) {
@@ -479,7 +481,7 @@ function renderMatchHint() {
   $("confirmDifferentPatient").onclick = () => { state.duplicate.confirmed = true; state.duplicate.existingPatientID = null; hint.className = "field-hint"; hint.textContent = "Confirmed as a different patient."; };
 }
 async function submitNewCase(event) {
-  event.preventDefault(); if (state.pendingFiles.length < 2) return $("newCaseError").textContent = "Please add at least two photos.";
+  event.preventDefault(); if (state.pendingFiles.length < 1) return $("newCaseError").textContent = "Please add at least one photo.";
   if (state.duplicate.matches.length && !state.duplicate.confirmed) return $("newCaseError").textContent = "Confirm whether this is a different patient before continuing.";
   const submit = event.currentTarget.querySelector("button[type=submit]"); submit.disabled = true;
   try {

@@ -104,6 +104,9 @@
     "%lld photos" : {
 
     },
+    "1 photo" : {
+
+    },
     "%lld/%lld · %@" : {
       "localizations" : {
         "en" : {
@@ -471,7 +474,7 @@
     "MCP not configured" : {
 
     },
-    "Minimum 2" : {
+    "Minimum 1" : {
 
     },
     "New" : {
