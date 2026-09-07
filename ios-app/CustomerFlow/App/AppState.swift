@@ -18,6 +18,7 @@ final class AppState: ObservableObject {
     @Published var pendingNotificationCaseID: UUID?
     @Published private(set) var liveRevision = 0
     @Published private(set) var isRefreshingAfterForeground = false
+    @Published private(set) var updateRequirement: AppUpdateRequirement?
     @Published var errorMessage: String?
     @Published var isWorking = false
 
@@ -40,6 +41,7 @@ final class AppState: ObservableObject {
     private var deviceTokenHex: String?
     private let photoCache = NSCache<NSString, NSData>()
     private let serverAddressKey = "customerFlow.serverAddress"
+    private var dismissedRecommendedVersion: String?
 
     init(notificationService: any NotificationService = NoopNotificationService()) {
         self.notificationService = notificationService
@@ -57,6 +59,7 @@ final class AppState: ObservableObject {
             let health = try await client.health()
             remoteClient = client
             connectedServerName = health.service
+            await checkClientVersion(using: client)
             guard token != nil else {
                 phase = .login
                 return
@@ -90,6 +93,7 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(baseURL.absoluteString, forKey: serverAddressKey)
             remoteClient = client
             connectedServerName = health.service
+            await checkClientVersion(using: client)
             phase = .login
             return true
         } catch {
@@ -213,6 +217,8 @@ final class AppState: ObservableObject {
         photoCache.removeAllObjects()
         adminRepository = nil
         connectedServerName = "Customer Flow Server"
+        updateRequirement = nil
+        dismissedRecommendedVersion = nil
         phase = .serverSetup
     }
 
@@ -244,9 +250,58 @@ final class AppState: ObservableObject {
         isRefreshingAfterForeground = true
         defer { isRefreshingAfterForeground = false }
         startLiveUpdates(client: remoteClient)
+        await checkClientVersion(using: remoteClient)
         await load()
         guard phase == .authenticated else { return }
         liveRevision &+= 1
+    }
+
+    func dismissRecommendedUpdate() {
+        guard let updateRequirement, !updateRequirement.isRequired else { return }
+        dismissedRecommendedVersion = updateRequirement.latestVersion
+        self.updateRequirement = nil
+    }
+
+    private func checkClientVersion(using client: RemoteAPIClient) async {
+        guard let policy = try? await client.clientVersionPolicy() else { return }
+        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "0.0.0"
+        let required = Self.isVersion(current, olderThan: policy.minimumVersion)
+        let latest = policy.latestVersion ?? policy.minimumVersion
+        let recommended = Self.isVersion(current, olderThan: latest)
+
+        if required {
+            updateRequirement = AppUpdateRequirement(
+                currentVersion: current,
+                latestVersion: latest,
+                minimumVersion: policy.minimumVersion,
+                storeURL: policy.storeURL,
+                isRequired: true
+            )
+        } else if recommended, dismissedRecommendedVersion != latest {
+            updateRequirement = AppUpdateRequirement(
+                currentVersion: current,
+                latestVersion: latest,
+                minimumVersion: policy.minimumVersion,
+                storeURL: policy.storeURL,
+                isRequired: false
+            )
+        } else if !recommended {
+            updateRequirement = nil
+            dismissedRecommendedVersion = nil
+        }
+    }
+
+    private static func isVersion(_ current: String, olderThan target: String) -> Bool {
+        let currentParts = current.split(separator: ".").map { Int($0) ?? 0 }
+        let targetParts = target.split(separator: ".").map { Int($0) ?? 0 }
+        let count = max(currentParts.count, targetParts.count)
+        for index in 0..<count {
+            let currentPart = index < currentParts.count ? currentParts[index] : 0
+            let targetPart = index < targetParts.count ? targetParts[index] : 0
+            if currentPart != targetPart { return currentPart < targetPart }
+        }
+        return false
     }
 
     func createCase(patientName: String, patientProfile: PatientProfileInput, grafts: String, currency: String, price: String, note: String,
@@ -400,6 +455,18 @@ final class AppState: ObservableObject {
             return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func completeCase(caseID: UUID) async -> Bool {
+        do {
+            let updated = try await repository.completeCase(caseID: caseID)
+            replace(updated)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            await load()
             return false
         }
     }

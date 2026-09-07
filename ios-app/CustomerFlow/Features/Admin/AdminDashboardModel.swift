@@ -43,8 +43,12 @@ final class AdminDashboardModel {
             ].joined(separator: " ").localizedCaseInsensitiveContains(query)
             let assignmentMatches = caseAssignment.isEmpty
                 || (caseAssignment == "assigned" ? item.doctorID != nil : item.doctorID == nil)
+            let statusMatches = caseStatus.isEmpty
+                || (caseStatus == "completed"
+                    ? item.isCompleted
+                    : item.status.rawValue == caseStatus && !item.isCompleted)
             return searchMatches
-                && (caseStatus.isEmpty || item.status.rawValue == caseStatus)
+                && statusMatches
                 && assignmentMatches
                 && (caseAgency.isEmpty || item.agencyName == caseAgency)
                 && (caseDoctorID.isEmpty || item.doctorID == caseDoctorID)

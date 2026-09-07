@@ -6,6 +6,7 @@ private enum AgentCaseFilter: String, CaseIterable, Identifiable {
     case all
     case waiting
     case answered
+    case completed
     case closed
 
     var id: Self { self }
@@ -15,7 +16,8 @@ private enum AgentCaseFilter: String, CaseIterable, Identifiable {
         case .all: "All cases"
         case .waiting: "Waiting for Doctor"
         case .answered: "Waiting for Me"
-        case .closed: "Closed"
+        case .completed: "Completed"
+        case .closed: "Confirmed"
         }
     }
 }
@@ -32,8 +34,9 @@ struct AgentCasesView: View {
             .filter { item in
                 switch filter {
                 case .all: true
-                case .waiting: item.status == .waiting
-                case .answered: item.status == .answered
+                case .waiting: item.status == .waiting && !item.isCompleted
+                case .answered: item.status == .answered && !item.isCompleted
+                case .completed: item.isCompleted
                 case .closed: item.status == .closed
                 }
             }
@@ -206,8 +209,9 @@ struct AgentCasesView: View {
         state.cases.filter { item in
             switch filter {
             case .all: return true
-            case .waiting: return item.status == .waiting
-            case .answered: return item.status == .answered
+            case .waiting: return item.status == .waiting && !item.isCompleted
+            case .answered: return item.status == .answered && !item.isCompleted
+            case .completed: return item.isCompleted
             case .closed: return item.status == .closed
             }
         }.count
@@ -302,7 +306,8 @@ private struct AgentCaseListCard: View {
     }
 
     private var shortStatus: String {
-        switch item.status {
+        if item.isCompleted { return "Completed" }
+        return switch item.status {
         case .waiting: "Waiting for Doctor"
         case .answered: "Action needed"
         case .closed: "Confirmed"
@@ -310,7 +315,8 @@ private struct AgentCaseListCard: View {
     }
 
     private var statusColor: Color {
-        switch item.status {
+        if item.isCompleted { return Color(red: 0.08, green: 0.52, blue: 0.32) }
+        return switch item.status {
         case .waiting: AppTheme.accent
         case .answered: Color(red: 0.78, green: 0.16, blue: 0.14)
         case .closed: Color(red: 0.08, green: 0.52, blue: 0.32)
@@ -377,6 +383,7 @@ struct AgentCaseEditorView: View {
     @State private var createStep: CreateStep = .patient
     @State private var patientVerification: PatientVerification = .idle
     @State private var isSubmitting = false
+    @State private var showsCompletionConfirmation = false
     @FocusState private var isPatientNameFocused: Bool
     @FocusState private var isUpdateTextFocused: Bool
 
@@ -451,7 +458,7 @@ struct AgentCaseEditorView: View {
                         patientPhotos
                         conversationSection
                         if let editCase,
-                           editCase.status == .closed || (editCase.status == .answered && latestDoctorRecommendation != nil) {
+                           editCase.status == .closed || (!editCase.isCompleted && editCase.status == .answered && latestDoctorRecommendation != nil) {
                             finalPlanSection(editCase)
                         }
                     } else {
@@ -545,6 +552,19 @@ struct AgentCaseEditorView: View {
             Button("Cancel", role: .cancel) { pendingMessageDeletion = nil }
         } message: {
             Text("The comment will disappear from the conversation, but administrators will retain the record.")
+        }
+        .confirmationDialog(
+            "Mark this case as complete?",
+            isPresented: $showsCompletionConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Mark as complete") {
+                guard let caseID = editingCaseID else { return }
+                Task { _ = await state.completeCase(caseID: caseID) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Only one person needs to complete it. A new doctor or agent message will reopen the case automatically.")
         }
     }
 
@@ -1024,7 +1044,7 @@ struct AgentCaseEditorView: View {
     private var caseStatusBand: some View {
         HStack(spacing: 8) {
             Image(systemName: caseStatusIcon)
-            Text(editCase?.status.title ?? statusText)
+            Text(editCase?.isCompleted == true ? "Completed" : (editCase?.status.title ?? statusText))
                 .fontWeight(.bold)
             Spacer(minLength: 8)
         }
@@ -1038,7 +1058,8 @@ struct AgentCaseEditorView: View {
     }
 
     private var caseStatusIcon: String {
-        switch editCase?.status {
+        if editCase?.isCompleted == true { return "checkmark.circle.fill" }
+        return switch editCase?.status {
         case .waiting: "clock.fill"
         case .answered: "exclamationmark.circle.fill"
         case .closed: "checkmark.circle.fill"
@@ -1047,7 +1068,8 @@ struct AgentCaseEditorView: View {
     }
 
     private var caseStatusColor: Color {
-        switch editCase?.status {
+        if editCase?.isCompleted == true { return Color(red: 0.08, green: 0.52, blue: 0.32) }
+        return switch editCase?.status {
         case .waiting: AppTheme.accent
         case .answered: Color(red: 0.78, green: 0.16, blue: 0.14)
         case .closed: Color(red: 0.08, green: 0.52, blue: 0.32)
@@ -1169,10 +1191,12 @@ struct AgentCaseEditorView: View {
                     .id(message.id)
                 }
 
+                completionSection(editCase)
+
                 if canEditCase {
                     VStack(alignment: .leading, spacing: 8) {
-                        labeledField("Add an update or question", required: false) {
-                            TextField("Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
+                        labeledField(editCase.isCompleted ? "Send a message to reopen" : "Add an update or question", required: false) {
+                            TextField(editCase.isCompleted ? "Write a new message to reopen this case" : "Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
                                 .focused($isUpdateTextFocused)
                                 .lineLimit(3...6)
                                 .textFieldStyle(.roundedBorder)
@@ -1197,6 +1221,55 @@ struct AgentCaseEditorView: View {
                     .padding(.top, 4)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func completionSection(_ item: ConsultationCase) -> some View {
+        if item.isCompleted {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 9) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Completed by \(item.completedByName ?? "a team member")")
+                            .font(.subheadline.weight(.semibold))
+                        if let completedAt = item.completedAt {
+                            Text(completedAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption2)
+                        }
+                    }
+                }
+                Text("A new doctor or agent message will reopen this case automatically.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+            }
+            .foregroundStyle(Color(red: 0.08, green: 0.52, blue: 0.32))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.28)))
+        } else if canEditCase {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Nothing else to add?")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("One tap is enough; the other side does not need to confirm.")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.muted)
+                }
+                Spacer(minLength: 6)
+                Button("Mark complete", systemImage: "checkmark.circle") {
+                    showsCompletionConfirmation = true
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.bordered)
+                .tint(AppTheme.brand)
+            }
+            .padding(14)
+            .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
         }
     }
 

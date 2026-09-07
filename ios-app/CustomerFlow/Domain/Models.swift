@@ -44,6 +44,7 @@ enum DoctorQueueFilter: String, CaseIterable, Identifiable {
     case waiting
     case answered
     case confirmed
+    case completed
 
     var id: String { rawValue }
 
@@ -52,6 +53,7 @@ enum DoctorQueueFilter: String, CaseIterable, Identifiable {
         case .waiting: "Waiting"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
+        case .completed: "Completed"
         }
     }
 }
@@ -188,7 +190,33 @@ struct ConsultationCase: Identifiable, Hashable, Codable, Sendable {
     var finalGrafts: String? = nil
     var finalPrice: String? = nil
     var finalizedAt: Date? = nil
+    var completedAt: Date? = nil
+    var completedBy: String? = nil
+    var completedByName: String? = nil
+    var completedByRole: UserRole? = nil
     var messages: [ConsultationMessage]
+
+    var isCompleted: Bool { completedAt != nil }
+}
+
+struct ClientVersionPolicy: Codable, Sendable {
+    let platform: String
+    let appID: String
+    let latestVersion: String?
+    let minimumVersion: String
+    let storeURL: URL
+    let lastCheckedAt: Date?
+    let updatedAt: Date?
+}
+
+struct AppUpdateRequirement: Identifiable, Equatable, Sendable {
+    let currentVersion: String
+    let latestVersion: String
+    let minimumVersion: String
+    let storeURL: URL
+    let isRequired: Bool
+
+    var id: String { "\(latestVersion)-\(minimumVersion)-\(isRequired)" }
 }
 
 struct CasePhotoUpload: Identifiable, Sendable {

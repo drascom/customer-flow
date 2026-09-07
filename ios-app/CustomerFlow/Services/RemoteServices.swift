@@ -76,6 +76,12 @@ actor RemoteAPIClient {
         return health
     }
 
+    func clientVersionPolicy() async throws -> ClientVersionPolicy {
+        struct Envelope: Decodable, Sendable { let policy: ClientVersionPolicy }
+        let envelope: Envelope = try await get("client-version/ios")
+        return envelope.policy
+    }
+
     func login(username: String, password: String) async throws -> ServerSession {
         struct LoginBody: Encodable, Sendable { let username: String; let password: String }
         let session: ServerSession = try await send("POST", path: "auth/login", body: LoginBody(username: username, password: password))
@@ -379,6 +385,15 @@ final class RemoteCaseRepository: CaseRepository {
             "POST", path: "cases/\(caseID)/close",
             body: Body(finalGrafts: finalGrafts, finalPrice: finalPrice)
         )
+    }
+
+    func completeCase(caseID: UUID) async throws -> ConsultationCase {
+        struct Empty: Encodable, Sendable {}
+        struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
+        let envelope: Envelope = try await client.send(
+            "POST", path: "cases/\(caseID)/complete", body: Empty()
+        )
+        return envelope.case
     }
 
     func sendAgentUpdate(caseID: UUID, text: String) async throws {

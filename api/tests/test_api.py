@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+from unittest.mock import patch
 
 from app import create_server
 
@@ -81,8 +82,64 @@ class APITestCase(unittest.TestCase):
         self.assertIn("agency-scoping", health["capabilities"])
         self.assertIn("idempotent-writes", health["capabilities"])
         self.assertIn("agency-mcp", health["capabilities"])
+        self.assertIn("client-version-policy", health["capabilities"])
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
+
+    def test_client_version_policy_is_public_and_only_admin_can_change_minimum(self):
+        with self.server.database.connect() as conn:
+            conn.execute(
+                "UPDATE client_version_policies SET latest_version='0.2.2',minimum_version='0.0.0',"
+                "last_checked_at='2999-01-01T00:00:00Z' WHERE platform='ios'"
+            )
+
+        public = self.request("GET", "/client-version/ios")["policy"]
+        self.assertEqual("0.2.2", public["latestVersion"])
+        self.assertEqual("0.0.0", public["minimumVersion"])
+        self.assertEqual("6802274147", public["appID"])
+
+        admin = self.login("admin", "demo123")
+        manager = self.login("manager", "demo123")
+        self.request("GET", "/admin/client-version/ios", token=manager, expected=403)
+
+        database_type = type(self.server.database)
+        with patch.object(database_type, "_fetch_app_store_version", return_value="0.2.3"):
+            refreshed = self.request("GET", "/admin/client-version/ios", token=admin)["policy"]
+            self.assertEqual("0.2.3", refreshed["latestVersion"])
+            updated = self.request(
+                "PATCH", "/admin/client-version/ios", {"minimumVersion": "0.2.3"}, token=admin
+            )["policy"]
+            self.assertEqual("0.2.3", updated["minimumVersion"])
+            denied = self.request(
+                "PATCH", "/admin/client-version/ios", {"minimumVersion": "0.2.4"},
+                token=manager, expected=403,
+            )
+            self.assertEqual("forbidden", denied["error"]["code"])
+            unavailable = self.request(
+                "PATCH", "/admin/client-version/ios", {"minimumVersion": "0.2.4"},
+                token=admin, expected=422,
+            )
+            self.assertEqual("minimum_version_not_available", unavailable["error"]["code"])
+
+        self.assertEqual(
+            "0.2.3", self.request("GET", "/client-version/ios")["policy"]["minimumVersion"]
+        )
+
+        with self.server.database.connect() as conn:
+            conn.execute(
+                "UPDATE client_version_policies SET latest_version=NULL,last_checked_at=NULL "
+                "WHERE platform='ios'"
+            )
+        with patch.object(database_type, "_fetch_app_store_version", return_value=None):
+            unavailable = self.request(
+                "PATCH", "/admin/client-version/ios", {"minimumVersion": "0.2.4"},
+                token=admin, expected=503,
+            )
+            lowered = self.request(
+                "PATCH", "/admin/client-version/ios", {"minimumVersion": "0.2.2"}, token=admin
+            )["policy"]
+        self.assertEqual("app_store_unavailable", unavailable["error"]["code"])
+        self.assertEqual("0.2.2", lowered["minimumVersion"])
 
     def test_public_mcp_path_proxies_only_to_loopback_service(self):
         received = {}
@@ -702,6 +759,59 @@ class APITestCase(unittest.TestCase):
             message["role"] == "system" and "2550 grafts" in message["text"]
             for message in closed["messages"]
         ))
+
+    def test_agent_and_doctor_can_complete_and_new_messages_reopen_case(self):
+        doctor = self.login("doctor1", "demo123")
+        agent = self.login("user1", "demo123")
+        manager = self.login("manager", "demo123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Completion Flow", "grafts": "2200", "currency": "GBP",
+            "price": "2100", "note": "Completion workflow test", "photoCount": 0,
+        }, token=agent, expected=201)["case"]
+
+        completed_by_doctor = self.request(
+            "POST", f"/cases/{created['id']}/complete", {}, token=doctor
+        )["case"]
+        self.assertIsNotNone(completed_by_doctor["completedAt"])
+        self.assertEqual("doctor-emre", completed_by_doctor["completedBy"])
+        self.assertEqual("Doctor 1", completed_by_doctor["completedByName"])
+        self.assertEqual("doctor", completed_by_doctor["completedByRole"])
+        self.assertEqual("waiting", completed_by_doctor["status"])
+        completion_notifications = [
+            item for item in self.request("GET", "/notifications", token=agent)["notifications"]
+            if item["kind"] == "case.completed" and item["caseID"] == created["id"]
+        ]
+        self.assertEqual(1, len(completion_notifications))
+
+        self.request("POST", f"/cases/{created['id']}/complete", {}, token=doctor)
+        repeated_notifications = [
+            item for item in self.request("GET", "/notifications", token=agent)["notifications"]
+            if item["kind"] == "case.completed" and item["caseID"] == created["id"]
+        ]
+        self.assertEqual(1, len(repeated_notifications))
+
+        reopened_for_doctor = self.request("POST", f"/cases/{created['id']}/agent-updates", {
+            "text": "One more question before we finish.",
+        }, token=agent)["case"]
+        self.assertEqual("waiting", reopened_for_doctor["status"])
+        self.assertIsNone(reopened_for_doctor["completedAt"])
+        self.assertIsNone(reopened_for_doctor["completedBy"])
+
+        completed_by_agent = self.request(
+            "POST", f"/cases/{created['id']}/complete", {}, token=agent
+        )["case"]
+        self.assertEqual("agent", completed_by_agent["completedByRole"])
+
+        reopened_for_agent = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "A final note from the doctor.",
+        }, token=doctor)["case"]
+        self.assertEqual("answered", reopened_for_agent["status"])
+        self.assertIsNone(reopened_for_agent["completedAt"])
+
+        denied = self.request(
+            "POST", f"/cases/{created['id']}/complete", {}, token=manager, expected=403
+        )
+        self.assertEqual("forbidden", denied["error"]["code"])
 
     def test_doctor_and_agent_can_exchange_multiple_messages_with_optional_plan_fields(self):
         doctor = self.login("doctor1", "demo123")

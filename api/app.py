@@ -29,6 +29,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
 
 from apns import APNSPushDispatcher
 
@@ -39,6 +40,22 @@ ADMIN_RESET_PASSWORD = "demo123"
 IDEMPOTENCY_KEY_ALLOWED = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-"
 )
+IOS_APP_ID = "6802274147"
+IOS_STORE_URL = "https://apps.apple.com/gb/app/customerflow-by-natchatt/id6802274147"
+IOS_LOOKUP_URL = f"https://itunes.apple.com/lookup?id={IOS_APP_ID}&country=gb"
+APP_STORE_CACHE_SECONDS = 15 * 60
+
+
+def validate_client_version(value: object) -> str:
+    version = str(value or "").strip()
+    if not re.fullmatch(r"\d+(?:\.\d+){1,3}", version):
+        raise APIError(422, "invalid_version", "Use a numeric version such as 0.2.3.")
+    return version
+
+
+def version_key(value: str) -> tuple[int, ...]:
+    parts = [int(part) for part in value.split(".")]
+    return tuple(parts + [0] * (4 - len(parts)))
 
 
 def utc_now() -> datetime:
@@ -49,6 +66,10 @@ def iso(value: datetime | str) -> str:
     if isinstance(value, str):
         return value
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def parse_iso_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def message_text_from_header(value: str | None) -> str:
@@ -322,6 +343,9 @@ CREATE TABLE IF NOT EXISTS cases (
   final_price TEXT,
   finalized_at TEXT,
   finalized_by TEXT REFERENCES users(id),
+  completed_at TEXT,
+  completed_by TEXT REFERENCES users(id),
+  completed_by_role TEXT,
   version INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_cases_doctor_status ON cases(assigned_doctor_id, status);
@@ -412,6 +436,18 @@ CREATE TABLE IF NOT EXISTS notification_push_deliveries (
 );
 CREATE INDEX IF NOT EXISTS idx_notification_push_pending
   ON notification_push_deliveries(status, attempts, created_at);
+CREATE TABLE IF NOT EXISTS client_version_policies (
+  platform TEXT PRIMARY KEY CHECK(platform IN ('ios')),
+  minimum_version TEXT NOT NULL,
+  latest_version TEXT,
+  store_url TEXT NOT NULL,
+  last_checked_at TEXT,
+  updated_at TEXT,
+  updated_by TEXT REFERENCES users(id)
+);
+INSERT OR IGNORE INTO client_version_policies(
+  platform, minimum_version, latest_version, store_url
+) VALUES ('ios', '0.0.0', NULL, 'https://apps.apple.com/gb/app/customerflow-by-natchatt/id6802274147');
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY,
   value INTEGER NOT NULL
@@ -478,6 +514,12 @@ class Database:
                     conn.execute("ALTER TABLE cases ADD COLUMN finalized_at TEXT")
                 if "finalized_by" not in case_columns:
                     conn.execute("ALTER TABLE cases ADD COLUMN finalized_by TEXT REFERENCES users(id)")
+                if "completed_at" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN completed_at TEXT")
+                if "completed_by" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN completed_by TEXT REFERENCES users(id)")
+                if "completed_by_role" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN completed_by_role TEXT")
                 conn.execute("DELETE FROM photos WHERE file_path IS NULL")
                 conn.execute(
                     "UPDATE cases SET photo_count=(SELECT COUNT(*) FROM photos p "
@@ -507,6 +549,89 @@ class Database:
             self.ensure_demo_agencies()
             if seed:
                 self.seed_demo()
+
+    def client_version_policy(self, force_refresh: bool = False) -> dict:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM client_version_policies WHERE platform='ios'"
+            ).fetchone()
+        if not row:
+            raise APIError(500, "version_policy_missing", "The iOS version policy is unavailable.")
+
+        checked_at = parse_iso_datetime(row["last_checked_at"]) if row["last_checked_at"] else None
+        stale = checked_at is None or (utc_now() - checked_at).total_seconds() >= APP_STORE_CACHE_SECONDS
+        if force_refresh or stale:
+            latest = self._fetch_app_store_version()
+            if latest:
+                checked = iso(utc_now())
+                with self.connect() as conn:
+                    conn.execute(
+                        "UPDATE client_version_policies SET latest_version=?,last_checked_at=? "
+                        "WHERE platform='ios'",
+                        (latest, checked),
+                    )
+                    row = conn.execute(
+                        "SELECT * FROM client_version_policies WHERE platform='ios'"
+                    ).fetchone()
+
+        return {
+            "platform": "ios",
+            "appID": IOS_APP_ID,
+            "latestVersion": row["latest_version"],
+            "minimumVersion": row["minimum_version"],
+            "storeURL": row["store_url"],
+            "lastCheckedAt": row["last_checked_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def admin_update_client_version(self, payload: dict, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        minimum = validate_client_version(payload.get("minimumVersion"))
+        current = self.client_version_policy(force_refresh=True)
+        latest = current.get("latestVersion")
+        if not latest and version_key(minimum) > version_key(current["minimumVersion"]):
+            raise APIError(
+                503,
+                "app_store_unavailable",
+                "Apple could not be reached, so the minimum version can only be lowered right now.",
+            )
+        if latest and version_key(minimum) > version_key(latest):
+            raise APIError(
+                422,
+                "minimum_version_not_available",
+                f"Version {minimum} is not yet available on the App Store (latest: {latest}).",
+            )
+        now = iso(utc_now())
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    "UPDATE client_version_policies SET minimum_version=?,updated_at=?,updated_by=? "
+                    "WHERE platform='ios'",
+                    (minimum, now, user["id"]),
+                )
+                self._audit(
+                    conn, user["id"], "client_version.updated", "client_version", "ios",
+                    {"minimumVersion": minimum},
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        return self.client_version_policy()
+
+    @staticmethod
+    def _fetch_app_store_version() -> str | None:
+        request = Request(IOS_LOOKUP_URL, headers={"Accept": "application/json", "User-Agent": "CustomerFlow-Server/1"})
+        try:
+            with urlopen(request, timeout=4) as response:
+                payload = json.load(response)
+            results = payload.get("results") if isinstance(payload, dict) else None
+            if not results or not isinstance(results[0], dict):
+                return None
+            return validate_client_version(results[0].get("version"))
+        except (OSError, ValueError, KeyError, APIError):
+            return None
 
     def notifications(self, user: sqlite3.Row, limit: int = 50) -> dict:
         limit = max(1, min(limit, 100))
@@ -645,7 +770,8 @@ class Database:
         self, kind: str, entity_id: str | None, actor: sqlite3.Row
     ) -> list[str]:
         if not entity_id or kind not in {
-            "case.created", "message.created", "photo.created", "doctor.assigned", "case.closed"
+            "case.created", "message.created", "photo.created", "doctor.assigned", "case.closed",
+            "case.completed",
         }:
             return []
         with self.connect() as conn:
@@ -757,6 +883,8 @@ class Database:
             return f"New photo for {patient_name}", f"{actor['display_name']} added a patient photo."
         if kind == "case.closed":
             return "Case confirmed", f"The final plan for {patient_name} was confirmed."
+        if kind == "case.completed":
+            return "Case completed", f"{actor['display_name']} marked {patient_name}'s case as complete."
         message = conn.execute(
             "SELECT text,attachment_path FROM messages WHERE case_id=? AND deleted_at IS NULL "
             "ORDER BY created_at DESC,rowid DESC LIMIT 1", (case["id"],)
@@ -1119,8 +1247,10 @@ class Database:
             rows = conn.execute(
                 f"SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
                 f"p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
-                f"u.display_name agent_name, a.name agency_name FROM cases c JOIN patients p ON p.id=c.patient_id "
+                f"u.display_name agent_name, a.name agency_name, cb.display_name completed_by_name "
+                f"FROM cases c JOIN patients p ON p.id=c.patient_id "
                 f"JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id "
+                f"LEFT JOIN users cb ON cb.id=c.completed_by "
                 f"{where} ORDER BY c.uploaded_at ASC",
                 params,
             ).fetchall()
@@ -1295,7 +1425,8 @@ class Database:
                     raise APIError(409, "case_closed", "A closed case cannot receive new messages.")
                 now = iso(utc_now())
                 assigned_doctor_id = row["assigned_doctor_id"] or user["id"]
-                conn.execute("UPDATE cases SET assigned_doctor_id=?, status='answered', version=version+1 WHERE id=?",
+                conn.execute("UPDATE cases SET assigned_doctor_id=?, status='answered', completed_at=NULL,"
+                             "completed_by=NULL,completed_by_role=NULL,version=version+1 WHERE id=?",
                              (assigned_doctor_id, case_id))
                 conn.execute("UPDATE patients SET assigned_doctor_id=?, last_updated=? WHERE id=?",
                              (assigned_doctor_id, now, row["patient_id"]))
@@ -1374,7 +1505,8 @@ class Database:
                 now = iso(utc_now())
                 conn.execute("INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
                              (str(uuid.uuid4()), case_id, user["id"], user["display_name"], "agent", now, text, None, None))
-                conn.execute("UPDATE cases SET status='waiting', version=version+1 WHERE id=?", (case_id,))
+                conn.execute("UPDATE cases SET status='waiting',completed_at=NULL,completed_by=NULL,"
+                             "completed_by_role=NULL,version=version+1 WHERE id=?", (case_id,))
                 self._audit(conn, user["id"], "case.agent_update_added", "case", case_id, {})
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 self._store_idempotency_result(
@@ -1454,7 +1586,8 @@ class Database:
                 now = iso(utc_now())
                 conn.execute(
                     "UPDATE cases SET status='closed',final_grafts=?,final_price=?,finalized_at=?,"
-                    "finalized_by=?,version=version+1 WHERE id=?",
+                    "finalized_by=?,completed_at=NULL,completed_by=NULL,completed_by_role=NULL,"
+                    "version=version+1 WHERE id=?",
                     (final_grafts, final_price, now, user["id"], case_id),
                 )
                 conn.execute(
@@ -1465,6 +1598,38 @@ class Database:
                 )
                 self._audit(conn, user["id"], "case.closed", "case", case_id,
                             {"finalGrafts": final_grafts, "finalPrice": final_price})
+                result = self._case_json(conn, self._case_row(conn, case_id))
+                conn.execute("COMMIT")
+                return result
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def complete_case(self, case_id: str, user: sqlite3.Row) -> dict:
+        self._require_any_role(user, "agent", "doctor")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._case_row(conn, case_id)
+                self._assert_case_visible(row, user)
+                if user["role"] == "agent":
+                    self._assert_owner(row, user)
+                if row["status"] == "closed":
+                    raise APIError(409, "case_confirmed", "A confirmed case is already finished.")
+                if row["completed_at"]:
+                    result = IdempotentReplay(self._case_json(conn, row))
+                    conn.execute("COMMIT")
+                    return result
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE cases SET completed_at=?,completed_by=?,completed_by_role=?,"
+                    "version=version+1 WHERE id=?",
+                    (now, user["id"], user["role"], case_id),
+                )
+                self._audit(
+                    conn, user["id"], "case.completed", "case", case_id,
+                    {"completedByRole": user["role"]},
+                )
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
                 return result
@@ -1740,9 +1905,11 @@ class Database:
                         (user["id"], now, case["patient_id"]),
                     )
                 if user["role"] == "agent":
-                    conn.execute("UPDATE cases SET status='waiting',version=version+1 WHERE id=?", (case_id,))
+                    conn.execute("UPDATE cases SET status='waiting',completed_at=NULL,completed_by=NULL,"
+                                 "completed_by_role=NULL,version=version+1 WHERE id=?", (case_id,))
                 elif user["role"] == "doctor":
-                    conn.execute("UPDATE cases SET status='answered',version=version+1 WHERE id=?", (case_id,))
+                    conn.execute("UPDATE cases SET status='answered',completed_at=NULL,completed_by=NULL,"
+                                 "completed_by_role=NULL,version=version+1 WHERE id=?", (case_id,))
                 else:
                     conn.execute("UPDATE cases SET version=version+1 WHERE id=?", (case_id,))
                 self._audit(conn, user["id"], "case.annotated_photo_added", "message", message_id,
@@ -2269,15 +2436,17 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_note,c.agent_grafts,c.currency,c.agent_price,"
-                "c.final_grafts,c.final_price,c.finalized_at,"
+                "c.final_grafts,c.final_price,c.finalized_at,c.completed_at,c.completed_by,c.completed_by_role,"
                 "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,"
                 "p.address,p.occupation,p.profile_note,"
                 "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
+                "cb.display_name completed_by_name,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NULL) message_count,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NOT NULL) deleted_message_count "
                 "FROM cases c JOIN patients p ON p.id=c.patient_id "
                 "JOIN users a ON a.id=c.agent_id LEFT JOIN agencies ag ON ag.id=a.agency_id "
                 "LEFT JOIN users d ON d.id=p.assigned_doctor_id "
+                "LEFT JOIN users cb ON cb.id=c.completed_by "
                 "ORDER BY c.uploaded_at DESC"
             ).fetchall()
             result = []
@@ -2335,6 +2504,9 @@ class Database:
                     "grafts": row["agent_grafts"], "currency": row["currency"], "price": row["agent_price"],
                     "finalGrafts": row["final_grafts"], "finalPrice": row["final_price"],
                     "finalizedAt": row["finalized_at"],
+                    "completedAt": row["completed_at"], "completedBy": row["completed_by"],
+                    "completedByName": row["completed_by_name"],
+                    "completedByRole": row["completed_by_role"],
                 })
             return result
 
@@ -2456,9 +2628,11 @@ class Database:
         row = conn.execute(
             "SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
             "p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
-            "u.display_name agent_name, u.agency_id case_agency_id, a.name agency_name "
+            "u.display_name agent_name, u.agency_id case_agency_id, a.name agency_name, "
+            "cb.display_name completed_by_name "
             "FROM cases c JOIN patients p ON p.id=c.patient_id "
-            "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id WHERE c.id=?", (case_id,),
+            "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id "
+            "LEFT JOIN users cb ON cb.id=c.completed_by WHERE c.id=?", (case_id,),
         ).fetchone()
         if not row:
             raise APIError(404, "case_not_found", "The case could not be found.")
@@ -2491,6 +2665,9 @@ class Database:
             "currency": row["currency"], "agentPrice": row["agent_price"],
             "finalGrafts": row["final_grafts"], "finalPrice": row["final_price"],
             "finalizedAt": row["finalized_at"],
+            "completedAt": row["completed_at"], "completedBy": row["completed_by"],
+            "completedByName": row["completed_by_name"],
+            "completedByRole": row["completed_by_role"],
             "messages": [{"id": m["id"], "authorID": m["author_id"],
                           "author": m["author_name"], "role": m["role"],
                           "createdAt": m["created_at"], "text": m["text"],
@@ -2547,7 +2724,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
+                                        "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
+            if method == "GET" and path == f"{API_PREFIX}/client-version/ios":
+                return self._json(200, {"policy": self.server.database.client_version_policy()})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
                 payload = self._read_json()
                 return self._json(200, self.server.database.login(str(payload.get("username", "")), str(payload.get("password", ""))))
@@ -2604,6 +2783,14 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._changed(201, {"agency": created}, "agency.created", created["id"], user)
             if method == "GET" and path == f"{API_PREFIX}/admin/cases":
                 return self._json(200, {"cases": self.server.database.admin_cases(user)})
+            if method == "GET" and path == f"{API_PREFIX}/admin/client-version/ios":
+                self.server.database._require_role(user, "admin")
+                return self._json(
+                    200, {"policy": self.server.database.client_version_policy(force_refresh=True)}
+                )
+            if method == "PATCH" and path == f"{API_PREFIX}/admin/client-version/ios":
+                policy = self.server.database.admin_update_client_version(self._read_json(), user)
+                return self._changed(200, {"policy": policy}, "client_version.updated", "ios", user)
             admin_parts = path.removeprefix(f"{API_PREFIX}/admin/").split("/")
             if (path.startswith(f"{API_PREFIX}/admin/") and method == "GET" and
                     len(admin_parts) == 3 and admin_parts[0] == "agencies" and admin_parts[2] == "mcp"):
@@ -2711,6 +2898,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 if isinstance(updated, IdempotentReplay):
                     return self._json(200, {"case": updated})
                 return self._changed(200, {"case": updated}, "message.created", case_id, user)
+            if method == "POST" and action == "complete":
+                self._read_json()
+                updated = self.server.database.complete_case(case_id, user)
+                if isinstance(updated, IdempotentReplay):
+                    return self._json(200, {"case": updated})
+                return self._changed(200, {"case": updated}, "case.completed", case_id, user)
             if method == "POST" and action == "close":
                 updated = self.server.database.close_case(case_id, self._read_json(), user)
                 return self._changed(200, {"case": updated}, "case.closed", case_id, user)

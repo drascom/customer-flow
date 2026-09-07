@@ -58,6 +58,7 @@
         <article data-overview-filter="waiting"><span id="overviewLabel2">Waiting</span><strong id="overviewValue2">—</strong></article>
         <article data-overview-filter="answered"><span id="overviewLabel3">Answered</span><strong id="overviewValue3">—</strong></article>
         <article data-overview-filter="closed"><span id="overviewLabel4">Confirmed</span><strong id="overviewValue4">—</strong></article>
+        <article data-overview-filter="completed"><span id="overviewLabel5">Completed</span><strong id="overviewValue5">—</strong></article>
       </section>
 
       <div id="workspaceBar" class="workspace-bar">
@@ -65,6 +66,7 @@
           <button class="tab active" data-view="cases">Cases</button>
           <button class="tab management-only" data-view="users">Users</button>
           <button class="tab management-only" data-view="agencies">Agencies</button>
+          <button class="tab admin-only" data-view="client-version" hidden>App version</button>
         </nav>
         <div class="workspace-actions">
           <button id="addUserButton" class="primary compact admin-only" hidden>+ Add user</button>
@@ -113,6 +115,27 @@
         <div class="panel-heading"><div><h2>Agencies</h2><p>Edit agencies and manage their shared MCP connection.</p></div></div>
         <div class="table-wrap"><table><thead><tr><th>Agency</th><th>Users</th><th>MCP connection</th><th>Last rotated</th><th></th></tr></thead><tbody id="agenciesBody"></tbody></table></div>
         <p id="agenciesEmpty" class="empty" hidden>No agencies.</p>
+      </section>
+
+      <section id="clientVersionView" class="panel admin-only" hidden>
+        <div class="panel-heading">
+          <div><h2>iOS version control</h2><p>Monitor the live App Store release and decide how old a client may be.</p></div>
+          <button id="refreshClientVersion" class="quiet compact" type="button">↻ Check App Store</button>
+        </div>
+        <div class="version-settings">
+          <article class="version-release-card">
+            <span class="eyebrow">Live App Store release</span>
+            <strong id="latestClientVersion">Checking…</strong>
+            <p id="clientVersionCheckedAt">The latest public version is read directly from Apple.</p>
+            <a id="clientVersionStoreLink" class="quiet compact" href="https://apps.apple.com/gb/app/customerflow-by-natchatt/id6802274147" target="_blank" rel="noreferrer">Open App Store ↗</a>
+          </article>
+          <form id="clientVersionForm" class="version-policy-form">
+            <label>Minimum required version<input id="minimumClientVersion" inputmode="decimal" placeholder="0.2.2" pattern="[0-9]+(\.[0-9]+){1,3}" required><small>Clients below this version cannot continue until they open the App Store and update.</small></label>
+            <div class="version-policy-note"><strong>Update reminders are automatic</strong><p>Any client below the live App Store version sees an update reminder. Only clients below this minimum are blocked.</p></div>
+            <p id="clientVersionError" class="form-error" role="alert"></p>
+            <div class="section-actions"><button class="primary" type="submit">Save minimum version</button></div>
+          </form>
+        </div>
       </section>
     </main>
   </div>

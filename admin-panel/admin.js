@@ -2,6 +2,7 @@ const API = "/api/v1";
 const state = {
   token: localStorage.getItem("cfToken") || sessionStorage.getItem("cfToken"),
   user: null, users: [], agencies: [], cases: [], notifications: [], unreadNotifications: 0,
+  clientVersionPolicy: null,
   view: "cases", selectedCaseID: null,
   pendingFiles: [], duplicate: { matches: [], confirmed: false, existingPatientID: null }, blobURLs: new Map(),
   photoItems: [], photoIndex: 0, liveRevision: -1, liveGeneration: 0,
@@ -165,8 +166,10 @@ function startLiveUpdates() {
 }
 
 function updateOverview() {
-  const values = [state.cases.length, state.cases.filter((c) => c.status === "waiting").length,
-    state.cases.filter((c) => c.status === "answered").length, state.cases.filter((c) => c.status === "closed").length];
+  const active = (status) => state.cases.filter((c) => c.status === status && !c.completedAt).length;
+  const values = [state.cases.length, active("waiting"), active("answered"),
+    state.cases.filter((c) => c.status === "closed").length,
+    state.cases.filter((c) => Boolean(c.completedAt)).length];
   values.forEach((value, i) => { $(`overviewValue${i + 1}`).textContent = value; });
   if (state.user.role === "doctor") {
     $("overviewLabel1").textContent = "All cases"; $("overviewLabel2").textContent = "Waiting";
@@ -183,7 +186,7 @@ function setChipGroup(id, items, selected, key) {
 function renderFilterChips() {
   const agencies = state.agencies.slice().sort((a, b) => a.name.localeCompare(b.name));
   const doctors = state.users.filter((u) => u.role === "doctor").sort((a, b) => a.displayName.localeCompare(b.displayName));
-  setChipGroup("caseStatusChips", [["", "All"], ["waiting", state.user?.role === "doctor" ? "Waiting" : "Doctor review"], ["answered", "Action needed"], ["closed", "Confirmed"]], state.filters.caseStatus, "caseStatus");
+  setChipGroup("caseStatusChips", [["", "All"], ["waiting", state.user?.role === "doctor" ? "Waiting" : "Doctor review"], ["answered", "Action needed"], ["closed", "Confirmed"], ["completed", "Completed"]], state.filters.caseStatus, "caseStatus");
   setChipGroup("caseAssignmentChips", [["", "All"], ["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment");
   setChipGroup("caseAgencyChips", [["", "All"], ...agencies.map((a) => [a.name, a.name])], state.filters.caseAgency, "caseAgency");
   setChipGroup("caseDoctorChips", [["", "All"], ...doctors.map((d) => [d.id, d.displayName])], state.filters.caseDoctor, "caseDoctor");
@@ -202,13 +205,18 @@ function filteredCases() {
   return state.cases.filter((item) => {
     const haystack = `${patientName(item)} ${item.reference || ""} ${item.agentName || ""} ${item.agencyName || ""} ${item.doctorName || ""} ${caseNote(item)}`.toLocaleLowerCase();
     const assignmentOK = !state.filters.caseAssignment || (state.filters.caseAssignment === "assigned" ? Boolean(doctorID(item)) : !doctorID(item));
-    return (!query || haystack.includes(query)) && (!state.filters.caseStatus || item.status === state.filters.caseStatus) && assignmentOK
+    const statusOK = !state.filters.caseStatus
+      || (state.filters.caseStatus === "completed" ? Boolean(item.completedAt) : item.status === state.filters.caseStatus && !item.completedAt);
+    return (!query || haystack.includes(query)) && statusOK && assignmentOK
       && (!state.filters.caseAgency || item.agencyName === state.filters.caseAgency) && (!state.filters.caseDoctor || doctorID(item) === state.filters.caseDoctor);
   });
 }
 
 function renderCurrentView() {
-  if (state.view === "cases") renderCases(); else if (state.view === "users") renderUsers(); else renderAgencies();
+  if (state.view === "cases") renderCases();
+  else if (state.view === "users") renderUsers();
+  else if (state.view === "agencies") renderAgencies();
+  else renderClientVersion();
 }
 
 function renderCases() {
@@ -221,7 +229,7 @@ function renderCases() {
 }
 
 function caseCardHTML(item) {
-  const latest = latestMessage(item); const status = statusPresentation(item.status);
+  const latest = latestMessage(item); const status = statusPresentation(item.status, item.completedAt);
   const agent = item.agentName || "Agency representative"; const agency = item.agencyName || "";
   return `<button class="case-card" data-open-case="${escapeHTML(item.id)}" type="button">
     <div class="case-card-body">
@@ -230,14 +238,14 @@ function caseCardHTML(item) {
       <p class="case-summary">${escapeHTML(caseNote(item) || latest?.text || "Open the consultation to review patient details.")}</p>
       <div class="case-metrics"><span class="metric"><small>Est. grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>Est. price</small><strong>£${escapeHTML(casePrice(item))}</strong></span><span class="metric"><small>Media</small><strong>${photoIDs(item).length} · ${(item.messages || []).length}</strong></span></div>
       ${latest ? `<div class="latest-row"><strong>${escapeHTML(latest.authorName || latest.author || "Update")}</strong><span class="message-preview">${escapeHTML(latest.text || "Photo sent")}</span><time>${relativeTime(latest.createdAt)}</time></div>` : ""}
-    </div><div class="status-band ${escapeHTML(item.status)}">${status.icon} ${escapeHTML(status.label)}</div></button>`;
+    </div><div class="status-band ${escapeHTML(status.className)}">${status.icon} ${escapeHTML(status.label)}</div></button>`;
 }
 
 function renderManagementCases(rows) {
   const doctors = state.users.filter((u) => u.role === "doctor" && u.active);
   $("casesBody").innerHTML = rows.map((item) => `<tr data-open-case="${escapeHTML(item.id)}">
     <td><div class="identity"><strong>${escapeHTML(patientName(item))}</strong><small>${escapeHTML(item.reference)}</small></div></td><td>${item.messageCount ?? item.messages?.length ?? 0}</td>
-    <td><span class="status ${escapeHTML(item.status)}">${escapeHTML(statusPresentation(item.status).label)}</span></td>
+    <td><span class="status ${escapeHTML(statusPresentation(item.status, item.completedAt).className)}">${escapeHTML(statusPresentation(item.status, item.completedAt).label)}</span></td>
     <td><div class="identity"><strong>${escapeHTML(item.agentName)}</strong><small>${escapeHTML(item.agencyName || "No agency")}</small></div></td>
     <td>${state.user.role === "manager" ? escapeHTML(item.doctorName || "Unassigned") : `<select class="doctor-select" data-patient="${escapeHTML(patientID(item))}" data-previous="${escapeHTML(item.doctorID || "")}"><option value="">Unassigned</option>${doctors.map((d) => `<option value="${escapeHTML(d.id)}" ${d.id === item.doctorID ? "selected" : ""}>${escapeHTML(d.displayName)}</option>`).join("")}</select>`}</td>
     <td>${item.photoCount}</td><td><div class="identity"><strong>${escapeHTML(caseGrafts(item))}</strong><small>£${escapeHTML(casePrice(item))}</small></div></td><td>${formatDate(item.uploadedAt)}</td>
@@ -247,10 +255,11 @@ function renderManagementCases(rows) {
   document.querySelectorAll("[data-delete-case]").forEach((node) => node.onclick = deleteCase);
 }
 
-function statusPresentation(status) {
-  if (status === "waiting") return { label: state.user?.role === "doctor" ? "Waiting for doctor" : "Waiting for doctor", icon: "◷" };
-  if (status === "answered") return { label: state.user?.role === "doctor" ? "Waiting for agent confirmation" : "Action needed", icon: "!" };
-  return { label: "Confirmed", icon: "✓" };
+function statusPresentation(status, completedAt = null) {
+  if (completedAt) return { label: "Completed", icon: "✓", className: "completed" };
+  if (status === "waiting") return { label: "Waiting for doctor", icon: "◷", className: "waiting" };
+  if (status === "answered") return { label: state.user?.role === "doctor" ? "Waiting for agent confirmation" : "Action needed", icon: "!", className: "answered" };
+  return { label: "Confirmed", icon: "✓", className: "closed" };
 }
 
 function relativeTime(value) {
@@ -275,15 +284,15 @@ async function openCase(id) {
 
 function renderCaseDetail(item) {
   const patient = item.patient || { name: item.patientName, age: item.age, statedAge: item.statedAge, dateOfBirth: item.dateOfBirth, gender: item.gender, phone: item.patientPhone, email: item.patientEmail, address: item.patientAddress, occupation: item.occupation, profileNote: item.profileNote };
-  const status = statusPresentation(item.status); const ids = photoIDs(item); const messages = item.messages || [];
+  const status = statusPresentation(item.status, item.completedAt); const ids = photoIDs(item); const messages = item.messages || [];
   $("caseDialogTitle").textContent = patient.name; $("caseDialogEyebrow").textContent = `${item.reference} · ${status.label}`;
   const details = [["Date of birth", formatDOB(patient.dateOfBirth)], ["Age", patient.age], ["Gender", prettyGender(patient.gender)], ["Phone", patient.phone], ["Email", patient.email], ["Address", patient.address], ["Occupation", patient.occupation], ["Info", patient.profileNote]].filter(([, v]) => v !== null && v !== undefined && v !== "");
   const mayEdit = canEditAgentCase(item);
-  $("caseDialogContent").innerHTML = `<section class="case-hero"><div><span class="status ${escapeHTML(item.status)}">${escapeHTML(status.label)}</span><h3>${escapeHTML(patient.name)}</h3><p>${escapeHTML(caseNote(item) || "Patient consultation")}</p></div><div class="case-metrics"><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} price</small><strong>£${escapeHTML(casePrice(item))}</strong></span></div></section>
+  $("caseDialogContent").innerHTML = `<section class="case-hero"><div><span class="status ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span><h3>${escapeHTML(patient.name)}</h3><p>${escapeHTML(caseNote(item) || "Patient consultation")}</p></div><div class="case-metrics"><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} price</small><strong>£${escapeHTML(casePrice(item))}</strong></span></div></section>
     ${details.length || mayEdit ? patientDetailCard(item, patient, details, mayEdit && item.status !== "closed") : ""}
     <section class="detail-section"><div class="section-heading"><h3>Photos</h3><span>${ids.length} photos</span></div><div class="photo-grid">${renderPhotos(item)}</div>${mayEdit ? `<label class="upload-button">+ Add photos<input id="detailPhotoUpload" type="file" accept="image/*" multiple hidden></label>` : ""}</section>
-    <section id="conversationSection" class="detail-section"><div class="section-heading"><h3>Conversation</h3><span>${messages.length} updates</span></div><div class="conversation">${messages.map((m) => messageHTML(item, m)).join("") || `<p>No messages yet.</p>`}</div>${conversationForm(item)}</section>
-    ${mayEdit && item.status === "answered" ? closeCaseForm(item) : ""}`;
+    <section id="conversationSection" class="detail-section"><div class="section-heading"><h3>Conversation</h3><span>${messages.length} updates</span></div><div class="conversation">${messages.map((m) => messageHTML(item, m)).join("") || `<p>No messages yet.</p>`}</div>${completionControl(item)}${conversationForm(item)}</section>
+    ${mayEdit && item.status === "answered" && !item.completedAt ? closeCaseForm(item) : ""}`;
   bindDetailActions(item);
 }
 
@@ -323,9 +332,15 @@ function messageHTML(item, message) {
 function conversationForm(item) {
   if (isManagement()) return `<form id="managementReplyForm" class="inline-form"><h3>Add operational note</h3><textarea id="replyText" rows="3" placeholder="Write an operational note" required></textarea><p class="field-hint">Operational notes do not change the case status or medical assessment.</p><div class="section-actions"><button class="primary" type="submit">Send note</button></div></form>`;
   if (item.status === "closed") return "";
-  if (state.user.role === "doctor") return `<form id="doctorReplyForm" class="inline-form"><h3>Reply to agent</h3><div class="inline-fields"><input id="replyGrafts" placeholder="Grafts (optional)"><input id="replyPrice" placeholder="Price (optional)"></div><textarea id="replyText" rows="3" placeholder="Write your assessment or question" required></textarea><div class="section-actions"><button class="primary" type="submit">Send reply</button></div></form>`;
+  if (state.user.role === "doctor") return `<form id="doctorReplyForm" class="inline-form"><h3>${item.completedAt ? "Send a message to reopen" : "Reply to agent"}</h3><div class="inline-fields"><input id="replyGrafts" placeholder="Grafts (optional)"><input id="replyPrice" placeholder="Price (optional)"></div><textarea id="replyText" rows="3" placeholder="Write your assessment or question" required></textarea><div class="section-actions"><button class="primary" type="submit">Send reply</button></div></form>`;
   if (!canEditAgentCase(item)) return "";
-  return `<form id="agentReplyForm" class="inline-form"><h3>Add an update or question</h3><textarea id="replyText" rows="3" placeholder="Write a follow-up for the doctor" required></textarea><div class="section-actions"><button class="primary" type="submit">Send update</button></div></form>`;
+  return `<form id="agentReplyForm" class="inline-form"><h3>${item.completedAt ? "Send a message to reopen" : "Add an update or question"}</h3><textarea id="replyText" rows="3" placeholder="Write a follow-up for the doctor" required></textarea><div class="section-actions"><button class="primary" type="submit">Send update</button></div></form>`;
+}
+
+function completionControl(item) {
+  if (item.completedAt) return `<div class="completion-panel"><div><strong>✓ Completed by ${escapeHTML(item.completedByName || "a team member")}</strong><small>${formatDate(item.completedAt)}</small></div><p>A new doctor or agent message will reopen this case automatically.</p></div>`;
+  const canComplete = item.status !== "closed" && (state.user.role === "doctor" || canEditAgentCase(item));
+  return canComplete ? `<div class="completion-action"><span>Nothing else to add?</span><button class="quiet compact" id="completeCaseButton" type="button">✓ Mark as complete</button></div>` : "";
 }
 
 function closeCaseForm(item) {
@@ -341,6 +356,7 @@ function bindDetailActions(item) {
   $("agentReplyForm")?.addEventListener("submit", submitAgentReply);
   $("managementReplyForm")?.addEventListener("submit", submitManagementReply);
   $("closeCaseForm")?.addEventListener("submit", submitCloseCase);
+  $("completeCaseButton")?.addEventListener("click", submitCompleteCase);
   $("editCaseForm")?.addEventListener("submit", submitCaseEdit);
   document.querySelectorAll("[data-delete-message]").forEach((b) => b.onclick = deleteMessage);
   document.querySelectorAll("[data-delete-photo]").forEach((b) => b.onclick = deletePhoto);
@@ -389,6 +405,10 @@ async function submitDoctorReply(event) {
 }
 async function submitAgentReply(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/agent-updates`, { method: "POST", body: { text: $("replyText").value.trim() } }, "Update sent."); }
 async function submitManagementReply(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/management-messages`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: { text: $("replyText").value.trim() } }, "Operational note sent."); }
+async function submitCompleteCase() {
+  if (!window.confirm("Mark this case as complete? A new doctor or agent message will reopen it automatically.")) return;
+  await mutate(`/cases/${state.selectedCaseID}/complete`, { method: "POST", body: {} }, "Case marked as complete.");
+}
 async function submitCloseCase(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/close`, { method: "POST", body: { finalGrafts: $("finalGrafts").value.trim(), finalPrice: $("finalPrice").value.trim() } }, "Case confirmed."); }
 async function mutate(path, options, message) { try { await api(path, options); await reloadSelected(message); } catch (error) { toast(error.message); } }
 
@@ -478,6 +498,30 @@ function renderUsers() {
 }
 function renderAgencies() { const q = $("searchInput").value.trim().toLocaleLowerCase(); const rows = state.agencies.filter((a) => a.name.toLocaleLowerCase().includes(q)); $("agenciesBody").innerHTML = rows.map((a) => `<tr><td><strong>${escapeHTML(a.name)}</strong></td><td>${a.userCount}</td><td><span class="${a.mcpConfigured ? "active-dot" : "inactive-dot"}">${a.mcpConfigured ? "Connected" : "Not configured"}</span></td><td>${a.mcpRotatedAt ? formatDate(a.mcpRotatedAt) : "—"}</td><td>${canMutateAdmin() ? `<button class="row-action" data-agency-settings="${escapeHTML(a.id)}">Manage</button>` : ""}</td></tr>`).join(""); $("agenciesEmpty").hidden = rows.length > 0; document.querySelectorAll("[data-agency-settings]").forEach((b) => b.onclick = openAgencySettings); }
 
+function renderClientVersion() {
+  const policy = state.clientVersionPolicy;
+  $("latestClientVersion").textContent = policy?.latestVersion || "Unavailable";
+  $("minimumClientVersion").value = policy?.minimumVersion || "0.0.0";
+  $("clientVersionStoreLink").href = policy?.storeURL || "https://apps.apple.com/gb/app/customerflow-by-natchatt/id6802274147";
+  $("clientVersionCheckedAt").textContent = policy?.lastCheckedAt
+    ? `Last checked ${formatDate(policy.lastCheckedAt)} · App ID ${policy.appID}`
+    : "Apple could not be reached yet. Existing clients will not be blocked by this check.";
+}
+
+async function loadClientVersion() {
+  if (!canMutateAdmin()) return;
+  $("refreshClientVersion").disabled = true;
+  $("clientVersionError").textContent = "";
+  try {
+    state.clientVersionPolicy = (await api("/admin/client-version/ios")).policy;
+    renderClientVersion();
+  } catch (error) {
+    $("clientVersionError").textContent = error.message;
+  } finally {
+    $("refreshClientVersion").disabled = false;
+  }
+}
+
 async function assignDoctor(event) { event.stopPropagation(); const select = event.currentTarget, previous = select.dataset.previous, doctor = select.value || null; let reason = ""; if (previous && previous !== (doctor || "")) { reason = prompt("Reason for changing the assigned doctor:", "Administrative reassignment") || ""; if (!reason.trim()) return select.value = previous; } try { await api(`/admin/patients/${encodeURIComponent(select.dataset.patient)}`, { method: "PATCH", body: { doctorID: doctor, reason } }); await loadData(); toast("Doctor assignment updated."); } catch (error) { select.value = previous; toast(error.message); } }
 async function deleteCase(event) { event.stopPropagation(); const b = event.currentTarget; if ((prompt(`Type ${b.dataset.caseReference} to permanently delete this case and every photo:`) || "") !== b.dataset.caseReference) return; await api(`/admin/cases/${b.dataset.deleteCase}`, { method: "DELETE" }); await loadData(); toast("Case permanently deleted."); }
 async function toggleUser(event) { const id = event.currentTarget.dataset.toggleUser, user = state.users.find((u) => u.id === id); if (user.active && !confirm("Deactivate this user and end active sessions?")) return; await api(`/admin/users/${id}`, { method: "PATCH", body: { active: !user.active } }); await loadData(); toast(user.active ? "User deactivated." : "User reactivated."); }
@@ -488,7 +532,7 @@ function updateAgencyFields() { const agent = $("newRole").value === "agent", ad
 async function openAgencySettings(event) { const agency = state.agencies.find((a) => a.id === event.currentTarget.dataset.agencySettings); $("agencyDialog").dataset.agencyID = agency.id; $("editAgencyName").value = agency.name; $("mcpTokenBox").hidden = true; $("agencyDialog").showModal(); try { updateMCPDialog((await api(`/admin/agencies/${agency.id}/mcp`)).connection); } catch (error) { $("agencyFormError").textContent = error.message; } }
 function updateMCPDialog(c) { $("mcpStatus").textContent = c.configured ? `Active${c.rotatedAt ? ` · rotated ${formatDate(c.rotatedAt)}` : ""}` : "Not configured"; $("mcpEndpoint").value = c.endpointURL || ""; $("rotateMCPToken").textContent = c.configured ? "Rotate access token" : "Generate access token"; }
 
-function switchView(view) { state.view = view; document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view)); $("casesView").hidden = view !== "cases"; $("usersView").hidden = view !== "users"; $("agenciesView").hidden = view !== "agencies"; $("addUserButton").hidden = view !== "users" || !canMutateAdmin(); $("searchInput").value = ""; $("searchInput").placeholder = view === "users" ? "Search users" : view === "agencies" ? "Search agencies" : "Search patients or cases"; renderCurrentView(); }
+function switchView(view) { if (view === "client-version" && !canMutateAdmin()) view = "cases"; state.view = view; document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view)); $("casesView").hidden = view !== "cases"; $("usersView").hidden = view !== "users"; $("agenciesView").hidden = view !== "agencies"; $("clientVersionView").hidden = view !== "client-version"; $("addUserButton").hidden = view !== "users" || !canMutateAdmin(); $("searchInput").value = ""; $("searchInput").disabled = view === "client-version"; $("searchInput").placeholder = view === "users" ? "Search users" : view === "agencies" ? "Search agencies" : view === "client-version" ? "Version settings" : "Search patients or cases"; renderCurrentView(); if (view === "client-version") loadClientVersion(); }
 let toastTimer; function toast(message) { clearTimeout(toastTimer); $("toast").textContent = message; $("toast").hidden = false; toastTimer = setTimeout(() => $("toast").hidden = true, 3200); }
 
 // Authentication and global navigation.
@@ -520,6 +564,23 @@ $("userForm").onsubmit = async (event) => { event.preventDefault(); const submit
 $("closeAgencyDialog").onclick = $("cancelAgency").onclick = () => $("agencyDialog").close(); $("copyMCPToken").onclick = async () => { await navigator.clipboard.writeText($("mcpToken").textContent); toast("MCP token copied."); };
 $("rotateMCPToken").onclick = async () => { const id = $("agencyDialog").dataset.agencyID, agency = state.agencies.find((a) => a.id === id); if (!confirm(agency.mcpConfigured ? "Rotate this token? The current token will stop working immediately." : "Generate an MCP token for this agency?")) return; try { const result = await api(`/admin/agencies/${id}/mcp/rotate`, { method: "POST", body: {} }); updateMCPDialog(result.connection); $("mcpToken").textContent = result.connection.accessToken; $("mcpTokenBox").hidden = false; await loadData({ silent: true }); } catch (error) { $("agencyFormError").textContent = error.message; } };
 $("agencyForm").onsubmit = async (event) => { event.preventDefault(); try { await api(`/admin/agencies/${$("agencyDialog").dataset.agencyID}`, { method: "PATCH", body: { name: $("editAgencyName").value.trim() } }); await loadData(); toast("Agency updated."); } catch (error) { $("agencyFormError").textContent = error.message; } };
+
+$("refreshClientVersion").onclick = loadClientVersion;
+$("clientVersionForm").onsubmit = async (event) => {
+  event.preventDefault();
+  const submit = event.currentTarget.querySelector("button[type=submit]");
+  submit.disabled = true; $("clientVersionError").textContent = "";
+  try {
+    state.clientVersionPolicy = (await api("/admin/client-version/ios", {
+      method: "PATCH", body: { minimumVersion: $("minimumClientVersion").value.trim() }
+    })).policy;
+    renderClientVersion(); toast("Minimum iOS version updated.");
+  } catch (error) {
+    $("clientVersionError").textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+};
 
 document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) loadData({ silent: true }).catch(() => {}); });
 window.addEventListener("focus", () => { if (state.token) loadData({ silent: true }).catch(() => {}); });

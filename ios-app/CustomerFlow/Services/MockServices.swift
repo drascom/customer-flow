@@ -69,6 +69,10 @@ final class MockCaseRepository: CaseRepository {
                 : text.trimmingCharacters(in: .whitespacesAndNewlines),
             attachmentPhotoID: UUID().uuidString
         ))
+        cases[index].completedAt = nil
+        cases[index].completedBy = nil
+        cases[index].completedByName = nil
+        cases[index].completedByRole = nil
         return cases[index]
     }
 
@@ -93,6 +97,10 @@ final class MockCaseRepository: CaseRepository {
         cases[index].assignedDoctorID = doctorID
         cases[index].patient.assignedDoctorID = doctorID
         cases[index].status = .answered
+        cases[index].completedAt = nil
+        cases[index].completedBy = nil
+        cases[index].completedByName = nil
+        cases[index].completedByRole = nil
         cases[index].messages.append(
             ConsultationMessage(
                 author: "Dr. Emre Kaya",
@@ -128,12 +136,30 @@ final class MockCaseRepository: CaseRepository {
         cases[index].finalPrice = finalPrice
         cases[index].finalizedAt = .now
         cases[index].status = .closed
+        cases[index].completedAt = nil
+        cases[index].completedBy = nil
+        cases[index].completedByName = nil
+        cases[index].completedByRole = nil
+    }
+
+    func completeCase(caseID: UUID) async throws -> ConsultationCase {
+        guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
+        guard cases[index].status != .closed else { throw MockError.caseChanged }
+        cases[index].completedAt = .now
+        cases[index].completedBy = "mock-user"
+        cases[index].completedByName = "Current user"
+        cases[index].completedByRole = .agent
+        return cases[index]
     }
 
     func sendAgentUpdate(caseID: UUID, text: String) async throws {
         guard let index = cases.firstIndex(where: { $0.id == caseID }) else { throw MockError.notFound }
         cases[index].messages.append(.init(author: "Selin Arslan", role: .agent, text: text))
         cases[index].status = .waiting
+        cases[index].completedAt = nil
+        cases[index].completedBy = nil
+        cases[index].completedByName = nil
+        cases[index].completedByRole = nil
     }
 
     enum MockError: LocalizedError {

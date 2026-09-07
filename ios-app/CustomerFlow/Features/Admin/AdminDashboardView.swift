@@ -230,7 +230,7 @@ struct AdminDashboardView: View {
                         && model.caseDoctorID.isEmpty
                 ) { selectCaseOverviewFilter(.all) }
                 caseMetric(
-                    value: model.cases.filter { $0.status == .waiting }.count,
+                    value: model.cases.filter { $0.status == .waiting && !$0.isCompleted }.count,
                     label: "Waiting",
                     selected: model.caseStatus == "waiting"
                         && model.caseAssignment.isEmpty
@@ -271,7 +271,8 @@ struct AdminDashboardView: View {
                 if model.selectedSection == .cases {
                     HStack(spacing: 7) {
                         chip("Answered", selected: model.caseStatus == "answered") { model.caseStatus = "answered" }
-                        chip("Closed", selected: model.caseStatus == "closed") { model.caseStatus = "closed" }
+                        chip("Confirmed", selected: model.caseStatus == "closed") { model.caseStatus = "closed" }
+                        chip("Completed", selected: model.caseStatus == "completed") { model.caseStatus = "completed" }
                         Spacer()
                     }
                     HStack(spacing: 8) {

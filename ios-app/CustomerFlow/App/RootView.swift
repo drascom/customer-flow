@@ -45,7 +45,13 @@ struct RootView: View {
         .background(AppTheme.background.ignoresSafeArea())
         .tint(AppTheme.brand)
         .overlay {
-            if state.isRefreshingAfterForeground {
+            if let requirement = state.updateRequirement, requirement.isRequired {
+                RequiredUpdateView(
+                    requirement: requirement,
+                    onChangeServer: { Task { await state.changeServer() } }
+                )
+                    .transition(.opacity)
+            } else if state.isRefreshingAfterForeground {
                 ZStack {
                     AppTheme.background.opacity(0.82).ignoresSafeArea()
                     ProgressView()
@@ -95,6 +101,25 @@ struct RootView: View {
             Button("OK", role: .cancel) { state.errorMessage = nil }
         } message: {
             Text(state.errorMessage ?? "")
+        }
+        .alert(
+            "Update available",
+            isPresented: Binding(
+                get: { state.updateRequirement?.isRequired == false },
+                set: { if !$0 { state.dismissRecommendedUpdate() } }
+            )
+        ) {
+            Button("Update now") {
+                if let url = state.updateRequirement?.storeURL {
+                    UIApplication.shared.open(url)
+                }
+                state.dismissRecommendedUpdate()
+            }
+            Button("Later", role: .cancel) { state.dismissRecommendedUpdate() }
+        } message: {
+            if let requirement = state.updateRequirement {
+                Text("CustomerFlow \(requirement.latestVersion) is available. You are using \(requirement.currentVersion).")
+            }
         }
     }
 
@@ -186,6 +211,41 @@ struct RootView: View {
             from: nil,
             for: nil
         )
+    }
+}
+
+private struct RequiredUpdateView: View {
+    let requirement: AppUpdateRequirement
+    let onChangeServer: () -> Void
+
+    var body: some View {
+        ZStack {
+            AppTheme.background.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image(systemName: "arrow.down.app.fill")
+                    .font(.system(size: 54))
+                    .foregroundStyle(AppTheme.accent)
+                VStack(spacing: 8) {
+                    Text("Update required")
+                        .font(.title2.bold())
+                        .foregroundStyle(AppTheme.ink)
+                    Text("This server requires CustomerFlow \(requirement.minimumVersion) or newer. You are using \(requirement.currentVersion).")
+                        .font(.body)
+                        .foregroundStyle(AppTheme.muted)
+                        .multilineTextAlignment(.center)
+                }
+                Button("Open App Store", systemImage: "arrow.up.right.square") {
+                    UIApplication.shared.open(requirement.storeURL)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                Button("Change server", systemImage: "server.rack", action: onChangeServer)
+                    .buttonStyle(.bordered)
+            }
+            .padding(28)
+            .frame(maxWidth: 430)
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 

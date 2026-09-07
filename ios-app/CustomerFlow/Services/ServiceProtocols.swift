@@ -14,6 +14,7 @@ protocol CaseRepository: AnyObject {
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase
     func saveAgentValues(caseID: UUID, patientName: String, patientProfile: PatientProfileInput, grafts: String, currency: String, price: String) async throws
     func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String) async throws
+    func completeCase(caseID: UUID) async throws -> ConsultationCase
     func sendAgentUpdate(caseID: UUID, text: String) async throws
 }
 

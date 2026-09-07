@@ -62,6 +62,19 @@ updates and case photo uploads. All other authenticated routes return
 `403 mcp_scope_forbidden`. MCP writes therefore pass through the same API event,
 validation and idempotency paths as mobile/web writes.
 
+## Completing a conversation
+
+An agent who owns a case or any doctor can call
+`POST /api/v1/cases/{caseID}/complete` when no further action is needed. One
+person completing the case is sufficient; approval from the other side is not
+required. This workflow state is separate from a confirmed final treatment
+plan, so the existing case status is preserved for audit and reporting.
+
+The completion response records who completed the case and when. A later doctor
+message, agent update or annotated-photo message automatically clears completion
+and returns the case to the appropriate waiting state. Repeating the completion
+request is safe and does not create duplicate notifications.
+
 ## Notifications and Apple Push Notifications
 
 Notifications are stored in the API database and appear in both the web and
@@ -176,6 +189,20 @@ changed by deploys.
 
 The public demo deploy and hourly reset scripts share a maintenance lock so a
 code update cannot race with a database reset.
+
+## iOS client version policy
+
+The public `GET /api/v1/client-version/ios` endpoint returns the current iOS
+policy. The server checks Apple for the latest public App Store version and
+caches the result for 15 minutes. An administrator can open **App version** in
+the web dashboard to refresh that value and set the minimum supported version.
+
+Clients older than the public App Store release receive a dismissible update
+reminder. Clients older than the configured minimum are blocked until they open
+the App Store and install a supported version. The dashboard refuses to set a
+minimum version that Apple has not published, or to change it while Apple's
+version lookup is unavailable. A minimum can still be lowered during an Apple
+lookup outage so administrators can always restore access.
 
 ## Tests
 

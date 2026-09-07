@@ -21,6 +21,7 @@ struct CaseDetailView: View {
     @State private var pendingSentMessageID: UUID?
     @State private var messageScrollTarget: UUID?
     @State private var isComposerExpanded = true
+    @State private var showsCompletionConfirmation = false
     @FocusState private var focusedComposerField: ComposerField?
 
     private var item: ConsultationCase? { state.cases.first { $0.id == caseID } }
@@ -73,10 +74,14 @@ struct CaseDetailView: View {
                                     )
                                     .id(message.id)
                                 }
+
+                                completionSection(item)
                             }
 
                             if item.status != .closed {
-                                Text("Reply below to send your assessment to the agent.")
+                                Text(item.isCompleted
+                                     ? "Send a message below to reopen this case."
+                                     : "Reply below to send your assessment to the agent.")
                                     .font(.caption)
                                     .foregroundStyle(AppTheme.muted)
                                     .frame(maxWidth: .infinity, alignment: .center)
@@ -169,6 +174,18 @@ struct CaseDetailView: View {
             } message: {
                 Text("The comment will disappear from the conversation, but administrators will retain the record.")
             }
+            .confirmationDialog(
+                "Mark this case as complete?",
+                isPresented: $showsCompletionConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Mark as complete") {
+                    Task { _ = await state.completeCase(caseID: caseID) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Only one person needs to complete it. A new doctor or agent message will reopen the case automatically.")
+            }
         }
     }
 
@@ -180,7 +197,16 @@ struct CaseDetailView: View {
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                StatusChip(status: item.status)
+                if item.isCompleted {
+                    Label("Completed", systemImage: "checkmark.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(Color(red: 0.08, green: 0.52, blue: 0.32))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.12), in: Capsule())
+                } else {
+                    StatusChip(status: item.status)
+                }
             }
 
             Divider()
@@ -251,6 +277,55 @@ struct CaseDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private func completionSection(_ item: ConsultationCase) -> some View {
+        if item.status != .closed {
+            if item.isCompleted {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 9) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Completed by \(item.completedByName ?? "a team member")")
+                                .font(.subheadline.weight(.semibold))
+                            if let completedAt = item.completedAt {
+                                Text(completedAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption2)
+                            }
+                        }
+                    }
+                    Text("A new doctor or agent message will reopen this case automatically.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+                .foregroundStyle(Color(red: 0.08, green: 0.52, blue: 0.32))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(13)
+                .background(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.28)))
+            } else {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Nothing else to add?")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("One tap completes it; the agent does not need to confirm.")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.muted)
+                    }
+                    Spacer(minLength: 6)
+                    Button("Mark complete", systemImage: "checkmark.circle") {
+                        showsCompletionConfirmation = true
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .tint(AppTheme.brand)
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
     private func agentEstimate(_ item: ConsultationCase) -> some View {
         detailSection("Agent estimate") {
             VStack(alignment: .leading, spacing: 10) {
@@ -290,7 +365,7 @@ struct CaseDetailView: View {
     private func responseComposer(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             if isComposerExpanded {
-                Text("Reply to agent")
+                Text(item.isCompleted ? "Send a message to reopen" : "Reply to agent")
                     .font(.subheadline.bold())
                     .foregroundStyle(AppTheme.ink)
 

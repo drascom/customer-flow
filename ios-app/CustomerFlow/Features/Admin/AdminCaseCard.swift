@@ -352,15 +352,17 @@ struct AdminCaseCard: View {
     }
 
     private var shortStatus: String {
-        switch item.status {
+        if item.isCompleted { return "Completed" }
+        return switch item.status {
         case .waiting: "Waiting"
         case .answered: "Answered"
-        case .closed: "Closed"
+        case .closed: "Confirmed"
         }
     }
 
     private var statusColor: Color {
-        switch item.status {
+        if item.isCompleted { return Color(red: 0.08, green: 0.52, blue: 0.32) }
+        return switch item.status {
         case .waiting: AppTheme.accent
         case .answered: AppTheme.brand
         case .closed: AppTheme.muted

@@ -174,23 +174,26 @@ struct DoctorQueueView: View {
         case .waiting: "Needs review"
         case .answered: "Sent"
         case .confirmed: "Confirmed"
+        case .completed: "Completed"
         }
     }
 
     private func matchesQueue(_ item: ConsultationCase) -> Bool {
         switch filter {
-        case .waiting: item.status == .waiting
-        case .answered: item.status == .answered
+        case .waiting: item.status == .waiting && !item.isCompleted
+        case .answered: item.status == .answered && !item.isCompleted
         case .confirmed: item.status == .closed
+        case .completed: item.isCompleted
         }
     }
 
     private func count(for filter: DoctorQueueFilter) -> Int {
         state.cases.filter { item in
             switch filter {
-            case .waiting: item.status == .waiting
-            case .answered: item.status == .answered
+            case .waiting: item.status == .waiting && !item.isCompleted
+            case .answered: item.status == .answered && !item.isCompleted
             case .confirmed: item.status == .closed
+            case .completed: item.isCompleted
             }
         }.count
     }
@@ -297,11 +300,12 @@ private struct DoctorWorkCard: View {
     }
 
     private var isOverdue: Bool {
-        item.status == .waiting && Date().timeIntervalSince(item.uploadedAt) >= 86_400
+        !item.isCompleted && item.status == .waiting && Date().timeIntervalSince(item.uploadedAt) >= 86_400
     }
 
     private var statusTitle: String {
-        switch item.status {
+        if item.isCompleted { return "Completed" }
+        return switch item.status {
         case .waiting: isOverdue ? "Needs review · overdue" : "Needs review"
         case .answered: "Sent · waiting for agent"
         case .closed: "Confirmed"
@@ -309,7 +313,8 @@ private struct DoctorWorkCard: View {
     }
 
     private var statusColor: Color {
-        switch item.status {
+        if item.isCompleted { return Color(red: 0.08, green: 0.52, blue: 0.32) }
+        return switch item.status {
         case .waiting:
             isOverdue ? Color(red: 0.78, green: 0.16, blue: 0.14) : AppTheme.accent
         case .answered:

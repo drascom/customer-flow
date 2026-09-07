@@ -57,6 +57,12 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let finalGrafts: String?
     let finalPrice: String?
     let finalizedAt: Date?
+    let completedAt: Date?
+    let completedBy: String?
+    let completedByName: String?
+    let completedByRole: UserRole?
+
+    var isCompleted: Bool { completedAt != nil }
 
     var dateOfBirthDisplayName: String? {
         guard let dateOfBirth else { return nil }
