@@ -268,4 +268,16 @@ final class AdminDashboardModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    func addOperationalNote(to item: AdminCase, text: String) async -> AdminCase? {
+        do {
+            try await repository.addOperationalNote(caseID: item.id, text: text)
+            let refreshedCases = try await repository.fetchCases()
+            cases = refreshedCases
+            return refreshedCases.first { $0.id == item.id }
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
 }

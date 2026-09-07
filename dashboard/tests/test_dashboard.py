@@ -65,6 +65,31 @@ class DashboardTestCase(unittest.TestCase):
         self.request("GET", "/api/v1/cases", token=agent)
         self.request("GET", "/api/v1/admin/users", token=agent, expected=403)
 
+    def test_admin_can_reset_user_password_through_dashboard(self):
+        admin = self.login("admin")
+        users = self.request("GET", "/api/v1/admin/users", token=admin)["users"]
+        target = next(user for user in users if user["username"] == "user2")
+        self.request(
+            "POST", f"/api/v1/admin/users/{target['id']}/reset-password", {}, token=admin
+        )
+        self.assertIsNotNone(self.login("user2"))
+
+    def test_manager_can_send_operational_note_through_dashboard(self):
+        manager = self.login("manager")
+        case = self.request("GET", "/api/v1/admin/cases", token=manager)["cases"][0]
+        before_status = case["status"]
+        before_doctor = case["doctorID"]
+        updated = self.request(
+            "POST",
+            f"/api/v1/cases/{case['id']}/management-messages",
+            {"text": "Dashboard operational note"},
+            token=manager,
+        )["case"]
+        message = next(item for item in updated["messages"] if item["text"] == "Dashboard operational note")
+        self.assertEqual("admin", message["role"])
+        self.assertEqual(before_status, updated["status"])
+        self.assertEqual(before_doctor, updated["assignedDoctorID"])
+
     def test_case_creation_and_photo_upload_forward_binary_and_headers(self):
         agent = self.login("user1")
         case = self.request("POST", "/api/v1/cases", {"patientName": "Web Patient", "grafts": "2300", "currency": "GBP", "price": "2200", "note": "Web flow", "photoCount": 1}, token=agent, expected=201)["case"]

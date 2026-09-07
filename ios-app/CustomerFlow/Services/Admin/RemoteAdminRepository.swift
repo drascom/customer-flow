@@ -135,4 +135,14 @@ actor RemoteAdminRepository: AdminRepository {
         struct Envelope: Decodable, Sendable { let photo: Mutation }
         let _: Envelope = try await client.send("DELETE", path: "admin/photos/\(id)", body: Empty())
     }
+
+    func addOperationalNote(caseID: String, text: String) async throws {
+        struct Body: Encodable, Sendable { let text: String }
+        struct Envelope: Decodable, Sendable {}
+        let _: Envelope = try await client.send(
+            "POST",
+            path: "cases/\(caseID)/management-messages",
+            body: Body(text: text)
+        )
+    }
 }

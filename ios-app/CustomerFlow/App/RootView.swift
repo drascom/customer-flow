@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var state: AppState
@@ -127,6 +128,7 @@ struct RootView: View {
             Spacer(minLength: 8)
 
             Button {
+                dismissKeyboard()
                 showsNotifications = true
             } label: {
                 ZStack(alignment: .topTrailing) {
@@ -154,12 +156,15 @@ struct RootView: View {
                     Divider()
                 }
                 Button("Profile", systemImage: "person.crop.circle") {
+                    dismissKeyboard()
                     showsProfile = true
                 }
                 Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
+                    dismissKeyboard()
                     Task { await state.logout() }
                 }
                 Button("Change server", systemImage: "server.rack") {
+                    dismissKeyboard()
                     Task { await state.changeServer() }
                 }
             } label: {
@@ -172,6 +177,15 @@ struct RootView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(AppTheme.background.ignoresSafeArea(edges: .top))
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 }
 

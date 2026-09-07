@@ -6,6 +6,7 @@ struct DoctorQueueView: View {
     @State private var searchText = ""
     @State private var oldestFirst = true
     @State private var selectedCase: ConsultationCase?
+    @FocusState private var isSearchFocused: Bool
 
     private var filteredCases: [ConsultationCase] {
         state.cases
@@ -37,6 +38,7 @@ struct DoctorQueueView: View {
                 }
                 .padding(.bottom, 20)
             }
+            .scrollDismissesKeyboard(.interactively)
             .refreshable { await state.load() }
         }
         .background(AppTheme.background)
@@ -54,6 +56,12 @@ struct DoctorQueueView: View {
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(28)
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { isSearchFocused = false }
+            }
+        }
     }
 
     private var searchHeader: some View {
@@ -62,6 +70,20 @@ struct DoctorQueueView: View {
             TextField("Search patients, agencies or notes", text: $searchText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($isSearchFocused)
+                .submitLabel(.done)
+                .onSubmit { isSearchFocused = false }
+            if isSearchFocused || !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(AppTheme.muted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search and close keyboard")
+            }
         }
         .padding(.horizontal, 13)
         .frame(maxWidth: 620, minHeight: 42)
@@ -79,6 +101,7 @@ struct DoctorQueueView: View {
             HStack(spacing: 6) {
                 ForEach(DoctorQueueFilter.allCases) { item in
                     Button {
+                        isSearchFocused = false
                         withAnimation(.easeInOut(duration: 0.18)) {
                             filter = item
                         }
@@ -114,6 +137,7 @@ struct DoctorQueueView: View {
                     .foregroundStyle(AppTheme.muted)
                 Spacer()
                 Button {
+                    isSearchFocused = false
                     oldestFirst.toggle()
                 } label: {
                     Label(oldestFirst ? "Oldest first" : "Newest first", systemImage: oldestFirst ? "arrow.up" : "arrow.down")
@@ -135,7 +159,10 @@ struct DoctorQueueView: View {
         } else {
             LazyVStack(spacing: 12) {
                 ForEach(filteredCases) { item in
-                    DoctorWorkCard(item: item) { selectedCase = item }
+                    DoctorWorkCard(item: item) {
+                        isSearchFocused = false
+                        selectedCase = item
+                    }
                 }
             }
             .padding(.horizontal, 12)

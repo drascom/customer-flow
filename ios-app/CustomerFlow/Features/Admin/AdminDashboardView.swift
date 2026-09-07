@@ -26,6 +26,7 @@ struct AdminDashboardView: View {
     @State private var pendingDoctorID = ""
     @State private var assignmentReason = ""
     @State private var showsAssignmentPrompt = false
+    @FocusState private var isSearchFocused: Bool
 
     init(
         repository: any AdminRepository,
@@ -60,6 +61,7 @@ struct AdminDashboardView: View {
             .padding(.bottom, 24)
         }
         .background(AppTheme.background.ignoresSafeArea())
+        .scrollDismissesKeyboard(.interactively)
         .refreshable { await model.load() }
         .task { await model.load() }
         .onChange(of: liveRevision) {
@@ -137,6 +139,12 @@ struct AdminDashboardView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { isSearchFocused = false }
+            }
+        }
     }
 
     private var controls: some View {
@@ -148,6 +156,7 @@ struct AdminDashboardView: View {
             }
             .pickerStyle(.segmented)
             .onChange(of: model.selectedSection) {
+                isSearchFocused = false
                 model.searchText = ""
                 expandedCaseID = nil
                 expandedUserID = nil
@@ -160,9 +169,13 @@ struct AdminDashboardView: View {
                     TextField(searchPlaceholder, text: $model.searchText)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($isSearchFocused)
+                        .submitLabel(.done)
+                        .onSubmit { isSearchFocused = false }
                     if !model.searchText.isEmpty {
                         Button {
                             model.searchText = ""
+                            isSearchFocused = false
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(AppTheme.muted)
@@ -324,9 +337,15 @@ struct AdminDashboardView: View {
                         doctors: model.activeDoctors,
                         isReadOnly: isReadOnly,
                         isExpanded: expandedCaseID == item.id,
-                        onToggle: { withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id } },
+                        onToggle: {
+                            isSearchFocused = false
+                            withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id }
+                        },
                         onAssign: { requestAssignment(for: item, doctorID: $0) },
-                        onPurgePhoto: { photoID in Task { await model.purgePhoto(id: photoID) } }
+                        onPurgePhoto: { photoID in Task { await model.purgePhoto(id: photoID) } },
+                        onSendOperationalNote: { text in
+                            await model.addOperationalNote(to: item, text: text)
+                        }
                     )
                 }
             }
@@ -339,8 +358,14 @@ struct AdminDashboardView: View {
                     currentUserID: model.currentUserID,
                     isReadOnly: isReadOnly,
                     isExpanded: expandedUserID == user.id,
-                    onToggle: { withAnimation { expandedUserID = expandedUserID == user.id ? nil : user.id } },
-                    onEdit: { editingUser = user },
+                    onToggle: {
+                        isSearchFocused = false
+                        withAnimation { expandedUserID = expandedUserID == user.id ? nil : user.id }
+                    },
+                    onEdit: {
+                        isSearchFocused = false
+                        editingUser = user
+                    },
                     onSetActive: { requestUserAction(user, active: $0, delete: false) },
                     onDelete: { requestUserAction(user, active: false, delete: true) }
                 )
@@ -353,7 +378,7 @@ struct AdminDashboardView: View {
     }
 
     private var readOnlyNotice: some View {
-        Label("Manager access is read-only. All records are visible, but changes are disabled.", systemImage: "eye")
+        Label("Managers can view all records and add operational notes. Clinical and case data remain read-only.", systemImage: "eye")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(AppTheme.brand)
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -1026,6 +1026,18 @@ class APITestCase(unittest.TestCase):
         }, token=admin)["user"]
         self.assertEqual("Edited Agent", created["displayName"])
         new_user_token = self.login(username, "Temporary!123")
+        manager = self.login("manager", "demo123")
+        denied_reset = self.request(
+            "POST", f"/admin/users/{created['id']}/reset-password", {}, token=manager, expected=403
+        )
+        self.assertEqual("forbidden", denied_reset["error"]["code"])
+        reset = self.request(
+            "POST", f"/admin/users/{created['id']}/reset-password", {}, token=admin
+        )["user"]
+        self.assertTrue(reset["passwordReset"])
+        self.request("GET", "/cases", token=new_user_token, expected=401)
+        self.request("POST", "/auth/login", {"username": username, "password": "Temporary!123"}, expected=401)
+        new_user_token = self.login(username, "demo123")
         deactivated = self.request("PATCH", f"/admin/users/{created['id']}", {"active": False}, token=admin)["user"]
         self.assertFalse(deactivated["active"])
         expired = self.request("GET", "/cases", token=new_user_token, expected=401)
@@ -1117,7 +1129,7 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("isik.sen", first["username"])
         self.assertEqual("isik.sen2", second["username"])
 
-    def test_manager_can_read_everything_but_cannot_change_records(self):
+    def test_manager_can_read_everything_and_add_operational_notes_but_cannot_change_records(self):
         manager = self.login("manager", "demo123")
         all_cases = self.request("GET", "/cases", token=manager)["cases"]
         admin_cases = self.request("GET", "/admin/cases", token=manager)["cases"]
@@ -1128,6 +1140,54 @@ class APITestCase(unittest.TestCase):
         self.assertGreater(len(agencies), 0)
 
         target = next(item for item in admin_cases if item["doctorID"] is None)
+        original_status = target["status"]
+        original_doctor_id = target["doctorID"]
+        idempotency_key = str(uuid.uuid4())
+        updated = self.request(
+            "POST",
+            f"/cases/{target['id']}/management-messages",
+            {"text": "Please verify the agency contact details."},
+            token=manager,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )["case"]
+        operational_messages = [
+            message for message in updated["messages"]
+            if message["text"] == "Please verify the agency contact details."
+        ]
+        self.assertEqual(1, len(operational_messages))
+        self.assertEqual("admin", operational_messages[0]["role"])
+        self.assertEqual("Local Manager", operational_messages[0]["author"])
+        self.assertIsNone(operational_messages[0]["approximateGrafts"])
+        self.assertIsNone(operational_messages[0]["recommendedPrice"])
+        self.assertEqual(original_status, updated["status"])
+        self.assertEqual(original_doctor_id, updated["assignedDoctorID"])
+
+        replayed = self.request(
+            "POST",
+            f"/cases/{target['id']}/management-messages",
+            {"text": "Please verify the agency contact details."},
+            token=manager,
+            extra_headers={"Idempotency-Key": idempotency_key},
+        )["case"]
+        self.assertEqual(
+            1,
+            sum(
+                message["text"] == "Please verify the agency contact details."
+                for message in replayed["messages"]
+            ),
+        )
+        empty = self.request(
+            "POST", f"/cases/{target['id']}/management-messages", {"text": "  "},
+            token=manager, expected=422,
+        )
+        self.assertEqual("empty_operational_note", empty["error"]["code"])
+        agent = self.login("user1", "demo123")
+        forbidden_note = self.request(
+            "POST", f"/cases/{target['id']}/management-messages", {"text": "Not permitted"},
+            token=agent, expected=403,
+        )
+        self.assertEqual("forbidden", forbidden_note["error"]["code"])
+
         assignment = self.request("PATCH", f"/admin/patients/{target['patientID']}", {
             "doctorID": "doctor-emre", "reason": "Manager must remain read-only"
         }, token=manager, expected=403)

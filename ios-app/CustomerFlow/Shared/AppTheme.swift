@@ -1145,6 +1145,15 @@ struct ConversationMessageBubble: View {
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
 
+                if message.role == .admin {
+                    Text("Operational")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(AppTheme.brand)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.brand.opacity(0.1), in: Capsule())
+                }
+
                 Spacer(minLength: 8)
 
                 Text(message.createdAt.compactRelativeText)
@@ -1194,7 +1203,14 @@ struct ConversationMessageBubble: View {
     }
 
     private var bubbleColor: Color {
-        (message.role == .doctor ? AppTheme.brand : AppTheme.accent).opacity(0.1)
+        switch message.role {
+        case .doctor:
+            AppTheme.brand.opacity(0.1)
+        case .admin:
+            AppTheme.brand.opacity(0.06)
+        case .agent, .system:
+            AppTheme.accent.opacity(0.1)
+        }
     }
 }
 

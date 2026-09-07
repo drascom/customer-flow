@@ -25,6 +25,7 @@ struct AgentCasesView: View {
     @State private var filter: AgentCaseFilter = .all
     @State private var searchText = ""
     @State private var selectedCaseID: UUID?
+    @FocusState private var isSearchFocused: Bool
 
     private var myCases: [ConsultationCase] {
         state.cases
@@ -75,7 +76,10 @@ struct AgentCasesView: View {
                             ForEach(myCases) { item in
                                 AgentCaseListCard(
                                     item: item,
-                                    onOpen: { selectedCaseID = item.id }
+                                    onOpen: {
+                                        isSearchFocused = false
+                                        selectedCaseID = item.id
+                                    }
                                 )
                                 .padding(.horizontal, 12)
                             }
@@ -88,6 +92,7 @@ struct AgentCasesView: View {
             }
         }
         .background(AppTheme.background)
+        .scrollDismissesKeyboard(.interactively)
         .refreshable { await state.load() }
         .onChange(of: state.pendingNotificationCaseID) { _, caseID in
             guard let caseID, state.cases.contains(where: { $0.id == caseID }) else { return }
@@ -123,6 +128,12 @@ struct AgentCasesView: View {
                 .presentationContentInteraction(.scrolls)
             }
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { isSearchFocused = false }
+            }
+        }
     }
 
     private var searchHeader: some View {
@@ -131,6 +142,20 @@ struct AgentCasesView: View {
             TextField("Search", text: $searchText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($isSearchFocused)
+                .submitLabel(.done)
+                .onSubmit { isSearchFocused = false }
+            if isSearchFocused || !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(AppTheme.muted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search and close keyboard")
+            }
         }
         .padding(.horizontal, 13)
         .frame(maxWidth: 620, minHeight: 42)
@@ -147,6 +172,7 @@ struct AgentCasesView: View {
         Menu {
             ForEach(AgentCaseFilter.allCases) { item in
                 Button {
+                    isSearchFocused = false
                     filter = item
                 } label: {
                     Label("\(item.title) · \(count(for: item))", systemImage: filter == item ? "checkmark" : "circle")

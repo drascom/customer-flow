@@ -35,6 +35,7 @@ from apns import APNSPushDispatcher
 
 API_PREFIX = "/api/v1"
 UTC = timezone.utc
+ADMIN_RESET_PASSWORD = "demo123"
 IDEMPOTENCY_KEY_ALLOWED = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-"
 )
@@ -1385,6 +1386,58 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def add_management_message(
+        self,
+        case_id: str,
+        payload: dict,
+        user: sqlite3.Row,
+        idempotency_key: str | None = None,
+    ) -> dict:
+        self._require_any_role(user, "admin", "manager")
+        idempotency_key = validate_idempotency_key(idempotency_key)
+        fingerprint = request_fingerprint({"caseID": case_id, "payload": payload})
+        text = str(payload.get("text", "")).strip()
+        if not text:
+            raise APIError(422, "empty_operational_note", "Write an operational note before sending.")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                replay = self._idempotency_replay(
+                    conn, user["id"], "case.management_message", idempotency_key, fingerprint
+                )
+                if replay is not None:
+                    replayed = IdempotentReplay(self._case_json(conn, self._case_row(conn, replay)))
+                    conn.execute("COMMIT")
+                    return replayed
+                self._case_row(conn, case_id)
+                now = iso(utc_now())
+                conn.execute(
+                    "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text,"
+                    "approximate_grafts,recommended_price) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (
+                        str(uuid.uuid4()), case_id, user["id"], user["display_name"], "admin", now,
+                        text, None, None,
+                    ),
+                )
+                conn.execute("UPDATE cases SET version=version+1 WHERE id=?", (case_id,))
+                self._audit(
+                    conn,
+                    user["id"],
+                    "case.management_message_added",
+                    "case",
+                    case_id,
+                    {"accountRole": user["role"]},
+                )
+                result = self._case_json(conn, self._case_row(conn, case_id))
+                self._store_idempotency_result(
+                    conn, user["id"], "case.management_message", idempotency_key, fingerprint, case_id
+                )
+                conn.execute("COMMIT")
+                return result
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def close_case(self, case_id: str, payload: dict, user: sqlite3.Row) -> dict:
         self._require_role(user, "agent")
         final_grafts = str(payload.get("finalGrafts", "")).strip()
@@ -1920,6 +1973,52 @@ class Database:
             except sqlite3.IntegrityError:
                 conn.execute("ROLLBACK")
                 raise APIError(409, "username_exists", "This username is already in use.")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def admin_reset_user_password(self, user_id: str, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        if user_id == user["id"]:
+            raise APIError(
+                409,
+                "cannot_reset_own_password",
+                "Use your profile to change your own password.",
+            )
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                target = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+                if not target:
+                    raise APIError(404, "user_not_found", "The user could not be found.")
+                if conn.execute(
+                    "SELECT 1 FROM agency_mcp_credentials WHERE service_user_id=?", (user_id,)
+                ).fetchone():
+                    raise APIError(
+                        409,
+                        "managed_service_account",
+                        "This MCP service account is managed from its agency settings.",
+                    )
+                salt, digest = hash_password(ADMIN_RESET_PASSWORD)
+                conn.execute(
+                    "UPDATE users SET password_salt=?,password_hash=? WHERE id=?",
+                    (salt, digest, user_id),
+                )
+                conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+                self._audit(
+                    conn,
+                    user["id"],
+                    "user.password_reset",
+                    "user",
+                    user_id,
+                    {"username": target["username"]},
+                )
+                conn.execute("COMMIT")
+                return {
+                    "id": target["id"],
+                    "username": target["username"],
+                    "passwordReset": True,
+                }
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
@@ -2519,6 +2618,18 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._changed(
                     200, {"connection": connection}, "agency.mcp_token_rotated", admin_parts[1], user
                 )
+            if (path.startswith(f"{API_PREFIX}/admin/") and method == "POST" and
+                    len(admin_parts) == 3 and admin_parts[0] == "users" and
+                    admin_parts[2] == "reset-password"):
+                self._read_json()
+                reset_user = self.server.database.admin_reset_user_password(admin_parts[1], user)
+                return self._changed(
+                    200,
+                    {"user": reset_user},
+                    "user.password_reset",
+                    admin_parts[1],
+                    user,
+                )
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "users":
                 self._read_json()
                 deleted = self.server.database.admin_delete_user(admin_parts[1], user)
@@ -2588,6 +2699,13 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._changed(200, {"case": updated}, "case.updated", case_id, user)
             if method == "POST" and action == "agent-updates":
                 updated = self.server.database.add_agent_update(
+                    case_id, self._read_json(), user, self.headers.get("Idempotency-Key")
+                )
+                if isinstance(updated, IdempotentReplay):
+                    return self._json(200, {"case": updated})
+                return self._changed(200, {"case": updated}, "message.created", case_id, user)
+            if method == "POST" and action == "management-messages":
+                updated = self.server.database.add_management_message(
                     case_id, self._read_json(), user, self.headers.get("Idempotency-Key")
                 )
                 if isinstance(updated, IdempotentReplay):

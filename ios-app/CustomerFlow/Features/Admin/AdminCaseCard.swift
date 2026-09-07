@@ -10,6 +10,7 @@ struct AdminCaseCard: View {
     let onToggle: () -> Void
     let onAssign: (String?) -> Void
     let onPurgePhoto: (String) -> Void
+    let onSendOperationalNote: (String) async -> AdminCase?
 
     @State private var photoPreview: NativePhotoPreviewRequest?
     @State private var pendingPurgePhotoID: String?
@@ -134,7 +135,7 @@ struct AdminCaseCard: View {
             }
         }
         .sheet(isPresented: $showsConversation) {
-            AdminConversationSheet(item: item)
+            AdminConversationSheet(item: item, onSendOperationalNote: onSendOperationalNote)
                 .presentationDetents([.fraction(0.97)])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(28)
@@ -386,7 +387,15 @@ struct AdminCaseCard: View {
 private struct AdminConversationSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let item: AdminCase
+    let onSendOperationalNote: (String) async -> AdminCase?
+    @State private var item: AdminCase
+    @State private var draft = ""
+    @State private var isSending = false
+
+    init(item: AdminCase, onSendOperationalNote: @escaping (String) async -> AdminCase?) {
+        self.onSendOperationalNote = onSendOperationalNote
+        _item = State(initialValue: item)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -435,6 +444,36 @@ private struct AdminConversationSheet: View {
                 }
                 .padding(16)
             }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 9) {
+                Text("Operational note")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.ink)
+                TextField("Write an operational note", text: $draft, axis: .vertical)
+                    .lineLimit(2...5)
+                    .textFieldStyle(.roundedBorder)
+                Text("This does not change the case status or medical assessment.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+                Button {
+                    Task { await sendOperationalNote() }
+                } label: {
+                    if isSending {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Label("Send note", systemImage: "paperplane.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.brand)
+                .disabled(isSending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(16)
+            .background(AppTheme.surfaceStrong)
         }
         .background(AppTheme.background)
     }
@@ -444,7 +483,7 @@ private struct AdminConversationSheet: View {
             HStack(spacing: 8) {
                 Text(message.author)
                     .font(.caption.bold())
-                Text(message.role.rawValue.capitalized)
+                Text(message.role == .admin ? "Operational" : message.role.rawValue.capitalized)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AppTheme.muted)
                 Spacer()
@@ -487,5 +526,16 @@ private struct AdminConversationSheet: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(message.deletedAt == nil ? AppTheme.border : .red.opacity(0.35))
         }
+    }
+
+    @MainActor
+    private func sendOperationalNote() async {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isSending else { return }
+        isSending = true
+        defer { isSending = false }
+        guard let refreshedItem = await onSendOperationalNote(text) else { return }
+        item = refreshedItem
+        draft = ""
     }
 }

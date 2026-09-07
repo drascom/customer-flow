@@ -192,16 +192,6 @@
     "Approx. %@ grafts" : {
 
     },
-    "Approx. %@ grafts · Recommended %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Approx. %1$@ grafts · Recommended %2$@"
-          }
-        }
-      }
-    },
     "Assigned doctor" : {
 
     },
@@ -287,9 +277,6 @@
 
     },
     "Continue with New Patient" : {
-
-    },
-    "Conversation" : {
 
     },
     "CONVERSATION" : {
@@ -681,6 +668,9 @@
     "Reactivate" : {
 
     },
+    "Read more" : {
+
+    },
     "Ready" : {
 
     },
@@ -781,6 +771,9 @@
 
     },
     "Show details" : {
+
+    },
+    "Show less" : {
 
     },
     "Show password" : {
