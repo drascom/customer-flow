@@ -766,6 +766,33 @@ class APITestCase(unittest.TestCase):
             for message in closed["messages"]
         ))
 
+        manager = self.login("manager", "demo123")
+        denied = self.request(
+            "POST", f"/admin/cases/{created['id']}/unconfirm", {},
+            token=manager, expected=403,
+        )
+        self.assertEqual("forbidden", denied["error"]["code"])
+
+        admin = self.login("admin", "demo123")
+        unconfirmed = self.request(
+            "POST", f"/admin/cases/{created['id']}/unconfirm", {}, token=admin
+        )["case"]
+        self.assertEqual("answered", unconfirmed["status"])
+        self.assertIsNone(unconfirmed["finalGrafts"])
+        self.assertIsNone(unconfirmed["finalPrice"])
+        self.assertIsNone(unconfirmed["appointmentAt"])
+        self.assertIsNone(unconfirmed["finalizedAt"])
+        self.assertTrue(any(
+            message["role"] == "system" and "Confirmation removed" in message["text"]
+            for message in unconfirmed["messages"]
+        ))
+
+        repeated = self.request(
+            "POST", f"/admin/cases/{created['id']}/unconfirm", {},
+            token=admin, expected=409,
+        )
+        self.assertEqual("case_not_confirmed", repeated["error"]["code"])
+
     def test_agent_and_doctor_can_complete_and_new_messages_reopen_case(self):
         doctor = self.login("doctor1", "demo123")
         agent = self.login("user1", "demo123")

@@ -1620,6 +1620,44 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def admin_unconfirm_case(self, case_id: str, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._case_row(conn, case_id)
+                if row["status"] != "closed":
+                    raise APIError(409, "case_not_confirmed", "Only a confirmed case can be unconfirmed.")
+                previous_plan = {
+                    "finalGrafts": row["final_grafts"],
+                    "finalPrice": row["final_price"],
+                    "appointmentAt": row["appointment_at"],
+                    "finalizedAt": row["finalized_at"],
+                }
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE cases SET status='answered',final_grafts=NULL,final_price=NULL,"
+                    "finalized_at=NULL,appointment_at=NULL,finalized_by=NULL,"
+                    "completed_at=NULL,completed_by=NULL,completed_by_role=NULL,"
+                    "version=version+1 WHERE id=?",
+                    (case_id,),
+                )
+                conn.execute(
+                    "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (
+                        str(uuid.uuid4()), case_id, user["id"], "System", "system", now,
+                        "Confirmation removed by an administrator. The final plan and appointment must be confirmed again.",
+                    ),
+                )
+                self._audit(conn, user["id"], "case.unconfirmed", "case", case_id, previous_plan)
+                result = self._case_json(conn, self._case_row(conn, case_id))
+                conn.execute("COMMIT")
+                return result
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def complete_case(self, case_id: str, user: sqlite3.Row) -> dict:
         self._require_any_role(user, "agent", "doctor")
         with self.connect() as conn:
@@ -2831,6 +2869,15 @@ class APIHandler(BaseHTTPRequestHandler):
                     "user.password_reset",
                     admin_parts[1],
                     user,
+                )
+            if (path.startswith(f"{API_PREFIX}/admin/") and method == "POST" and
+                    len(admin_parts) == 3 and admin_parts[0] == "cases" and
+                    admin_parts[2] == "unconfirm"):
+                self._read_json()
+                case_id = admin_parts[1].lower()
+                updated = self.server.database.admin_unconfirm_case(case_id, user)
+                return self._changed(
+                    200, {"case": updated}, "case.unconfirmed", case_id, user
                 )
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "users":
                 self._read_json()

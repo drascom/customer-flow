@@ -246,6 +246,9 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .confirmation-form input { min-height: 40px; }
 .confirmation-submit { min-height: 40px; padding: 9px 16px; color: white; border: 1px solid var(--green); border-radius: 11px; background: var(--green); font-weight: 800; white-space: nowrap; }
 .confirmation-submit:hover { background: var(--green-dark); border-color: var(--green-dark); }
+.unconfirm-section { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.unconfirm-button { min-height: 40px; padding: 9px 16px; color: var(--red); border: 1px solid color-mix(in srgb, var(--red), transparent 35%); border-radius: 11px; background: var(--surface-strong); font-weight: 800; white-space: nowrap; }
+.unconfirm-button:hover { color: white; background: var(--red); }
 .patient-details { display: grid; grid-template-columns: minmax(95px, auto) 1fr; gap: 8px 14px; margin: 0; font-size: 13px; }
 .patient-details dt { color: var(--muted); font-weight: 650; }
 .patient-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
@@ -372,6 +375,11 @@ hr { width: 100%; border: 0; border-top: 1px solid var(--border); }
   .editor-toolbar { align-items: flex-start; flex-direction: column; }
   .editor-tools, .pen-controls { width: 100%; }
   .editor-send { align-items: stretch; flex-direction: column; }
+}
+
+@media (max-width: 470px) {
+  .unconfirm-section { align-items: stretch; flex-direction: column; }
+  .unconfirm-button { width: 100%; }
 }
 
 @media (max-width: 470px) {
