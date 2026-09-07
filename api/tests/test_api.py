@@ -318,7 +318,9 @@ class APITestCase(unittest.TestCase):
                 "gender": "female",
                 "phone": "+44 7700 900123",
                 "email": "patient@example.test",
-                "address": "Manchester, Greater Manchester",
+                "address": "10 Test Street",
+                "city": "Manchester",
+                "region": "Greater Manchester",
                 "occupation": "Architect",
                 "profileNote": "Prefers afternoon appointments",
             },
@@ -327,6 +329,8 @@ class APITestCase(unittest.TestCase):
         self.assertEqual(birth_date, created["patient"]["dateOfBirth"])
         self.assertEqual(expected_age, created["patient"]["age"])
         self.assertEqual("female", created["patient"]["gender"])
+        self.assertEqual("Manchester", created["patient"]["city"])
+        self.assertEqual("Greater Manchester", created["patient"]["region"])
         self.assertEqual("Architect", created["patient"]["occupation"])
 
         edited = self.request("PATCH", f"/cases/{created['id']}/agent-values", {
@@ -338,7 +342,9 @@ class APITestCase(unittest.TestCase):
                 "gender": "prefer_not_to_say",
                 "phone": "+44 7700 900999",
                 "email": None,
-                "address": "Leeds",
+                "address": "20 Example Road",
+                "city": "Leeds",
+                "region": "West Yorkshire",
                 "occupation": "Architect",
                 "profileNote": "Contact by phone",
             },
@@ -349,6 +355,8 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("prefer_not_to_say", edited["patient"]["gender"])
         self.assertEqual("+44 7700 900999", edited["patient"]["phone"])
         self.assertIsNone(edited["patient"]["email"])
+        self.assertEqual("Leeds", edited["patient"]["city"])
+        self.assertEqual("West Yorkshire", edited["patient"]["region"])
 
         admin_case = next(
             item for item in self.request("GET", "/admin/cases", token=admin)["cases"]
@@ -356,7 +364,9 @@ class APITestCase(unittest.TestCase):
         )
         self.assertEqual(41, admin_case["age"])
         self.assertEqual(41, admin_case["statedAge"])
-        self.assertEqual("Leeds", admin_case["patientAddress"])
+        self.assertEqual("20 Example Road", admin_case["patientAddress"])
+        self.assertEqual("Leeds", admin_case["city"])
+        self.assertEqual("West Yorkshire", admin_case["region"])
         self.assertEqual("Contact by phone", admin_case["profileNote"])
 
         invalid = self.request("POST", "/cases", {

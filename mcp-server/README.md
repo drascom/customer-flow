@@ -41,13 +41,22 @@ agency's confidential patient data until an admin rotates it.
 | `who_am_i` | on | Confirm tenant and enabled capabilities |
 | `list_cases` | on | Agency-only summaries, capped at 100 |
 | `get_case` | on | One agency case by `HT-...` reference |
-| `create_case` | off | Idempotent MCP-owned case creation |
+| `create_case` | off | Idempotent case creation with separate patient need, city and region fields |
 | `add_case_message` | off | Idempotent update to an MCP-owned case |
 | `upload_case_photo` | off | Validated base64 JPEG/PNG/HEIC upload |
 
 Writes require `CF_MCP_ENABLE_WRITES=true`. Photos additionally require
 `CF_MCP_ENABLE_PHOTO_UPLOADS=true`. Every write requires an 8-128 character
 idempotency key; reusing a key with a different payload is rejected.
+
+`create_case` records the patient and consultation metadata first. Its required
+`patient_need` argument maps to the need shown on the case, while `address`,
+`city`, and `region` remain separate patient fields. A new case then requires at
+least one call to `upload_case_photo`. Tool results expose
+`minimum_photo_count`, `photo_requirement_met`, and
+`remaining_required_photos`; an automation must not consider the submission
+complete until `photo_requirement_met` is true. This matches the current iOS
+minimum of one photo.
 
 Case reads expose `workflow_state` using the product language:
 `waiting_for_doctor`, `waiting_for_agent`, `confirmed`, or `closed`. A confirmed

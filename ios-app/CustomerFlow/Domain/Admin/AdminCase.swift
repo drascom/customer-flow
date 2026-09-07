@@ -33,6 +33,8 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let patientPhone: String?
     let patientEmail: String?
     let patientAddress: String?
+    let city: String?
+    let region: String?
     let occupation: String?
     let profileNote: String?
     let agentName: String

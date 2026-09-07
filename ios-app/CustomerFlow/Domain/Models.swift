@@ -65,6 +65,8 @@ struct Patient: Identifiable, Hashable, Codable, Sendable {
     var phone: String? = nil
     var email: String? = nil
     var address: String? = nil
+    var city: String? = nil
+    var region: String? = nil
     var occupation: String? = nil
     var profileNote: String? = nil
     var assignedDoctorID: String?
@@ -102,7 +104,7 @@ struct Patient: Identifiable, Hashable, Codable, Sendable {
 
     var hasProfileDetails: Bool {
         dateOfBirth != nil || statedAge != nil || gender != nil || phone != nil || email != nil || address != nil
-            || occupation != nil || profileNote != nil
+            || city != nil || region != nil || occupation != nil || profileNote != nil
     }
 }
 
@@ -113,11 +115,13 @@ struct PatientProfileInput: Hashable, Codable, Sendable {
     let phone: String?
     let email: String?
     let address: String?
+    let city: String?
+    let region: String?
     let occupation: String?
     let profileNote: String?
 
     private enum CodingKeys: String, CodingKey {
-        case dateOfBirth, age, gender, phone, email, address, occupation, profileNote
+        case dateOfBirth, age, gender, phone, email, address, city, region, occupation, profileNote
     }
 
     func encode(to encoder: Encoder) throws {
@@ -128,6 +132,8 @@ struct PatientProfileInput: Hashable, Codable, Sendable {
         try container.encode(phone, forKey: .phone)
         try container.encode(email, forKey: .email)
         try container.encode(address, forKey: .address)
+        try container.encode(city, forKey: .city)
+        try container.encode(region, forKey: .region)
         try container.encode(occupation, forKey: .occupation)
         try container.encode(profileNote, forKey: .profileNote)
     }

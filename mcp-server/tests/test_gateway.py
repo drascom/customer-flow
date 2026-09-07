@@ -30,7 +30,9 @@ def sample_case(reference="HT-240910", case_id="case-internal-1"):
             "gender": "male",
             "phone": "+44 7000 000000",
             "email": "patient@example.test",
-            "address": "London",
+            "address": "1 Test Street",
+            "city": "London",
+            "region": "Greater London",
             "occupation": "Engineer",
             "profileNote": "Contact in the afternoon",
             "assignedDoctorID": "doctor-internal",
@@ -92,7 +94,26 @@ class FakeClient:
     def create_case(self, payload, idempotency_key):
         self.created_payload = (payload, idempotency_key)
         created = sample_case("HT-240911", "case-internal-2")
-        created["patient"]["name"] = payload["patientName"]
+        profile = payload["patientProfile"]
+        created["patient"].update({
+            "name": payload["patientName"],
+            "dateOfBirth": profile["dateOfBirth"],
+            "statedAge": profile["age"],
+            "age": profile["age"],
+            "gender": profile["gender"],
+            "phone": profile["phone"],
+            "email": profile["email"],
+            "address": profile["address"],
+            "city": profile["city"],
+            "region": profile["region"],
+            "occupation": profile["occupation"],
+            "profileNote": profile["profileNote"],
+        })
+        created["agentNote"] = payload["note"]
+        created["agentGrafts"] = payload["grafts"]
+        created["agentPrice"] = payload["price"]
+        created["photoCount"] = payload["photoCount"]
+        created["photoIDs"] = []
         return created
 
     def add_agent_update(self, case_id, text, idempotency_key):
@@ -195,12 +216,29 @@ class GatewayTests(unittest.TestCase):
             "New consultation",
             "case:create:12345678",
             previous_case_reference="HT-240910",
+            address="1 Clinic Road",
+            city="London",
+            region="Greater London",
         )
         payload, key = client.created_payload
         self.assertEqual("PT-1110", payload["existingPatientID"])
         self.assertEqual("case:create:12345678", key)
         self.assertEqual("HT-240911", result["case_reference"])
         self.assertNotIn("PT-1110", repr(result))
+        self.assertEqual("New consultation", result["patient_need"])
+        self.assertEqual("London", result["patient"]["city"])
+        self.assertEqual("Greater London", result["patient"]["region"])
+        self.assertEqual("London", payload["patientProfile"]["city"])
+        self.assertEqual("Greater London", payload["patientProfile"]["region"])
+        self.assertFalse(result["photo_requirement_met"])
+        self.assertEqual(1, result["remaining_required_photos"])
+        self.assertIn("upload_case_photo", result["next_action"])
+
+    def test_existing_case_reports_photo_requirement_as_met(self):
+        detail = AgencyGateway(settings(), FakeClient()).get_case("HT-240910")
+        self.assertTrue(detail["photo_requirement_met"])
+        self.assertEqual(1, detail["minimum_photo_count"])
+        self.assertEqual(0, detail["remaining_required_photos"])
 
     def test_rejects_bad_idempotency_key_before_write(self):
         gateway = AgencyGateway(settings(enable_writes=True), FakeClient())

@@ -285,10 +285,10 @@ async function openCase(id) {
 }
 
 function renderCaseDetail(item) {
-  const patient = item.patient || { name: item.patientName, age: item.age, statedAge: item.statedAge, dateOfBirth: item.dateOfBirth, gender: item.gender, phone: item.patientPhone, email: item.patientEmail, address: item.patientAddress, occupation: item.occupation, profileNote: item.profileNote };
+  const patient = item.patient || { name: item.patientName, age: item.age, statedAge: item.statedAge, dateOfBirth: item.dateOfBirth, gender: item.gender, phone: item.patientPhone, email: item.patientEmail, address: item.patientAddress, city: item.city, region: item.region, occupation: item.occupation, profileNote: item.profileNote };
   const status = statusPresentation(item.status, item.completedAt); const ids = photoIDs(item); const messages = item.messages || [];
   $("caseDialogTitle").textContent = patient.name; $("caseDialogEyebrow").textContent = `${item.reference} · ${status.label}`;
-  const details = [["Date of birth", formatDOB(patient.dateOfBirth)], ["Age", patient.age], ["Gender", prettyGender(patient.gender)], ["Phone", patient.phone], ["Email", patient.email], ["Address", patient.address], ["Occupation", patient.occupation], ["Info", patient.profileNote]].filter(([, v]) => v !== null && v !== undefined && v !== "");
+  const details = [["Date of birth", formatDOB(patient.dateOfBirth)], ["Age", patient.age], ["Gender", prettyGender(patient.gender)], ["Phone", patient.phone], ["Email", patient.email], ["Address", patient.address], ["City", patient.city], ["Region", patient.region], ["Occupation", patient.occupation], ["Info", patient.profileNote]].filter(([, v]) => v !== null && v !== undefined && v !== "");
   const mayEdit = canEditAgentCase(item);
   $("caseDialogContent").innerHTML = `<section class="case-hero"><div><span class="status ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span><h3>${escapeHTML(patient.name)}</h3><p>${escapeHTML(caseNote(item) || "Patient consultation")}</p></div><div class="case-metrics"><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} price</small><strong>£${escapeHTML(casePrice(item))}</strong></span>${item.appointmentAt ? `<span class="metric"><small>Appointment</small><strong>${escapeHTML(formatDate(item.appointmentAt))}</strong></span>` : ""}</div></section>
     ${item.status === "closed" ? unconfirmControl(item) : (mayEdit && item.status === "answered" && !item.completedAt ? closeCaseForm(item) : "")}
@@ -309,7 +309,9 @@ function patientDetailCard(item, patient, details, editable) {
     <div class="inline-fields"><label>Date of birth<input id="editDOB" type="date" value="${escapeHTML(patient.dateOfBirth || "")}"></label><label>Age<input id="editAge" type="number" min="0" max="130" value="${escapeHTML(patient.statedAge || "")}"></label></div>
     <div class="inline-fields"><label>Gender<select id="editGender"><option value="">Not specified</option>${["male","female","non_binary","other","prefer_not_to_say"].map((v) => `<option value="${v}" ${patient.gender === v ? "selected" : ""}>${prettyGender(v)}</option>`).join("")}</select></label><label>Phone<input id="editPhone" value="${escapeHTML(patient.phone || "")}"></label></div>
     <div class="inline-fields"><label>Email<input id="editEmail" type="email" value="${escapeHTML(patient.email || "")}"></label><label>Occupation<input id="editOccupation" value="${escapeHTML(patient.occupation || "")}"></label></div>
-    <label>Address<input id="editAddress" value="${escapeHTML(patient.address || "")}"></label><label>Short patient information<textarea id="editProfileNote" rows="2">${escapeHTML(patient.profileNote || "")}</textarea></label>
+    <label>Address<input id="editAddress" value="${escapeHTML(patient.address || "")}"></label>
+    <div class="inline-fields"><label>City<input id="editCity" value="${escapeHTML(patient.city || "")}"></label><label>Region<input id="editRegion" value="${escapeHTML(patient.region || "")}"></label></div>
+    <label>Short patient information<textarea id="editProfileNote" rows="2">${escapeHTML(patient.profileNote || "")}</textarea></label>
     <div class="section-actions"><button class="primary" type="submit">Save details</button></div></form></div>
   </div></section>`;
 }
@@ -387,7 +389,7 @@ function bindPatientFlipper() {
 
 async function submitCaseEdit(event) {
   event.preventDefault();
-  const body = { patientName: $("editPatientName").value.trim(), grafts: $("editGrafts").value.trim(), currency: "GBP", price: $("editPrice").value.trim(), patientProfile: { dateOfBirth: $("editDOB").value || null, age: $("editDOB").value ? null : Number($("editAge").value) || null, gender: $("editGender").value || null, phone: $("editPhone").value.trim() || null, email: $("editEmail").value.trim() || null, address: $("editAddress").value.trim() || null, occupation: $("editOccupation").value.trim() || null, profileNote: $("editProfileNote").value.trim() || null } };
+  const body = { patientName: $("editPatientName").value.trim(), grafts: $("editGrafts").value.trim(), currency: "GBP", price: $("editPrice").value.trim(), patientProfile: { dateOfBirth: $("editDOB").value || null, age: $("editDOB").value ? null : Number($("editAge").value) || null, gender: $("editGender").value || null, phone: $("editPhone").value.trim() || null, email: $("editEmail").value.trim() || null, address: $("editAddress").value.trim() || null, city: $("editCity").value.trim() || null, region: $("editRegion").value.trim() || null, occupation: $("editOccupation").value.trim() || null, profileNote: $("editProfileNote").value.trim() || null } };
   await mutate(`/cases/${state.selectedCaseID}/agent-values`, { method: "PATCH", body }, "Case details updated.");
 }
 
@@ -510,7 +512,7 @@ async function submitNewCase(event) {
   const submit = event.currentTarget.querySelector("button[type=submit]"); submit.disabled = true;
   try {
     const body = { patientName: $("casePatientName").value.trim(), grafts: $("caseGrafts").value.trim(), currency: "GBP", price: $("casePrice").value.trim(), note: $("caseNeed").value.trim(), photoCount: state.pendingFiles.length, duplicateConfirmedDifferent: state.duplicate.confirmed && !state.duplicate.existingPatientID, existingPatientID: state.duplicate.existingPatientID,
-      patientProfile: { dateOfBirth: $("caseDateOfBirth").value || null, age: $("caseDateOfBirth").value ? null : Number($("caseAge").value) || null, gender: $("caseGender").value || null, phone: $("casePhone").value.trim() || null, email: $("caseEmail").value.trim() || null, address: $("caseAddress").value.trim() || null, occupation: $("caseOccupation").value.trim() || null, profileNote: $("caseProfileNote").value.trim() || null } };
+      patientProfile: { dateOfBirth: $("caseDateOfBirth").value || null, age: $("caseDateOfBirth").value ? null : Number($("caseAge").value) || null, gender: $("caseGender").value || null, phone: $("casePhone").value.trim() || null, email: $("caseEmail").value.trim() || null, address: $("caseAddress").value.trim() || null, city: $("caseCity").value.trim() || null, region: $("caseRegion").value.trim() || null, occupation: $("caseOccupation").value.trim() || null, profileNote: $("caseProfileNote").value.trim() || null } };
     const created = (await api("/cases", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body })).case;
     for (const file of state.pendingFiles) await api(`/cases/${created.id}/photos`, { method: "POST", headers: { "Content-Type": file.type || "image/jpeg", "Idempotency-Key": crypto.randomUUID() }, body: file });
     $("newCaseDialog").close(); await loadData(); toast("Case created."); await openCase(created.id);

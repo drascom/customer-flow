@@ -15,6 +15,7 @@ IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 WORKFLOW_STATES = {"waiting_for_doctor", "waiting_for_agent", "confirmed", "closed"}
 GENDERS = {"male", "female", "non_binary", "other", "prefer_not_to_say"}
 MEDIA_TYPES = {"image/jpeg", "image/png", "image/heic"}
+MINIMUM_CASE_PHOTOS = 1
 
 
 class GatewayError(RuntimeError):
@@ -75,6 +76,7 @@ class AgencyGateway:
             "role": "agent",
             "writes_enabled": self.settings.enable_writes,
             "photo_uploads_enabled": self.settings.enable_photo_uploads,
+            "minimum_case_photos": MINIMUM_CASE_PHOTOS,
         }
 
     def _cases(self) -> list[dict[str, Any]]:
@@ -129,13 +131,17 @@ class AgencyGateway:
         messages = case.get("messages") if isinstance(case.get("messages"), list) else []
         latest = messages[-1] if messages and isinstance(messages[-1], dict) else None
         patient = case.get("patient") if isinstance(case.get("patient"), dict) else {}
+        photo_count = int(case.get("photoCount") or 0)
         return {
             "case_reference": case.get("reference"),
             "patient_name": patient.get("name"),
             "workflow_state": cls._workflow_state(case),
             "submitted_by": case.get("agentName"),
             "uploaded_at": case.get("uploadedAt"),
-            "photo_count": case.get("photoCount"),
+            "photo_count": photo_count,
+            "minimum_photo_count": MINIMUM_CASE_PHOTOS,
+            "photo_requirement_met": photo_count >= MINIMUM_CASE_PHOTOS,
+            "remaining_required_photos": max(0, MINIMUM_CASE_PHOTOS - photo_count),
             "estimated_grafts": case.get("agentGrafts"),
             "estimated_price": case.get("agentPrice"),
             "currency": case.get("currency"),
@@ -161,9 +167,13 @@ class AgencyGateway:
                 "phone": patient.get("phone"),
                 "email": patient.get("email"),
                 "address": patient.get("address"),
+                "city": patient.get("city"),
+                "region": patient.get("region"),
                 "occupation": patient.get("occupation"),
                 "profile_note": patient.get("profileNote"),
             },
+            "patient_need": case.get("agentNote"),
+            # Kept for clients built against the first read-only MCP schema.
             "consultation_note": case.get("agentNote"),
             "final_grafts": case.get("finalGrafts"),
             "final_price": case.get("finalPrice"),
@@ -245,7 +255,7 @@ class AgencyGateway:
         patient_name: str,
         estimated_grafts: str,
         estimated_price_gbp: str,
-        consultation_note: str,
+        patient_need: str,
         idempotency_key: str,
         previous_case_reference: str | None = None,
         duplicate_confirmed_different: bool = False,
@@ -255,6 +265,8 @@ class AgencyGateway:
         phone: str | None = None,
         email: str | None = None,
         address: str | None = None,
+        city: str | None = None,
+        region: str | None = None,
         occupation: str | None = None,
         patient_note: str | None = None,
     ) -> dict[str, Any]:
@@ -266,7 +278,7 @@ class AgencyGateway:
             raise GatewayError("patient_name must include at least a first name and surname.")
         grafts = self._bounded(estimated_grafts, "estimated_grafts", 32, required=True)
         price = self._bounded(estimated_price_gbp.lstrip("£"), "estimated_price_gbp", 32, required=True)
-        note = self._bounded(consultation_note, "consultation_note", 4000, required=True)
+        note = self._bounded(patient_need, "patient_need", 4000, required=True)
         if age is not None and not 0 <= age <= 130:
             raise GatewayError("age must be between 0 and 130.")
         normalized_gender = gender.strip().casefold() if gender else None
@@ -279,6 +291,8 @@ class AgencyGateway:
             "phone": self._bounded(phone, "phone", 40),
             "email": self._bounded(email, "email", 254),
             "address": self._bounded(address, "address", 500),
+            "city": self._bounded(city, "city", 120),
+            "region": self._bounded(region, "region", 120),
             "occupation": self._bounded(occupation, "occupation", 120),
             "profileNote": self._bounded(patient_note, "patient_note", 1000),
         }
@@ -303,7 +317,12 @@ class AgencyGateway:
             created = self.client.create_case(payload, key)
         except CustomerFlowAPIError as exc:
             raise GatewayError(str(exc)) from None
-        return self._case_detail(created)
+        result = self._case_detail(created)
+        if not result["photo_requirement_met"]:
+            result["next_action"] = (
+                "Upload at least one case photo with upload_case_photo before treating the submission as complete."
+            )
+        return result
 
     def add_case_message(
         self, case_reference: str, text: str, idempotency_key: str
@@ -368,6 +387,7 @@ class AgencyGateway:
             "read_tools": ["who_am_i", "list_cases", "get_case"],
             "write_tools_enabled": self.settings.enable_writes,
             "photo_uploads_enabled": self.settings.enable_photo_uploads,
+            "minimum_case_photos": MINIMUM_CASE_PHOTOS,
             "not_exposed": [
                 "admin operations",
                 "doctor assignment",

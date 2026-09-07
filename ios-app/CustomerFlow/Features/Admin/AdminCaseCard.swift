@@ -250,7 +250,8 @@ struct AdminCaseCard: View {
 
     private var hasPatientDetails: Bool {
         item.dateOfBirth != nil || item.age != nil || item.gender != nil || item.patientPhone != nil || item.patientEmail != nil
-            || item.patientAddress != nil || item.occupation != nil || item.profileNote != nil
+            || item.patientAddress != nil || item.city != nil || item.region != nil
+            || item.occupation != nil || item.profileNote != nil
     }
 
     private var adminPatientDetails: some View {
@@ -265,6 +266,8 @@ struct AdminCaseCard: View {
             if let phone = item.patientPhone { patientDetail("Phone", phone) }
             if let email = item.patientEmail { patientDetail("Email", email) }
             if let address = item.patientAddress { patientDetail("Address", address) }
+            if let city = item.city { patientDetail("City", city) }
+            if let region = item.region { patientDetail("Region", region) }
             if let occupation = item.occupation { patientDetail("Occupation", occupation) }
             if let note = item.profileNote { patientDetail("Info", note) }
         }

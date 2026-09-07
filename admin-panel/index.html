@@ -150,7 +150,9 @@
         <label>Date of birth<input id="caseDateOfBirth" type="date"></label><label>Age<input id="caseAge" type="number" min="0" max="130"></label>
         <label>Gender<select id="caseGender"><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="non_binary">Non-binary</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
         <label>Phone<input id="casePhone" type="tel" autocomplete="tel"></label><label>Email<input id="caseEmail" type="email" autocomplete="email"></label>
-        <label class="span-2">Address / city / region<input id="caseAddress" autocomplete="street-address"></label><label>Occupation<input id="caseOccupation"></label>
+        <label class="span-2">Address<input id="caseAddress" autocomplete="street-address"></label>
+        <label>City<input id="caseCity" autocomplete="address-level2"></label><label>Region<input id="caseRegion" autocomplete="address-level1"></label>
+        <label>Occupation<input id="caseOccupation"></label>
         <label class="span-2">Short patient information<textarea id="caseProfileNote" rows="3"></textarea></label>
         <label class="span-2">Patient need *<textarea id="caseNeed" rows="5" required></textarea></label>
         <label>Estimated grafts *<input id="caseGrafts" inputmode="numeric" value="3200" required></label><label>Estimated price (£) *<input id="casePrice" inputmode="decimal" value="2850" required></label>

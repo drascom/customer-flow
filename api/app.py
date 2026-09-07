@@ -116,6 +116,8 @@ PATIENT_PROFILE_FIELDS = {
     "phone": ("phone", 40),
     "email": ("email", 254),
     "address": ("address", 500),
+    "city": ("city", 120),
+    "region": ("region", 120),
     "occupation": ("occupation", 120),
     "profileNote": ("profile_note", 1000),
 }
@@ -321,6 +323,8 @@ CREATE TABLE IF NOT EXISTS patients (
   phone TEXT,
   email TEXT,
   address TEXT,
+  city TEXT,
+  region TEXT,
   occupation TEXT,
   profile_note TEXT,
   last_updated TEXT NOT NULL
@@ -487,7 +491,8 @@ class Database:
                 patient_columns = {row["name"] for row in conn.execute("PRAGMA table_info(patients)").fetchall()}
                 patient_profile_columns = {
                     "date_of_birth": "TEXT", "stated_age": "INTEGER", "gender": "TEXT", "phone": "TEXT",
-                    "email": "TEXT", "address": "TEXT", "occupation": "TEXT", "profile_note": "TEXT",
+                    "email": "TEXT", "address": "TEXT", "city": "TEXT", "region": "TEXT",
+                    "occupation": "TEXT", "profile_note": "TEXT",
                 }
                 for column, column_type in patient_profile_columns.items():
                     if column not in patient_columns:
@@ -1249,7 +1254,8 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 f"SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
-                f"p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
+                f"p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.city,p.region,"
+                f"p.occupation,p.profile_note, "
                 f"u.display_name agent_name, a.name agency_name, cb.display_name completed_by_name "
                 f"FROM cases c JOIN patients p ON p.id=c.patient_id "
                 f"JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id "
@@ -1375,12 +1381,13 @@ class Database:
                     conn.execute(
                         "INSERT INTO patients("
                         "id,name,normalized_name,assigned_doctor_id,profile_photo_path,date_of_birth,stated_age,gender,"
-                        "phone,email,address,occupation,profile_note,last_updated"
-                        ") VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)",
+                        "phone,email,address,city,region,occupation,profile_note,last_updated"
+                        ") VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,?,?)",
                         (
                             patient_id, name, normalized, None, profile["date_of_birth"], profile["stated_age"],
                             profile["gender"], profile["phone"], profile["email"], profile["address"],
-                            profile["occupation"], profile["profile_note"], iso(utc_now()),
+                            profile["city"], profile["region"], profile["occupation"],
+                            profile["profile_note"], iso(utc_now()),
                         ),
                     )
                 case_id = str(uuid.uuid4())
@@ -1461,11 +1468,12 @@ class Database:
                 profile = patient_profile_values(payload, row)
                 conn.execute(
                     "UPDATE patients SET name=?,normalized_name=?,date_of_birth=?,stated_age=?,gender=?,phone=?,email=?,"
-                    "address=?,occupation=?,profile_note=?,last_updated=? WHERE id=?",
+                    "address=?,city=?,region=?,occupation=?,profile_note=?,last_updated=? WHERE id=?",
                     (
                         name, normalized, profile["date_of_birth"], profile["stated_age"], profile["gender"],
-                        profile["phone"], profile["email"], profile["address"], profile["occupation"],
-                        profile["profile_note"], iso(utc_now()), row["patient_id"],
+                        profile["phone"], profile["email"], profile["address"], profile["city"],
+                        profile["region"], profile["occupation"], profile["profile_note"],
+                        iso(utc_now()), row["patient_id"],
                     ),
                 )
                 conn.execute("UPDATE cases SET agent_grafts=?, currency=?, agent_price=?, version=version+1 WHERE id=?",
@@ -2491,7 +2499,7 @@ class Database:
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_note,c.agent_grafts,c.currency,c.agent_price,"
                 "c.final_grafts,c.final_price,c.finalized_at,c.appointment_at,c.completed_at,c.completed_by,c.completed_by_role,"
                 "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,"
-                "p.address,p.occupation,p.profile_note,"
+                "p.address,p.city,p.region,p.occupation,p.profile_note,"
                 "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
                 "cb.display_name completed_by_name,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NULL) message_count,"
@@ -2527,7 +2535,8 @@ class Database:
                     "dateOfBirth": row["date_of_birth"], "statedAge": row["stated_age"],
                     "age": patient_age(row["date_of_birth"], row["stated_age"]),
                     "gender": row["gender"], "patientPhone": row["phone"], "patientEmail": row["email"],
-                    "patientAddress": row["address"], "occupation": row["occupation"],
+                    "patientAddress": row["address"], "city": row["city"], "region": row["region"],
+                    "occupation": row["occupation"],
                     "profileNote": row["profile_note"],
                     "agencyName": row["agency_name"],
                     "doctorID": row["assigned_doctor_id"], "doctorName": row["doctor_name"],
@@ -2680,7 +2689,8 @@ class Database:
     def _case_row(conn: sqlite3.Connection, case_id: str) -> sqlite3.Row:
         row = conn.execute(
             "SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
-            "p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.occupation,p.profile_note, "
+            "p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,p.address,p.city,p.region,"
+            "p.occupation,p.profile_note, "
             "u.display_name agent_name, u.agency_id case_agency_id, a.name agency_name, "
             "cb.display_name completed_by_name "
             "FROM cases c JOIN patients p ON p.id=c.patient_id "
@@ -2709,7 +2719,8 @@ class Database:
                         "dateOfBirth": row["date_of_birth"], "statedAge": row["stated_age"],
                         "age": patient_age(row["date_of_birth"], row["stated_age"]),
                         "gender": row["gender"], "phone": row["phone"], "email": row["email"],
-                        "address": row["address"], "occupation": row["occupation"],
+                        "address": row["address"], "city": row["city"], "region": row["region"],
+                        "occupation": row["occupation"],
                         "profileNote": row["profile_note"]},
             "agentID": row["agent_id"], "agentName": row["agent_name"], "agencyName": row["agency_name"],
             "assignedDoctorID": row["assigned_doctor_id"],

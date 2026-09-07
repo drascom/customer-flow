@@ -357,6 +357,8 @@ struct AgentCaseEditorView: View {
     @State private var patientPhone = ""
     @State private var patientEmail = ""
     @State private var patientAddress = ""
+    @State private var patientCity = ""
+    @State private var patientRegion = ""
     @State private var occupation = ""
     @State private var profileNote = ""
     @State private var grafts = "3,200"
@@ -835,10 +837,20 @@ struct AgentCaseEditorView: View {
                     .textContentType(.emailAddress)
                     .textFieldStyle(.roundedBorder)
             }
-            labeledField("Address or city / region", required: false) {
-                TextField("Address, city or region", text: $patientAddress, axis: .vertical)
+            labeledField("Address", required: false) {
+                TextField("Street address", text: $patientAddress, axis: .vertical)
                     .lineLimit(2...4)
                     .textContentType(.fullStreetAddress)
+                    .textFieldStyle(.roundedBorder)
+            }
+            labeledField("City", required: false) {
+                TextField("City", text: $patientCity)
+                    .textContentType(.addressCity)
+                    .textFieldStyle(.roundedBorder)
+            }
+            labeledField("Region", required: false) {
+                TextField("County, state or region", text: $patientRegion)
+                    .textContentType(.addressState)
                     .textFieldStyle(.roundedBorder)
             }
             labeledField("Occupation", required: false) {
@@ -867,6 +879,8 @@ struct AgentCaseEditorView: View {
                 if let phone = patient.phone { profileLine("Phone", phone) }
                 if let email = patient.email { profileLine("Email", email) }
                 if let address = patient.address { profileLine("Address", address) }
+                if let city = patient.city { profileLine("City", city) }
+                if let region = patient.region { profileLine("Region", region) }
                 if let occupation = patient.occupation { profileLine("Occupation", occupation) }
                 if let note = patient.profileNote { profileLine("Info", note) }
             }
@@ -913,6 +927,8 @@ struct AgentCaseEditorView: View {
             phone: Self.trimmedOrNil(patientPhone),
             email: Self.trimmedOrNil(patientEmail),
             address: Self.trimmedOrNil(patientAddress),
+            city: Self.trimmedOrNil(patientCity),
+            region: Self.trimmedOrNil(patientRegion),
             occupation: Self.trimmedOrNil(occupation),
             profileNote: Self.trimmedOrNil(profileNote)
         )
@@ -1570,6 +1586,8 @@ struct AgentCaseEditorView: View {
             patientPhone = item.patient.phone ?? ""
             patientEmail = item.patient.email ?? ""
             patientAddress = item.patient.address ?? ""
+            patientCity = item.patient.city ?? ""
+            patientRegion = item.patient.region ?? ""
             occupation = item.patient.occupation ?? ""
             profileNote = item.patient.profileNote ?? ""
             grafts = item.agentGrafts
@@ -1596,6 +1614,8 @@ struct AgentCaseEditorView: View {
             patientPhone = ""
             patientEmail = ""
             patientAddress = ""
+            patientCity = ""
+            patientRegion = ""
             occupation = ""
             profileNote = ""
             grafts = "3,200"
@@ -1732,6 +1752,8 @@ struct AgentCaseEditorView: View {
             patientPhone = item.patient.phone ?? ""
             patientEmail = item.patient.email ?? ""
             patientAddress = item.patient.address ?? ""
+            patientCity = item.patient.city ?? ""
+            patientRegion = item.patient.region ?? ""
             occupation = item.patient.occupation ?? ""
             profileNote = item.patient.profileNote ?? ""
             grafts = item.agentGrafts

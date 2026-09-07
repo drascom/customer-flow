@@ -525,6 +525,8 @@ struct CaseDetailView: View {
                 if let phone = patient.phone { patientDetailLine("Phone", phone) }
                 if let email = patient.email { patientDetailLine("Email", email) }
                 if let address = patient.address { patientDetailLine("Address", address) }
+                if let city = patient.city { patientDetailLine("City", city) }
+                if let region = patient.region { patientDetailLine("Region", region) }
                 if let occupation = patient.occupation { patientDetailLine("Occupation", occupation) }
                 if let note = patient.profileNote { patientDetailLine("Info", note) }
             }

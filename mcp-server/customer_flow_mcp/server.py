@@ -20,7 +20,9 @@ operations are deliberately absent. Prefer workflow_state when interpreting a
 case: confirmed means a real-world appointment was agreed, while closed means
 the current conversation is finished and a later message can reopen it. Case
 lifecycle mutations are deliberately not exposed. Use a unique idempotency key
-for each intended write and reuse it only when retrying the same write.
+for each intended write and reuse it only when retrying the same write. A new
+case is complete only after at least one photo has been uploaded: call
+create_case first, then upload_case_photo until photo_requirement_met is true.
 """.strip()
 
 
@@ -148,19 +150,34 @@ def build_server(settings: Settings | None = None, database: Any | None = None) 
         @mcp.tool(name="create_case")
         def create_case(
             patient_name: str, estimated_grafts: str, estimated_price_gbp: str,
-            consultation_note: str, idempotency_key: str,
+            patient_need: str, idempotency_key: str,
             previous_case_reference: str | None = None,
             duplicate_confirmed_different: bool = False,
             date_of_birth: str | None = None, age: int | None = None,
             gender: str | None = None, phone: str | None = None,
             email: str | None = None, address: str | None = None,
+            city: str | None = None, region: str | None = None,
             occupation: str | None = None, patient_note: str | None = None,
         ) -> dict[str, Any]:
-            """Create a case owned by this agency's managed MCP account; safely retryable."""
+            """Create case metadata; then upload at least one photo before considering it complete."""
             return gateway().create_case(
-                patient_name, estimated_grafts, estimated_price_gbp, consultation_note,
-                idempotency_key, previous_case_reference, duplicate_confirmed_different,
-                date_of_birth, age, gender, phone, email, address, occupation, patient_note,
+                patient_name=patient_name,
+                estimated_grafts=estimated_grafts,
+                estimated_price_gbp=estimated_price_gbp,
+                patient_need=patient_need,
+                idempotency_key=idempotency_key,
+                previous_case_reference=previous_case_reference,
+                duplicate_confirmed_different=duplicate_confirmed_different,
+                date_of_birth=date_of_birth,
+                age=age,
+                gender=gender,
+                phone=phone,
+                email=email,
+                address=address,
+                city=city,
+                region=region,
+                occupation=occupation,
+                patient_note=patient_note,
             )
 
         @mcp.tool(name="add_case_message")
@@ -173,7 +190,7 @@ def build_server(settings: Settings | None = None, database: Any | None = None) 
         def upload_case_photo(
             case_reference: str, media_type: str, photo_base64: str, idempotency_key: str,
         ) -> dict[str, Any]:
-            """Upload one validated photo to an MCP-owned agency case; disabled by default."""
+            """Upload one validated photo; every new case requires at least one."""
             return gateway().upload_case_photo(case_reference, media_type, photo_base64, idempotency_key)
 
     return mcp

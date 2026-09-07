@@ -16,6 +16,7 @@ final class MockCaseRepository: CaseRepository {
                 id: "PT-\(patientSequence)", name: patientName,
                 dateOfBirth: patientProfile.dateOfBirth, statedAge: patientProfile.age, gender: patientProfile.gender,
                 phone: patientProfile.phone, email: patientProfile.email, address: patientProfile.address,
+                city: patientProfile.city, region: patientProfile.region,
                 occupation: patientProfile.occupation, profileNote: patientProfile.profileNote,
                 assignedDoctorID: nil, lastUpdated: .now
             ),
@@ -122,6 +123,8 @@ final class MockCaseRepository: CaseRepository {
         cases[index].patient.phone = patientProfile.phone
         cases[index].patient.email = patientProfile.email
         cases[index].patient.address = patientProfile.address
+        cases[index].patient.city = patientProfile.city
+        cases[index].patient.region = patientProfile.region
         cases[index].patient.occupation = patientProfile.occupation
         cases[index].patient.profileNote = patientProfile.profileNote
         cases[index].patient.lastUpdated = .now
