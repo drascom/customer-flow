@@ -378,12 +378,12 @@ final class RemoteCaseRepository: CaseRepository {
                                                            grafts: grafts, currency: currency, price: price))
     }
 
-    func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String) async throws {
-        struct Body: Encodable, Sendable { let finalGrafts: String; let finalPrice: String }
+    func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String, appointmentAt: Date) async throws {
+        struct Body: Encodable, Sendable { let finalGrafts: String; let finalPrice: String; let appointmentAt: Date }
         struct Envelope: Decodable, Sendable { let `case`: ConsultationCase }
         let _: Envelope = try await client.send(
             "POST", path: "cases/\(caseID)/close",
-            body: Body(finalGrafts: finalGrafts, finalPrice: finalPrice)
+            body: Body(finalGrafts: finalGrafts, finalPrice: finalPrice, appointmentAt: appointmentAt)
         )
     }
 

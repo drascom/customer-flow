@@ -748,12 +748,18 @@ class APITestCase(unittest.TestCase):
         self.assertEqual("£2500", doctor_message["recommendedPrice"])
         missing = self.request("POST", f"/cases/{created['id']}/close", {}, token=agent, expected=422)
         self.assertEqual("final_plan_required", missing["error"]["code"])
+        missing_appointment = self.request("POST", f"/cases/{created['id']}/close", {
+            "finalGrafts": "2550", "finalPrice": "2450",
+        }, token=agent, expected=422)
+        self.assertEqual("appointment_required", missing_appointment["error"]["code"])
         closed = self.request("POST", f"/cases/{created['id']}/close", {
             "finalGrafts": "2550", "finalPrice": "2450",
+            "appointmentAt": "2026-10-20T09:30:00Z",
         }, token=agent)["case"]
         self.assertEqual("closed", closed["status"])
         self.assertEqual("2550", closed["finalGrafts"])
         self.assertEqual("2450", closed["finalPrice"])
+        self.assertEqual("2026-10-20T09:30:00Z", closed["appointmentAt"])
         self.assertIsNotNone(closed["finalizedAt"])
         self.assertTrue(any(
             message["role"] == "system" and "2550 grafts" in message["text"]

@@ -49,6 +49,13 @@ Writes require `CF_MCP_ENABLE_WRITES=true`. Photos additionally require
 `CF_MCP_ENABLE_PHOTO_UPLOADS=true`. Every write requires an 8-128 character
 idempotency key; reusing a key with a different payload is rejected.
 
+Case reads expose `workflow_state` using the product language:
+`waiting_for_doctor`, `waiting_for_agent`, `confirmed`, or `closed`. A confirmed
+case includes `appointment_at`; a closed conversation includes `closed_at` and
+can reopen when either side sends a new message. `workflow_state` can also be
+used as an optional `list_cases` filter. Confirmation, conversation closing,
+and reopening remain outside the MCP write scope.
+
 ## Install and test
 
 ```bash

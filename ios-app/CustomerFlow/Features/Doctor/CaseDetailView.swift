@@ -53,9 +53,17 @@ struct CaseDetailView: View {
                             if let finalGrafts = item.finalGrafts,
                                let finalPrice = item.finalPrice {
                                 detailSection("Final agreed plan") {
-                                    HStack(spacing: 10) {
-                                        detailMetric("Final grafts", finalGrafts)
-                                        detailMetric("Final price", AppCurrency.amount(finalPrice))
+                                    VStack(spacing: 10) {
+                                        HStack(spacing: 10) {
+                                            detailMetric("Final grafts", finalGrafts)
+                                            detailMetric("Final price", AppCurrency.amount(finalPrice))
+                                        }
+                                        if let appointmentAt = item.appointmentAt {
+                                            detailMetric(
+                                                "Appointment",
+                                                appointmentAt.formatted(date: .abbreviated, time: .shortened)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -175,16 +183,16 @@ struct CaseDetailView: View {
                 Text("The comment will disappear from the conversation, but administrators will retain the record.")
             }
             .confirmationDialog(
-                "Mark this case as complete?",
+                "Mark this case as closed?",
                 isPresented: $showsCompletionConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Mark as complete") {
+                Button("Mark as closed") {
                     Task { _ = await state.completeCase(caseID: caseID) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Only one person needs to complete it. A new doctor or agent message will reopen the case automatically.")
+                Text("Only one person needs to close it. A new doctor or agent message will reopen the case automatically.")
             }
         }
     }
@@ -198,7 +206,7 @@ struct CaseDetailView: View {
                     .lineLimit(1)
                 Spacer(minLength: 6)
                 if item.isCompleted {
-                    Label("Completed", systemImage: "checkmark.circle.fill")
+                    Label("Closed", systemImage: "checkmark.circle.fill")
                         .font(.caption.bold())
                         .foregroundStyle(Color(red: 0.08, green: 0.52, blue: 0.32))
                         .padding(.horizontal, 10)
@@ -286,7 +294,7 @@ struct CaseDetailView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title3)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Completed by \(item.completedByName ?? "a team member")")
+                            Text("Closed by \(item.completedByName ?? "a team member")")
                                 .font(.subheadline.weight(.semibold))
                             if let completedAt = item.completedAt {
                                 Text(completedAt.formatted(date: .abbreviated, time: .shortened))
@@ -309,17 +317,17 @@ struct CaseDetailView: View {
                         Text("Nothing else to add?")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppTheme.ink)
-                        Text("One tap completes it; the agent does not need to confirm.")
+                        Text("One tap closes it; the agent does not need to close it too.")
                             .font(.caption2)
                             .foregroundStyle(AppTheme.muted)
                     }
                     Spacer(minLength: 6)
-                    Button("Mark complete", systemImage: "checkmark.circle") {
+                    Button("Mark as closed", systemImage: "checkmark.circle") {
                         showsCompletionConfirmation = true
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .tint(AppTheme.brand)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.16, green: 0.41, blue: 0.84))
                 }
                 .padding(.top, 4)
             }

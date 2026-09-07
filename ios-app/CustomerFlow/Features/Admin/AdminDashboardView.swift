@@ -272,7 +272,7 @@ struct AdminDashboardView: View {
                     HStack(spacing: 7) {
                         chip("Answered", selected: model.caseStatus == "answered") { model.caseStatus = "answered" }
                         chip("Confirmed", selected: model.caseStatus == "closed") { model.caseStatus = "closed" }
-                        chip("Completed", selected: model.caseStatus == "completed") { model.caseStatus = "completed" }
+                        chip("Closed", selected: model.caseStatus == "completed") { model.caseStatus = "completed" }
                         Spacer()
                     }
                     HStack(spacing: 8) {

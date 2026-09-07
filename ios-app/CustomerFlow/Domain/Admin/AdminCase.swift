@@ -57,6 +57,7 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let finalGrafts: String?
     let finalPrice: String?
     let finalizedAt: Date?
+    let appointmentAt: Date?
     let completedAt: Date?
     let completedBy: String?
     let completedByName: String?

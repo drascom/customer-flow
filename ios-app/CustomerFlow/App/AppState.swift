@@ -444,12 +444,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String) async -> Bool {
+    func confirmAndClose(caseID: UUID, finalGrafts: String, finalPrice: String, appointmentAt: Date) async -> Bool {
         do {
             try await repository.confirmAndClose(
                 caseID: caseID,
                 finalGrafts: finalGrafts,
-                finalPrice: finalPrice
+                finalPrice: finalPrice,
+                appointmentAt: appointmentAt
             )
             await load()
             return true

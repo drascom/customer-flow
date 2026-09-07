@@ -60,9 +60,9 @@ extension UserRole {
                 AppTourStep(
                     id: 3,
                     icon: "checkmark.circle",
-                    title: "Close only when complete",
-                    message: "After the doctor answers, confirm that the consultation is complete. Only the agent can close the case.",
-                    tapHint: "Tap Confirm & Close after reviewing the response."
+                    title: "Confirm only when booked",
+                    message: "After the doctor answers and the patient agrees, confirm the final plan together with the appointment date and time.",
+                    tapHint: "Tap Confirm Appointment after reviewing the response."
                 ),
             ]
         case .admin, .manager:

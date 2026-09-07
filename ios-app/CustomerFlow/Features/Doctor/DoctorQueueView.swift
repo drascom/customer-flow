@@ -174,7 +174,7 @@ struct DoctorQueueView: View {
         case .waiting: "Needs review"
         case .answered: "Sent"
         case .confirmed: "Confirmed"
-        case .completed: "Completed"
+        case .completed: "Closed"
         }
     }
 
@@ -304,7 +304,7 @@ private struct DoctorWorkCard: View {
     }
 
     private var statusTitle: String {
-        if item.isCompleted { return "Completed" }
+        if item.isCompleted { return "Closed" }
         return switch item.status {
         case .waiting: isOverdue ? "Needs review · overdue" : "Needs review"
         case .answered: "Sent · waiting for agent"

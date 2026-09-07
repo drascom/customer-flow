@@ -50,6 +50,8 @@ def sample_case(reference="HT-240910", case_id="case-internal-1"):
         "finalGrafts": None,
         "finalPrice": None,
         "finalizedAt": None,
+        "appointmentAt": None,
+        "completedAt": None,
         "messages": [{
             "id": "message-internal",
             "authorID": "doctor-internal",
@@ -132,6 +134,39 @@ class GatewayTests(unittest.TestCase):
             self.assertNotIn(secret_id, encoded)
         self.assertEqual("Doctor 1", detail["messages"][0]["author"])
         self.assertEqual("confidential_patient_data", detail["data_classification"])
+        self.assertEqual("waiting_for_doctor", detail["workflow_state"])
+        self.assertNotIn("status", detail)
+        self.assertNotIn("finalized_at", detail)
+
+    def test_product_workflow_state_distinguishes_confirmed_from_closed(self):
+        client = FakeClient()
+        confirmed = sample_case("HT-240911", "case-confirmed")
+        confirmed.update({
+            "status": "closed",
+            "finalizedAt": "2026-08-16T11:00:00Z",
+            "appointmentAt": "2026-09-02T09:30:00Z",
+        })
+        completed = sample_case("HT-240912", "case-completed")
+        completed.update({
+            "status": "answered",
+            "completedAt": "2026-08-16T12:00:00Z",
+        })
+        client.cases.extend([confirmed, completed])
+        gateway = AgencyGateway(settings(), client)
+
+        confirmed_summary = gateway.list_cases(workflow_state="confirmed")["cases"][0]
+        self.assertEqual("confirmed", confirmed_summary["workflow_state"])
+        self.assertEqual("2026-09-02T09:30:00Z", confirmed_summary["appointment_at"])
+        self.assertEqual("2026-08-16T11:00:00Z", confirmed_summary["confirmed_at"])
+
+        closed_summary = gateway.list_cases(workflow_state="closed")["cases"][0]
+        self.assertEqual("closed", closed_summary["workflow_state"])
+        self.assertEqual("2026-08-16T12:00:00Z", closed_summary["closed_at"])
+
+    def test_workflow_state_filter_rejects_unknown_value(self):
+        gateway = AgencyGateway(settings(), FakeClient())
+        with self.assertRaisesRegex(GatewayError, "workflow_state must be"):
+            gateway.list_cases(workflow_state="completed")
 
     def test_unknown_reference_never_calls_get_case(self):
         gateway = AgencyGateway(settings(), FakeClient())

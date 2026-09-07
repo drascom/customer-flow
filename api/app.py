@@ -342,6 +342,7 @@ CREATE TABLE IF NOT EXISTS cases (
   final_grafts TEXT,
   final_price TEXT,
   finalized_at TEXT,
+  appointment_at TEXT,
   finalized_by TEXT REFERENCES users(id),
   completed_at TEXT,
   completed_by TEXT REFERENCES users(id),
@@ -512,6 +513,8 @@ class Database:
                     conn.execute("ALTER TABLE cases ADD COLUMN final_price TEXT")
                 if "finalized_at" not in case_columns:
                     conn.execute("ALTER TABLE cases ADD COLUMN finalized_at TEXT")
+                if "appointment_at" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN appointment_at TEXT")
                 if "finalized_by" not in case_columns:
                     conn.execute("ALTER TABLE cases ADD COLUMN finalized_by TEXT REFERENCES users(id)")
                 if "completed_at" not in case_columns:
@@ -882,9 +885,9 @@ class Database:
         if kind == "photo.created":
             return f"New photo for {patient_name}", f"{actor['display_name']} added a patient photo."
         if kind == "case.closed":
-            return "Case confirmed", f"The final plan for {patient_name} was confirmed."
+            return "Appointment confirmed", f"The final plan and appointment for {patient_name} were confirmed."
         if kind == "case.completed":
-            return "Case completed", f"{actor['display_name']} marked {patient_name}'s case as complete."
+            return "Case closed", f"{actor['display_name']} marked {patient_name}'s case as closed."
         message = conn.execute(
             "SELECT text,attachment_path FROM messages WHERE case_id=? AND deleted_at IS NULL "
             "ORDER BY created_at DESC,rowid DESC LIMIT 1", (case["id"],)
@@ -1576,6 +1579,16 @@ class Database:
         final_price = str(payload.get("finalPrice", "")).strip()
         if not final_grafts or not final_price:
             raise APIError(422, "final_plan_required", "Enter the final agreed graft number and price.")
+        appointment_value = str(payload.get("appointmentAt", "")).strip()
+        if not appointment_value:
+            raise APIError(422, "appointment_required", "Choose the appointment date and time.")
+        try:
+            parsed_appointment = parse_iso_datetime(appointment_value)
+            if parsed_appointment.tzinfo is None:
+                raise ValueError("timezone required")
+            appointment_at = iso(parsed_appointment)
+        except (TypeError, ValueError):
+            raise APIError(422, "invalid_appointment", "Choose a valid appointment date and time.")
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -1585,19 +1598,21 @@ class Database:
                     raise APIError(409, "not_ready_to_close", "Only an answered case can be confirmed and closed.")
                 now = iso(utc_now())
                 conn.execute(
-                    "UPDATE cases SET status='closed',final_grafts=?,final_price=?,finalized_at=?,"
+                    "UPDATE cases SET status='closed',final_grafts=?,final_price=?,finalized_at=?,appointment_at=?,"
                     "finalized_by=?,completed_at=NULL,completed_by=NULL,completed_by_role=NULL,"
                     "version=version+1 WHERE id=?",
-                    (final_grafts, final_price, now, user["id"], case_id),
+                    (final_grafts, final_price, now, appointment_at, user["id"], case_id),
                 )
                 conn.execute(
                     "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text) "
                     "VALUES (?,?,?,?,?,?,?)",
                     (str(uuid.uuid4()), case_id, user["id"], "System", "system", now,
-                     f"Final agreed plan confirmed: {final_grafts} grafts · £{final_price.lstrip('£').strip()}"),
+                     f"Appointment and final plan confirmed: {final_grafts} grafts · "
+                     f"£{final_price.lstrip('£').strip()}"),
                 )
                 self._audit(conn, user["id"], "case.closed", "case", case_id,
-                            {"finalGrafts": final_grafts, "finalPrice": final_price})
+                            {"finalGrafts": final_grafts, "finalPrice": final_price,
+                             "appointmentAt": appointment_at})
                 result = self._case_json(conn, self._case_row(conn, case_id))
                 conn.execute("COMMIT")
                 return result
@@ -2436,7 +2451,7 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT c.id,c.reference,c.uploaded_at,c.status,c.photo_count,c.agent_note,c.agent_grafts,c.currency,c.agent_price,"
-                "c.final_grafts,c.final_price,c.finalized_at,c.completed_at,c.completed_by,c.completed_by_role,"
+                "c.final_grafts,c.final_price,c.finalized_at,c.appointment_at,c.completed_at,c.completed_by,c.completed_by_role,"
                 "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,"
                 "p.address,p.occupation,p.profile_note,"
                 "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
@@ -2503,7 +2518,7 @@ class Database:
                     "latestMessageHasPhoto": bool(latest_message["attachment_path"]) if latest_message else False,
                     "grafts": row["agent_grafts"], "currency": row["currency"], "price": row["agent_price"],
                     "finalGrafts": row["final_grafts"], "finalPrice": row["final_price"],
-                    "finalizedAt": row["finalized_at"],
+                    "finalizedAt": row["finalized_at"], "appointmentAt": row["appointment_at"],
                     "completedAt": row["completed_at"], "completedBy": row["completed_by"],
                     "completedByName": row["completed_by_name"],
                     "completedByRole": row["completed_by_role"],
@@ -2664,7 +2679,7 @@ class Database:
             "agentNote": row["agent_note"], "agentGrafts": row["agent_grafts"],
             "currency": row["currency"], "agentPrice": row["agent_price"],
             "finalGrafts": row["final_grafts"], "finalPrice": row["final_price"],
-            "finalizedAt": row["finalized_at"],
+            "finalizedAt": row["finalized_at"], "appointmentAt": row["appointment_at"],
             "completedAt": row["completed_at"], "completedBy": row["completed_by"],
             "completedByName": row["completed_by_name"],
             "completedByRole": row["completed_by_role"],

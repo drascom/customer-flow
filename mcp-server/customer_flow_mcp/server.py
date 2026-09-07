@@ -16,8 +16,11 @@ INSTRUCTIONS = """
 Customer Flow agency connector. Every request must carry the agency's MCP bearer
 token. The token resolves one agency and every tool is evaluated inside that
 tenant boundary. Admin, doctor-assignment, delete and cross-agency discovery
-operations are deliberately absent. Use a unique idempotency key for each
-intended write and reuse it only when retrying the same write.
+operations are deliberately absent. Prefer workflow_state when interpreting a
+case: confirmed means a real-world appointment was agreed, while closed means
+the current conversation is finished and a later message can reopen it. Case
+lifecycle mutations are deliberately not exposed. Use a unique idempotency key
+for each intended write and reuse it only when retrying the same write.
 """.strip()
 
 
@@ -130,14 +133,15 @@ def build_server(settings: Settings | None = None, database: Any | None = None) 
 
     @mcp.tool(name="list_cases")
     def list_cases(
-        status: str = "all", search: str = "", updated_after: str | None = None, limit: int = 50,
+        workflow_state: str = "all", search: str = "", updated_after: str | None = None,
+        limit: int = 50,
     ) -> dict[str, Any]:
-        """List confidential case summaries belonging only to the authenticated agency."""
-        return gateway().list_cases(status, search, updated_after, limit)
+        """List agency cases filtered by waiting, confirmed or closed workflow state."""
+        return gateway().list_cases(workflow_state, search, updated_after, limit)
 
     @mcp.tool(name="get_case")
     def get_case(case_reference: str) -> dict[str, Any]:
-        """Get one confidential agency case by public HT reference; internal IDs are omitted."""
+        """Get a case including workflow_state, appointment and close time; internal IDs are omitted."""
         return gateway().get_case(case_reference)
 
     if settings.enable_writes:

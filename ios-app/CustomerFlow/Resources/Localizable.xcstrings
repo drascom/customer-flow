@@ -104,9 +104,6 @@
     "%lld photos" : {
 
     },
-    "1 photo" : {
-
-    },
     "%lld/%lld · %@" : {
       "localizations" : {
         "en" : {
@@ -120,6 +117,9 @@
     "•" : {
 
     },
+    "1 photo" : {
+
+    },
     "2,850" : {
 
     },
@@ -130,6 +130,9 @@
 
     },
     "99+" : {
+
+    },
+    "A new doctor or agent message will reopen this case automatically." : {
 
     },
     "A patient with this name is already in your records." : {
@@ -192,6 +195,9 @@
     "Annotated patient photo" : {
 
     },
+    "Appointment date and time" : {
+
+    },
     "Approx. %@ grafts" : {
 
     },
@@ -243,6 +249,9 @@
     "Clear" : {
 
     },
+    "Clear search and close keyboard" : {
+
+    },
     "Close" : {
 
     },
@@ -252,10 +261,19 @@
     "Close conversation" : {
 
     },
+    "Closed" : {
+
+    },
+    "Closed by %@" : {
+
+    },
     "CONFIDENTIAL · DO NOT SHARE" : {
 
     },
     "Confirm" : {
+
+    },
+    "Confirm Appointment" : {
 
     },
     "Confirm new password" : {
@@ -311,6 +329,16 @@
     },
     "Customer Flow logo" : {
 
+    },
+    "CustomerFlow %@ is available. You are using %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "CustomerFlow %1$@ is available. You are using %2$@."
+          }
+        }
+      }
     },
     "DD/MM/YYYY" : {
 
@@ -447,6 +475,9 @@
     "Inactive" : {
 
     },
+    "Later" : {
+
+    },
     "Leave blank to keep current password" : {
 
     },
@@ -462,7 +493,13 @@
     "Manage agencies" : {
 
     },
-    "Manager access is read-only. All records are visible, but changes are disabled." : {
+    "Managers can view all records and add operational notes. Clinical and case data remain read-only." : {
+
+    },
+    "Mark as closed" : {
+
+    },
+    "Mark this case as closed?" : {
 
     },
     "MCP connected" : {
@@ -534,6 +571,9 @@
     "Not specified" : {
 
     },
+    "Nothing else to add?" : {
+
+    },
     "notifications.close" : {
       "localizations" : {
         "en" : {
@@ -590,7 +630,19 @@
     "Oldest first" : {
 
     },
+    "One tap closes it; the agent does not need to close it too." : {
+
+    },
+    "One tap is enough; the other side does not need to close it too." : {
+
+    },
     "Only inactive users without consultation history can be permanently deleted." : {
+
+    },
+    "Only one person needs to close it. A new doctor or agent message will reopen the case automatically." : {
+
+    },
+    "Open App Store" : {
 
     },
     "Open Patient" : {
@@ -603,6 +655,12 @@
 
     },
     "Opens the reply fields and focuses the message" : {
+
+    },
+    "Operational" : {
+
+    },
+    "Operational note" : {
 
     },
     "Optional" : {
@@ -737,9 +795,6 @@
     "Save changes" : {
 
     },
-    "Save Final Plan & Close" : {
-
-    },
     "Search" : {
 
     },
@@ -752,6 +807,12 @@
     "Selected patient photo %lld" : {
 
     },
+    "Send a message below to reopen this case." : {
+
+    },
+    "Send a message to reopen" : {
+
+    },
     "Send and take patient" : {
 
     },
@@ -759,6 +820,9 @@
 
     },
     "Send message" : {
+
+    },
+    "Send note" : {
 
     },
     "Send to doctor" : {
@@ -821,6 +885,9 @@
     "The user will be signed out and will no longer be able to access the server." : {
 
     },
+    "This does not change the case status or medical assessment." : {
+
+    },
     "This is your account. Manage personal details from Profile." : {
 
     },
@@ -833,10 +900,29 @@
     "This removes the retained file from the server and cannot be undone." : {
 
     },
+    "This server requires CustomerFlow %@ or newer. You are using %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This server requires CustomerFlow %1$@ or newer. You are using %2$@."
+          }
+        }
+      }
+    },
     "Try changing the search or filters." : {
 
     },
     "Unassigned" : {
+
+    },
+    "Update available" : {
+
+    },
+    "Update now" : {
+
+    },
+    "Update required" : {
 
     },
     "Uploading photos…" : {
@@ -857,7 +943,7 @@
     "Username or email" : {
 
     },
-    "Using the doctor’s recommendation, enter the graft number and price agreed with the patient." : {
+    "Using the doctor’s recommendation, enter the final plan and scheduled examination or procedure time." : {
 
     },
     "ustomer " : {
@@ -873,6 +959,12 @@
 
     },
     "Write a follow-up for the assigned doctor" : {
+
+    },
+    "Write a new message to reopen this case" : {
+
+    },
+    "Write an operational note" : {
 
     },
     "Write another message" : {

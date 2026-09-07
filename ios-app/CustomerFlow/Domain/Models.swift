@@ -53,7 +53,7 @@ enum DoctorQueueFilter: String, CaseIterable, Identifiable {
         case .waiting: "Waiting"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
-        case .completed: "Completed"
+        case .completed: "Closed"
         }
     }
 }
@@ -190,6 +190,7 @@ struct ConsultationCase: Identifiable, Hashable, Codable, Sendable {
     var finalGrafts: String? = nil
     var finalPrice: String? = nil
     var finalizedAt: Date? = nil
+    var appointmentAt: Date? = nil
     var completedAt: Date? = nil
     var completedBy: String? = nil
     var completedByName: String? = nil

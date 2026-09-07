@@ -12,7 +12,7 @@ from .api_client import CustomerFlowAPIError
 
 CASE_REFERENCE = re.compile(r"^HT-[0-9]{4,12}$", re.IGNORECASE)
 IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
-STATUSES = {"waiting", "answered", "closed"}
+WORKFLOW_STATES = {"waiting_for_doctor", "waiting_for_agent", "confirmed", "closed"}
 GENDERS = {"male", "female", "non_binary", "other", "prefer_not_to_say"}
 MEDIA_TYPES = {"image/jpeg", "image/png", "image/heic"}
 
@@ -112,6 +112,18 @@ class AgencyGateway:
             "recommended_price": message.get("recommendedPrice"),
         }
 
+    @staticmethod
+    def _workflow_state(case: dict[str, Any]) -> str:
+        """Translate legacy API status values into the product's user-facing lifecycle."""
+        if case.get("completedAt"):
+            return "closed"
+        status = case.get("status")
+        if status == "closed":
+            return "confirmed"
+        if status == "answered":
+            return "waiting_for_agent"
+        return "waiting_for_doctor"
+
     @classmethod
     def _case_summary(cls, case: dict[str, Any]) -> dict[str, Any]:
         messages = case.get("messages") if isinstance(case.get("messages"), list) else []
@@ -120,13 +132,16 @@ class AgencyGateway:
         return {
             "case_reference": case.get("reference"),
             "patient_name": patient.get("name"),
-            "status": case.get("status"),
+            "workflow_state": cls._workflow_state(case),
             "submitted_by": case.get("agentName"),
             "uploaded_at": case.get("uploadedAt"),
             "photo_count": case.get("photoCount"),
             "estimated_grafts": case.get("agentGrafts"),
             "estimated_price": case.get("agentPrice"),
             "currency": case.get("currency"),
+            "confirmed_at": case.get("finalizedAt"),
+            "appointment_at": case.get("appointmentAt"),
+            "closed_at": case.get("completedAt"),
             "latest_message": cls._message_summary(latest) if latest else None,
         }
 
@@ -152,7 +167,6 @@ class AgencyGateway:
             "consultation_note": case.get("agentNote"),
             "final_grafts": case.get("finalGrafts"),
             "final_price": case.get("finalPrice"),
-            "finalized_at": case.get("finalizedAt"),
             "messages": [
                 cls._message_summary(message)
                 for message in messages
@@ -163,14 +177,16 @@ class AgencyGateway:
 
     def list_cases(
         self,
-        status: str = "all",
+        workflow_state: str = "all",
         search: str = "",
         updated_after: str | None = None,
         limit: int = 50,
     ) -> dict[str, Any]:
-        normalized_status = status.strip().casefold()
-        if normalized_status != "all" and normalized_status not in STATUSES:
-            raise GatewayError("status must be all, waiting, answered or closed.")
+        normalized_workflow_state = workflow_state.strip().casefold()
+        if normalized_workflow_state != "all" and normalized_workflow_state not in WORKFLOW_STATES:
+            raise GatewayError(
+                "workflow_state must be all, waiting_for_doctor, waiting_for_agent, confirmed or closed."
+            )
         if not 1 <= limit <= 100:
             raise GatewayError("limit must be between 1 and 100.")
         after = None
@@ -184,7 +200,7 @@ class AgencyGateway:
         needle = search.strip().casefold()
         matches = []
         for case in reversed(self._cases()):
-            if normalized_status != "all" and case.get("status") != normalized_status:
+            if normalized_workflow_state != "all" and self._workflow_state(case) != normalized_workflow_state:
                 continue
             patient = case.get("patient") if isinstance(case.get("patient"), dict) else {}
             if needle and needle not in f"{case.get('reference', '')} {patient.get('name', '')}".casefold():
@@ -358,7 +374,7 @@ class AgencyGateway:
                 "user or agency management",
                 "patient matching",
                 "delete operations",
-                "case closing",
+                "case lifecycle mutations (confirm, close and reopen)",
             ],
             "handling": "Do not copy patient data outside the agency's approved systems.",
         }

@@ -16,7 +16,7 @@ private enum AgentCaseFilter: String, CaseIterable, Identifiable {
         case .all: "All cases"
         case .waiting: "Waiting for Doctor"
         case .answered: "Waiting for Me"
-        case .completed: "Completed"
+        case .completed: "Closed"
         case .closed: "Confirmed"
         }
     }
@@ -306,7 +306,7 @@ private struct AgentCaseListCard: View {
     }
 
     private var shortStatus: String {
-        if item.isCompleted { return "Completed" }
+        if item.isCompleted { return "Closed" }
         return switch item.status {
         case .waiting: "Waiting for Doctor"
         case .answered: "Action needed"
@@ -364,6 +364,7 @@ struct AgentCaseEditorView: View {
     @State private var price = "2,850"
     @State private var finalGrafts = ""
     @State private var finalPrice = ""
+    @State private var appointmentAt = Date().addingTimeInterval(86_400)
     @State private var agentNote = ""
     @State private var updateText = ""
     @State private var photoCount: Int
@@ -554,17 +555,17 @@ struct AgentCaseEditorView: View {
             Text("The comment will disappear from the conversation, but administrators will retain the record.")
         }
         .confirmationDialog(
-            "Mark this case as complete?",
+            "Mark this case as closed?",
             isPresented: $showsCompletionConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Mark as complete") {
+            Button("Mark as closed") {
                 guard let caseID = editingCaseID else { return }
                 Task { _ = await state.completeCase(caseID: caseID) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Only one person needs to complete it. A new doctor or agent message will reopen the case automatically.")
+            Text("Only one person needs to close it. A new doctor or agent message will reopen the case automatically.")
         }
     }
 
@@ -1044,7 +1045,7 @@ struct AgentCaseEditorView: View {
     private var caseStatusBand: some View {
         HStack(spacing: 8) {
             Image(systemName: caseStatusIcon)
-            Text(editCase?.isCompleted == true ? "Completed" : (editCase?.status.title ?? statusText))
+            Text(editCase?.isCompleted == true ? "Closed" : (editCase?.status.title ?? statusText))
                 .fontWeight(.bold)
             Spacer(minLength: 8)
         }
@@ -1232,7 +1233,7 @@ struct AgentCaseEditorView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.title3)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Completed by \(item.completedByName ?? "a team member")")
+                        Text("Closed by \(item.completedByName ?? "a team member")")
                             .font(.subheadline.weight(.semibold))
                         if let completedAt = item.completedAt {
                             Text(completedAt.formatted(date: .abbreviated, time: .shortened))
@@ -1255,17 +1256,17 @@ struct AgentCaseEditorView: View {
                     Text("Nothing else to add?")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("One tap is enough; the other side does not need to confirm.")
+                    Text("One tap is enough; the other side does not need to close it too.")
                         .font(.caption2)
                         .foregroundStyle(AppTheme.muted)
                 }
                 Spacer(minLength: 6)
-                Button("Mark complete", systemImage: "checkmark.circle") {
+                Button("Mark as closed", systemImage: "checkmark.circle") {
                     showsCompletionConfirmation = true
                 }
                 .font(.caption.weight(.semibold))
-                .buttonStyle(.bordered)
-                .tint(AppTheme.brand)
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.16, green: 0.41, blue: 0.84))
             }
             .padding(14)
             .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -1307,12 +1308,20 @@ struct AgentCaseEditorView: View {
             }
 
             if item.status == .closed {
-                HStack(spacing: 10) {
-                    summaryMetric("Final grafts", item.finalGrafts ?? item.agentGrafts)
-                    summaryMetric("Final price", AppCurrency.amount(item.finalPrice ?? item.agentPrice))
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        summaryMetric("Final grafts", item.finalGrafts ?? item.agentGrafts)
+                        summaryMetric("Final price", AppCurrency.amount(item.finalPrice ?? item.agentPrice))
+                    }
+                    if let appointmentAt = item.appointmentAt {
+                        summaryMetric(
+                            "Appointment",
+                            appointmentAt.formatted(date: .abbreviated, time: .shortened)
+                        )
+                    }
                 }
             } else if canEditCase {
-                Text("Using the doctor’s recommendation, enter the graft number and price agreed with the patient.")
+                Text("Using the doctor’s recommendation, enter the final plan and scheduled examination or procedure time.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
 
@@ -1333,6 +1342,15 @@ struct AgentCaseEditorView: View {
                         }
                     }
                 }
+
+                DatePicker(
+                    "Appointment date and time",
+                    selection: $appointmentAt,
+                    in: Date()...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .font(.subheadline.weight(.semibold))
+                .tint(AppTheme.accent)
             } else {
                 Label("\(item.agentName) will confirm the final agreed plan.", systemImage: "lock")
                     .font(.caption)
@@ -1450,15 +1468,16 @@ struct AgentCaseEditorView: View {
                 .disabled(!patientProfileIsValid)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             } else if editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor {
-                Button("Save Final Plan & Close") {
+                Button("Confirm Appointment") {
                     if let editCase {
                         Task {
                             if await state.confirmAndClose(
                                 caseID: editCase.id,
                                 finalGrafts: finalGrafts,
-                                finalPrice: finalPrice
+                                finalPrice: finalPrice,
+                                appointmentAt: appointmentAt
                             ) {
-                                statusText = "Final plan confirmed · Closed"
+                                statusText = "Appointment confirmed"
                             }
                         }
                     }
@@ -1564,6 +1583,7 @@ struct AgentCaseEditorView: View {
                     String(AppCurrency.amount(recommended).dropFirst())
                 }
                 ?? ""
+            appointmentAt = item.appointmentAt ?? Date().addingTimeInterval(86_400)
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = item.status.title
@@ -1583,6 +1603,7 @@ struct AgentCaseEditorView: View {
             price = "2,850"
             finalGrafts = ""
             finalPrice = ""
+            appointmentAt = Date().addingTimeInterval(86_400)
             agentNote = ""
             photoCount = 0
             pendingPhotos = []
@@ -1730,6 +1751,7 @@ struct AgentCaseEditorView: View {
                     String(AppCurrency.amount(recommended).dropFirst())
                 }
                 ?? ""
+            appointmentAt = item.appointmentAt ?? Date().addingTimeInterval(86_400)
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = "Existing patient · Assigned doctor preserved"

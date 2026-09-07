@@ -87,6 +87,14 @@ struct AdminCaseCard: View {
                         metric(title: "Final price", value: AppCurrency.amount(finalPrice))
                     }
                     .padding(.top, 8)
+
+                    if let appointmentAt = item.appointmentAt {
+                        metric(
+                            title: "Appointment",
+                            value: appointmentAt.formatted(date: .abbreviated, time: .shortened)
+                        )
+                        .padding(.top, 8)
+                    }
                 }
 
                 if !item.photos.isEmpty {
@@ -352,7 +360,7 @@ struct AdminCaseCard: View {
     }
 
     private var shortStatus: String {
-        if item.isCompleted { return "Completed" }
+        if item.isCompleted { return "Closed" }
         return switch item.status {
         case .waiting: "Waiting"
         case .answered: "Answered"

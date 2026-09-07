@@ -186,7 +186,7 @@ function setChipGroup(id, items, selected, key) {
 function renderFilterChips() {
   const agencies = state.agencies.slice().sort((a, b) => a.name.localeCompare(b.name));
   const doctors = state.users.filter((u) => u.role === "doctor").sort((a, b) => a.displayName.localeCompare(b.displayName));
-  setChipGroup("caseStatusChips", [["", "All"], ["waiting", state.user?.role === "doctor" ? "Waiting" : "Doctor review"], ["answered", "Action needed"], ["closed", "Confirmed"], ["completed", "Completed"]], state.filters.caseStatus, "caseStatus");
+  setChipGroup("caseStatusChips", [["", "All"], ["waiting", state.user?.role === "doctor" ? "Waiting" : "Doctor review"], ["answered", "Action needed"], ["closed", "Confirmed"], ["completed", "Closed"]], state.filters.caseStatus, "caseStatus");
   setChipGroup("caseAssignmentChips", [["", "All"], ["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment");
   setChipGroup("caseAgencyChips", [["", "All"], ...agencies.map((a) => [a.name, a.name])], state.filters.caseAgency, "caseAgency");
   setChipGroup("caseDoctorChips", [["", "All"], ...doctors.map((d) => [d.id, d.displayName])], state.filters.caseDoctor, "caseDoctor");
@@ -258,7 +258,7 @@ function renderManagementCases(rows) {
 }
 
 function statusPresentation(status, completedAt = null) {
-  if (completedAt) return { label: "Completed", icon: "✓", className: "completed" };
+  if (completedAt) return { label: "Closed", icon: "✓", className: "completed" };
   if (status === "waiting") return { label: "Waiting for doctor", icon: "◷", className: "waiting" };
   if (status === "answered") return { label: state.user?.role === "doctor" ? "Waiting for agent confirmation" : "Action needed", icon: "!", className: "answered" };
   return { label: "Confirmed", icon: "✓", className: "closed" };
@@ -290,11 +290,11 @@ function renderCaseDetail(item) {
   $("caseDialogTitle").textContent = patient.name; $("caseDialogEyebrow").textContent = `${item.reference} · ${status.label}`;
   const details = [["Date of birth", formatDOB(patient.dateOfBirth)], ["Age", patient.age], ["Gender", prettyGender(patient.gender)], ["Phone", patient.phone], ["Email", patient.email], ["Address", patient.address], ["Occupation", patient.occupation], ["Info", patient.profileNote]].filter(([, v]) => v !== null && v !== undefined && v !== "");
   const mayEdit = canEditAgentCase(item);
-  $("caseDialogContent").innerHTML = `<section class="case-hero"><div><span class="status ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span><h3>${escapeHTML(patient.name)}</h3><p>${escapeHTML(caseNote(item) || "Patient consultation")}</p></div><div class="case-metrics"><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} price</small><strong>£${escapeHTML(casePrice(item))}</strong></span></div></section>
+  $("caseDialogContent").innerHTML = `<section class="case-hero"><div><span class="status ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span><h3>${escapeHTML(patient.name)}</h3><p>${escapeHTML(caseNote(item) || "Patient consultation")}</p></div><div class="case-metrics"><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} price</small><strong>£${escapeHTML(casePrice(item))}</strong></span>${item.appointmentAt ? `<span class="metric"><small>Appointment</small><strong>${escapeHTML(formatDate(item.appointmentAt))}</strong></span>` : ""}</div></section>
+    ${mayEdit && item.status === "answered" && !item.completedAt ? closeCaseForm(item) : ""}
     ${details.length || mayEdit ? patientDetailCard(item, patient, details, mayEdit && item.status !== "closed") : ""}
     <section class="detail-section"><div class="section-heading"><h3>Photos</h3><span>${ids.length} photos</span></div><div class="photo-grid">${renderPhotos(item)}</div>${mayEdit ? `<label class="upload-button">+ Add photos<input id="detailPhotoUpload" type="file" accept="image/*" multiple hidden></label>` : ""}</section>
-    <section id="conversationSection" class="detail-section"><div class="section-heading"><h3>Conversation</h3><span>${messages.length} updates</span></div><div class="conversation">${messages.map((m) => messageHTML(item, m)).join("") || `<p>No messages yet.</p>`}</div>${completionControl(item)}${conversationForm(item)}</section>
-    ${mayEdit && item.status === "answered" && !item.completedAt ? closeCaseForm(item) : ""}`;
+    <section id="conversationSection" class="detail-section"><div class="section-heading"><h3>Conversation</h3><span>${messages.length} updates</span></div><div class="conversation">${messages.map((m) => messageHTML(item, m)).join("") || `<p>No messages yet.</p>`}</div>${completionControl(item)}${conversationForm(item)}</section>`;
   bindDetailActions(item);
 }
 
@@ -340,14 +340,17 @@ function conversationForm(item) {
 }
 
 function completionControl(item) {
-  if (item.completedAt) return `<div class="completion-panel"><div><strong>✓ Completed by ${escapeHTML(item.completedByName || "a team member")}</strong><small>${formatDate(item.completedAt)}</small></div><p>A new doctor or agent message will reopen this case automatically.</p></div>`;
+  if (item.completedAt) return `<div class="completion-panel"><div><strong>✓ Closed by ${escapeHTML(item.completedByName || "a team member")}</strong><small>${formatDate(item.completedAt)}</small></div><p>A new doctor or agent message will reopen this case automatically.</p></div>`;
   const canComplete = item.status !== "closed" && (state.user.role === "doctor" || canEditAgentCase(item));
-  return canComplete ? `<div class="completion-action"><span>Nothing else to add?</span><button class="quiet compact" id="completeCaseButton" type="button">✓ Mark as complete</button></div>` : "";
+  return canComplete ? `<div class="completion-action"><span>Nothing else to add?</span><button class="close-case-button compact" id="completeCaseButton" type="button">✓ Mark as closed</button></div>` : "";
 }
 
 function closeCaseForm(item) {
   const recommendation = [...(item.messages || [])].reverse().find((m) => m.role === "doctor");
-  return `<section class="detail-section"><form id="closeCaseForm" class="inline-form"><h3>Confirm final agreement</h3><p>Enter the final values agreed with the patient after the doctor's recommendation.</p><div class="inline-fields"><input id="finalGrafts" value="${escapeHTML(recommendation?.approximateGrafts || item.agentGrafts || "")}" placeholder="Final grafts" required><input id="finalPrice" value="${escapeHTML(String(recommendation?.recommendedPrice || item.agentPrice || "").replace(/[^0-9.,-]/g, ""))}" placeholder="Final price (£)" required></div><div class="section-actions"><button class="primary" type="submit">Confirm case</button></div></form></section>`;
+  const localDate = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+  const today = new Date();
+  const defaultAppointment = new Date(); defaultAppointment.setDate(defaultAppointment.getDate() + 1);
+  return `<section class="detail-section confirmation-section"><form id="closeCaseForm" class="confirmation-form"><div class="confirmation-copy"><h3>Confirm appointment</h3><p>Finalise the agreed plan and schedule.</p></div><label>Final grafts<input id="finalGrafts" value="${escapeHTML(recommendation?.approximateGrafts || item.agentGrafts || "")}" placeholder="Grafts" required></label><label>Final price (£)<input id="finalPrice" value="${escapeHTML(String(recommendation?.recommendedPrice || item.agentPrice || "").replace(/[^0-9.,-]/g, ""))}" placeholder="Price" required></label><label>Appointment date<input id="appointmentDate" type="date" min="${localDate(today)}" value="${localDate(defaultAppointment)}" required></label><label>Time<input id="appointmentTime" type="time" value="09:00" required></label><button class="confirmation-submit" type="submit">✓ Confirm</button></form></section>`;
 }
 
 function bindDetailActions(item) {
@@ -408,10 +411,18 @@ async function submitDoctorReply(event) {
 async function submitAgentReply(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/agent-updates`, { method: "POST", body: { text: $("replyText").value.trim() } }, "Update sent."); }
 async function submitManagementReply(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/management-messages`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: { text: $("replyText").value.trim() } }, "Operational note sent."); }
 async function submitCompleteCase() {
-  if (!window.confirm("Mark this case as complete? A new doctor or agent message will reopen it automatically.")) return;
-  await mutate(`/cases/${state.selectedCaseID}/complete`, { method: "POST", body: {} }, "Case marked as complete.");
+  if (!window.confirm("Mark this case as closed? A new doctor or agent message will reopen it automatically.")) return;
+  await mutate(`/cases/${state.selectedCaseID}/complete`, { method: "POST", body: {} }, "Case marked as closed.");
 }
-async function submitCloseCase(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/close`, { method: "POST", body: { finalGrafts: $("finalGrafts").value.trim(), finalPrice: $("finalPrice").value.trim() } }, "Case confirmed."); }
+async function submitCloseCase(event) {
+  event.preventDefault();
+  const appointmentAt = new Date(`${$("appointmentDate").value}T${$("appointmentTime").value}:00`);
+  if (Number.isNaN(appointmentAt.getTime())) return toast("Choose a valid appointment date and time.");
+  await mutate(`/cases/${state.selectedCaseID}/close`, {
+    method: "POST",
+    body: { finalGrafts: $("finalGrafts").value.trim(), finalPrice: $("finalPrice").value.trim(), appointmentAt: appointmentAt.toISOString() }
+  }, "Appointment confirmed.");
+}
 async function mutate(path, options, message) { try { await api(path, options); await reloadSelected(message); } catch (error) { toast(error.message); } }
 
 async function uploadDetailPhotos(event) {
