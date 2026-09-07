@@ -3,7 +3,9 @@ set -euo pipefail
 
 readonly repo="/home/dr/customer-flow"
 readonly branch="main"
-readonly service_name="customer-flow-api.service"
+readonly api_service="customer-flow-api.service"
+readonly mcp_service="customer-flow-mcp.service"
+readonly mcp_python="${repo}/mcp-server/.venv/bin/python"
 readonly health_url="http://127.0.0.1:8080/api/v1/health"
 readonly runtime_root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 readonly lock_path="${runtime_root}/customer-flow-auto-deploy.lock"
@@ -31,12 +33,14 @@ if ! git -C "${repo}" merge-base --is-ancestor \
 fi
 
 git -C "${repo}" merge --quiet --ff-only "${target_revision}"
-systemctl --user restart "${service_name}"
+"${mcp_python}" -m pip install --quiet --no-deps --force-reinstall "${repo}/mcp-server"
+systemctl --user restart "${api_service}" "${mcp_service}"
 
 for _ in {1..30}; do
-    if curl --fail --silent --show-error "${health_url}" >/dev/null; then
+    if curl --fail --silent --show-error "${health_url}" >/dev/null \
+        && systemctl --user is-active --quiet "${mcp_service}"; then
         logger -t customer-flow-auto-deploy \
-            "Deployed ${target_revision} and restarted ${service_name}."
+            "Deployed ${target_revision} and restarted API and MCP services."
         exit 0
     fi
     sleep 1
@@ -45,7 +49,8 @@ done
 logger -t customer-flow-auto-deploy \
     "Health check failed for ${target_revision}; rolling back to ${previous_revision}."
 git -C "${repo}" reset --hard "${previous_revision}"
-systemctl --user restart "${service_name}"
+"${mcp_python}" -m pip install --quiet --no-deps --force-reinstall "${repo}/mcp-server"
+systemctl --user restart "${api_service}" "${mcp_service}"
 
 for _ in {1..30}; do
     if curl --fail --silent --show-error "${health_url}" >/dev/null; then
