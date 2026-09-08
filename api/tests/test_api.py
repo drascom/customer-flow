@@ -332,6 +332,112 @@ class APITestCase(unittest.TestCase):
             denied = self.request(method, path, payload, token=mcp_token, expected=403)
             self.assertEqual("mcp_scope_forbidden", denied["error"]["code"])
 
+        employee = self.request(
+            "POST",
+            "/admin/users",
+            {
+                "username": "mcp-owner-" + uuid.uuid4().hex[:8],
+                "displayName": "Agency Employee",
+                "role": "agent",
+                "agencyID": agency["id"],
+                "password": "Temporary!123",
+            },
+            token=admin,
+            expected=201,
+        )["user"]
+        with self.server.database.connect() as conn:
+            employee_row = conn.execute("SELECT * FROM users WHERE id=?", (employee["id"],)).fetchone()
+            other_agency_case_id = conn.execute(
+                "SELECT c.id FROM cases c JOIN users u ON u.id=c.agent_id "
+                "WHERE u.agency_id IS NOT NULL AND u.agency_id!=? LIMIT 1",
+                (agency["id"],),
+            ).fetchone()["id"]
+        existing = self.server.database.create_case(
+            {
+                "patientName": "Existing Agency Patient",
+                "grafts": "1800",
+                "currency": "GBP",
+                "price": "1900",
+                "note": "Original consultation need",
+                "photoCount": 0,
+                "patientProfile": {"city": "London", "region": "Greater London"},
+            },
+            employee_row,
+            "employee:create:" + uuid.uuid4().hex,
+        )
+
+        update_key = "mcp:update:" + uuid.uuid4().hex
+        revision = self.request("GET", "/events?since=-1", token=admin)["revision"]
+        update_payload = {
+            "patientName": "Existing Agency Patient",
+            "grafts": "2500",
+            "price": "2400",
+            "note": "Corrected consultation need",
+            "patientProfile": {"city": "Manchester", "region": "Greater Manchester"},
+        }
+        updated = self.request(
+            "PATCH",
+            f"/cases/{existing['id']}/agent-values",
+            update_payload,
+            token=mcp_token,
+            extra_headers={"Idempotency-Key": update_key},
+        )["case"]
+        self.assertEqual(employee["id"], updated["agentID"])
+        self.assertEqual("2500", updated["agentGrafts"])
+        self.assertEqual("Corrected consultation need", updated["agentNote"])
+        self.assertEqual("Manchester", updated["patient"]["city"])
+        event = self.request("GET", f"/events?since={revision}", token=admin)
+        self.assertEqual("case.updated", event["event"]["kind"])
+
+        replayed = self.request(
+            "PATCH",
+            f"/cases/{existing['id']}/agent-values",
+            update_payload,
+            token=mcp_token,
+            extra_headers={"Idempotency-Key": update_key},
+        )["case"]
+        self.assertEqual(updated["agentGrafts"], replayed["agentGrafts"])
+        self.assertEqual(updated["agentNote"], replayed["agentNote"])
+        conflict = self.request(
+            "PATCH",
+            f"/cases/{existing['id']}/agent-values",
+            dict(update_payload, grafts="2600"),
+            token=mcp_token,
+            expected=409,
+            extra_headers={"Idempotency-Key": update_key},
+        )
+        self.assertEqual("idempotency_conflict", conflict["error"]["code"])
+        messaged = self.request(
+            "POST",
+            f"/cases/{existing['id']}/agent-updates",
+            {"text": "Update from the connected agency integration"},
+            token=mcp_token,
+            extra_headers={"Idempotency-Key": "mcp:message:" + uuid.uuid4().hex},
+        )["case"]
+        self.assertEqual(employee["id"], messaged["agentID"])
+        self.assertEqual(
+            "Update from the connected agency integration",
+            messaged["messages"][-1]["text"],
+        )
+        photo_body, _ = self.raw_request(
+            "POST",
+            f"/cases/{existing['id']}/photos",
+            body=b"\xff\xd8\xffsame-agency-mcp-photo\xff\xd9",
+            content_type="image/jpeg",
+            token=mcp_token,
+            expected=201,
+            extra_headers={"Idempotency-Key": "mcp:photo:" + uuid.uuid4().hex},
+        )
+        self.assertEqual(1, json.loads(photo_body)["case"]["photoCount"])
+        self.request(
+            "PATCH",
+            f"/cases/{other_agency_case_id}/agent-values",
+            update_payload,
+            token=mcp_token,
+            expected=403,
+            extra_headers={"Idempotency-Key": "mcp:update:" + uuid.uuid4().hex},
+        )
+
         revision = self.request("GET", "/events?since=-1", token=admin)["revision"]
         created = self.request(
             "POST", "/cases", {
@@ -552,13 +658,21 @@ class APITestCase(unittest.TestCase):
         self.assertEqual(0, inbox(doctor2)["unreadCount"])
         self.assertEqual(0, inbox(other_agency_agent)["unreadCount"])
 
-        notification_id = assigned_doctor_inbox["notifications"][0]["id"]
         self.request(
-            "POST", "/notifications/read", {"notificationIDs": [notification_id]}, token=doctor1
+            "POST", f"/cases/{created['id']}/agent-updates",
+            {"text": "A second notification for the same case"}, token=agent1,
+        )
+        self.assertEqual(2, inbox(doctor1)["unreadCount"])
+        self.request(
+            "POST", "/notifications/read", {"caseID": created["id"]}, token=doctor1
         )
         refreshed = inbox(doctor1)
         self.assertEqual(0, refreshed["unreadCount"])
-        self.assertIsNotNone(refreshed["notifications"][0]["readAt"])
+        self.assertTrue(all(
+            item["readAt"] is not None
+            for item in refreshed["notifications"]
+            if item["caseID"] == created["id"]
+        ))
         self.request(
             "POST", "/notification-devices/unregister", {"token": push_token}, token=doctor2
         )

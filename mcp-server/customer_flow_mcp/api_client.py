@@ -101,6 +101,16 @@ class CustomerFlowAPIClient:
             "POST", "/cases", payload=payload, idempotency_key=idempotency_key
         ).get("case", {})
 
+    def update_case(
+        self, case_id: str, payload: dict[str, Any], idempotency_key: str
+    ) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/cases/{quote(case_id, safe='')}/agent-values",
+            payload=payload,
+            idempotency_key=idempotency_key,
+        ).get("case", {})
+
     def add_agent_update(
         self, case_id: str, text: str, idempotency_key: str
     ) -> dict[str, Any]:

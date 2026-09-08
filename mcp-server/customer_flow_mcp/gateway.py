@@ -324,6 +324,114 @@ class AgencyGateway:
             )
         return result
 
+    def update_case(
+        self,
+        case_reference: str,
+        idempotency_key: str,
+        patient_name: str | None = None,
+        estimated_grafts: str | None = None,
+        estimated_price_gbp: str | None = None,
+        patient_need: str | None = None,
+        date_of_birth: str | None = None,
+        age: int | None = None,
+        gender: str | None = None,
+        phone: str | None = None,
+        email: str | None = None,
+        address: str | None = None,
+        city: str | None = None,
+        region: str | None = None,
+        occupation: str | None = None,
+        patient_note: str | None = None,
+    ) -> dict[str, Any]:
+        """Partially update one existing agency case selected by its stable public reference."""
+        self._require_writes()
+        key = self._idempotency_key(idempotency_key)
+        changes = (
+            patient_name, estimated_grafts, estimated_price_gbp, patient_need,
+            date_of_birth, age, gender, phone, email, address, city, region,
+            occupation, patient_note,
+        )
+        if all(value is None for value in changes):
+            raise GatewayError("Provide at least one field to update.")
+        if age is not None and not 0 <= age <= 130:
+            raise GatewayError("age must be between 0 and 130.")
+
+        case = self._resolve(case_reference)
+        patient = case.get("patient") if isinstance(case.get("patient"), dict) else {}
+
+        name = (
+            self._bounded(patient_name, "patient_name", 160, required=True)
+            if patient_name is not None
+            else self._bounded(
+                str(patient.get("name") or ""), "patient_name", 160, required=True
+            )
+        )
+        if name is None or len(name.split()) < 2:
+            raise GatewayError("patient_name must include at least a first name and surname.")
+        grafts = (
+            self._bounded(estimated_grafts, "estimated_grafts", 32, required=True)
+            if estimated_grafts is not None
+            else self._bounded(
+                str(case.get("agentGrafts") or ""), "estimated_grafts", 32, required=True
+            )
+        )
+        price = (
+            self._bounded(estimated_price_gbp.lstrip("£"), "estimated_price_gbp", 32, required=True)
+            if estimated_price_gbp is not None
+            else self._bounded(
+                str(case.get("agentPrice") or "").lstrip("£"),
+                "estimated_price_gbp",
+                32,
+                required=True,
+            )
+        )
+        note = (
+            self._bounded(patient_need, "patient_need", 4000, required=True)
+            if patient_need is not None
+            else self._bounded(str(case.get("agentNote") or ""), "patient_need", 4000, required=True)
+        )
+
+        if gender is None:
+            normalized_gender = patient.get("gender")
+        else:
+            normalized_gender = gender.strip().casefold() or None
+        if normalized_gender and normalized_gender not in GENDERS:
+            raise GatewayError("gender is not a supported value.")
+
+        def profile_value(
+            value: str | None, key_name: str, field_name: str, limit: int
+        ) -> str | None:
+            if value is None:
+                current = patient.get(key_name)
+                return str(current) if current is not None else None
+            return self._bounded(value, field_name, limit)
+
+        profile = {
+            "dateOfBirth": profile_value(date_of_birth, "dateOfBirth", "date_of_birth", 10),
+            "age": age if age is not None else patient.get("statedAge"),
+            "gender": normalized_gender,
+            "phone": profile_value(phone, "phone", "phone", 40),
+            "email": profile_value(email, "email", "email", 254),
+            "address": profile_value(address, "address", "address", 500),
+            "city": profile_value(city, "city", "city", 120),
+            "region": profile_value(region, "region", "region", 120),
+            "occupation": profile_value(occupation, "occupation", "occupation", 120),
+            "profileNote": profile_value(patient_note, "profileNote", "patient_note", 1000),
+        }
+        payload: dict[str, Any] = {
+            "patientName": name,
+            "grafts": grafts,
+            "currency": "GBP",
+            "price": price,
+            "note": note,
+            "patientProfile": profile,
+        }
+        try:
+            updated = self.client.update_case(str(case["id"]), payload, key)
+        except CustomerFlowAPIError as exc:
+            raise GatewayError(str(exc)) from None
+        return self._case_detail(updated)
+
     def add_case_message(
         self, case_reference: str, text: str, idempotency_key: str
     ) -> dict[str, Any]:
@@ -386,6 +494,10 @@ class AgencyGateway:
             "data_classification": "confidential_patient_data",
             "read_tools": ["who_am_i", "list_cases", "get_case"],
             "write_tools_enabled": self.settings.enable_writes,
+            "write_tools": (
+                ["create_case", "update_case", "add_case_message"]
+                if self.settings.enable_writes else []
+            ),
             "photo_uploads_enabled": self.settings.enable_photo_uploads,
             "minimum_case_photos": MINIMUM_CASE_PHOTOS,
             "not_exposed": [

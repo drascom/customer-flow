@@ -22,6 +22,13 @@ const casePrice = (item) => item.finalPrice || item.agentPrice || item.price || 
 const photoIDs = (item) => item.photoIDs || (item.photos || []).filter((p) => !p.deleted && p.available !== false).map((p) => p.id);
 const latestMessage = (item) => item.latestMessage || [...(item.messages || [])].reverse().find((m) => !m.deletedAt && m.role !== "system");
 const validPermanentPassword = (value) => value.length >= 6 && /\d/.test(value) && /[^\p{L}\p{N}\s]/u.test(value);
+const unreadCaseNotifications = (caseID) => state.notifications.filter((item) =>
+  !item.readAt && item.caseID && String(item.caseID).toLowerCase() === String(caseID).toLowerCase());
+
+function caseNotificationBadgeHTML(caseID) {
+  const count = unreadCaseNotifications(caseID).length;
+  return count ? `<span class="case-notification-badge" aria-label="${count} unread notification${count === 1 ? "" : "s"}">🔔 ${count}</span>` : "";
+}
 
 async function api(path, options = {}) {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
@@ -100,7 +107,7 @@ async function restore() {
 async function loadData({ silent = false } = {}) {
   if (!silent) $("refreshButton").disabled = true;
   try {
-    const notificationRequest = api("/notifications?limit=40");
+    const notificationRequest = api("/notifications?limit=100");
     if (isManagement()) {
       const [users, agencies, cases] = await Promise.all([api("/admin/users"), api("/admin/agencies"), api("/admin/cases")]);
       state.users = users.users; state.agencies = agencies.agencies; state.cases = cases.cases;
@@ -144,7 +151,7 @@ function renderNotifications() {
 
 async function openNotification(notificationID, caseID) {
   const item = state.notifications.find((entry) => entry.id === notificationID);
-  if (item && !item.readAt) {
+  if (!caseID && item && !item.readAt) {
     item.readAt = new Date().toISOString();
     state.unreadNotifications = Math.max(0, state.unreadNotifications - 1);
     renderNotifications();
@@ -152,6 +159,32 @@ async function openNotification(notificationID, caseID) {
   }
   setNotificationMenu(false);
   if (caseID) await openCase(caseID);
+}
+
+async function markCaseNotificationsRead(caseID) {
+  if (!caseID || state.unreadNotifications === 0) return;
+  const unread = unreadCaseNotifications(caseID);
+  const previousUnreadCount = state.unreadNotifications;
+  const now = new Date().toISOString();
+  unread.forEach((item) => { item.readAt = now; });
+  state.unreadNotifications = Math.max(0, state.unreadNotifications - unread.length);
+  if (unread.length) {
+    renderNotifications();
+    if (state.view === "cases") renderCases();
+  }
+  try {
+    const result = await api("/notifications/read", { method: "POST", body: { caseID } });
+    state.unreadNotifications = Math.max(0, previousUnreadCount - Math.max(result.updatedCount, unread.length));
+    renderNotifications();
+  } catch (_) {
+    const inbox = await api("/notifications?limit=100").catch(() => null);
+    if (inbox) {
+      state.notifications = inbox.notifications;
+      state.unreadNotifications = inbox.unreadCount;
+      renderNotifications();
+      if (state.view === "cases") renderCases();
+    }
+  }
 }
 
 function startLiveUpdates() {
@@ -238,7 +271,7 @@ function caseCardHTML(item) {
     ((state.user?.role === "agent" ? item.status === "answered" : item.status === "waiting") ? "needs-action" : "waiting-on-other");
   return `<button class="case-card" data-open-case="${escapeHTML(item.id)}" type="button">
     <div class="case-card-body">
-      <div class="case-title-row"><strong>${escapeHTML(patientName(item))}</strong><span>${relativeTime(item.patient?.lastUpdated || item.uploadedAt)}</span></div>
+      <div class="case-title-row"><strong>${escapeHTML(patientName(item))}</strong>${caseNotificationBadgeHTML(item.id)}<span class="case-age">${relativeTime(item.patient?.lastUpdated || item.uploadedAt)}</span></div>
       <div class="case-meta"><span class="agency-name">▦ ${escapeHTML(agency)}</span><span class="push">◉ ${escapeHTML(agent)}</span></div>
       <p class="case-summary">${escapeHTML(caseNote(item) || latest?.text || "Open the consultation to review patient details.")}</p>
       <div class="case-metrics"><span class="metric"><small>Est. grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>Est. price</small><strong>£${escapeHTML(casePrice(item))}</strong></span><span class="metric"><small>Media</small><strong>${photoIDs(item).length} · ${(item.messages || []).length}</strong></span></div>
@@ -249,7 +282,7 @@ function caseCardHTML(item) {
 function renderManagementCases(rows) {
   const doctors = state.users.filter((u) => u.role === "doctor" && u.active);
   $("casesBody").innerHTML = rows.map((item) => `<tr data-open-case="${escapeHTML(item.id)}">
-    <td><div class="identity"><strong>${escapeHTML(patientName(item))}</strong><small>${escapeHTML(item.reference)}</small></div></td><td>${item.messageCount ?? item.messages?.length ?? 0}</td>
+    <td><div class="identity"><div class="case-patient-row"><strong>${escapeHTML(patientName(item))}</strong>${caseNotificationBadgeHTML(item.id)}</div><small>${escapeHTML(item.reference)}</small></div></td><td>${item.messageCount ?? item.messages?.length ?? 0}</td>
     <td><span class="status ${escapeHTML(statusPresentation(item.status, item.completedAt).className)}">${escapeHTML(statusPresentation(item.status, item.completedAt).label)}</span></td>
     <td><div class="identity"><strong>${escapeHTML(item.agentName)}</strong><small>${escapeHTML(item.agencyName || "No agency")}</small></div></td>
     <td>${state.user.role === "manager" ? escapeHTML(item.doctorName || "Unassigned") : `<select class="doctor-select" data-patient="${escapeHTML(patientID(item))}" data-previous="${escapeHTML(item.doctorID || "")}"><option value="">Unassigned</option>${doctors.map((d) => `<option value="${escapeHTML(d.id)}" ${d.id === item.doctorID ? "selected" : ""}>${escapeHTML(d.displayName)}</option>`).join("")}</select>`}</td>
@@ -279,6 +312,7 @@ function formatDOB(value) { if (!value) return ""; const [y, m, d] = value.split
 
 async function openCase(id) {
   state.selectedCaseID = id; let item = state.cases.find((c) => c.id === id);
+  void markCaseNotificationsRead(id);
   $("caseDialogTitle").textContent = patientName(item); $("caseDialogEyebrow").textContent = "Loading consultation…";
   $("caseDialogContent").innerHTML = `<div class="loading">Loading patient details…</div>`; $("caseDialog").showModal();
   try {

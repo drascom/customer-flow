@@ -20,7 +20,13 @@ struct AdminCaseCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: onToggle) {
+            Button {
+                let isOpening = !isExpanded
+                onToggle()
+                if isOpening, let caseID {
+                    Task { await state.markCaseNotificationsRead(caseID) }
+                }
+            } label: {
                 VStack(alignment: .leading, spacing: 7) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(item.patientName)
@@ -28,6 +34,7 @@ struct AdminCaseCard: View {
                             .foregroundStyle(AppTheme.ink)
                             .lineLimit(1)
                         Spacer(minLength: 6)
+                        CaseUnreadBadge(count: unreadNotificationCount)
                         statusChip
                     }
 
@@ -193,6 +200,14 @@ struct AdminCaseCard: View {
         } message: {
             Text("This removes the retained file from the server and cannot be undone.")
         }
+    }
+
+    private var caseID: UUID? {
+        UUID(uuidString: item.id)
+    }
+
+    private var unreadNotificationCount: Int {
+        caseID.map(state.unreadNotificationCount(for:)) ?? 0
     }
 
     private var assignmentLabel: some View {

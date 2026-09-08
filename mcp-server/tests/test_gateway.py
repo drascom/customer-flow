@@ -79,6 +79,7 @@ class FakeClient:
         }
         self.cases = [sample_case()]
         self.created_payload = None
+        self.updated_payload = None
         self.update = None
         self.upload = None
 
@@ -119,6 +120,29 @@ class FakeClient:
     def add_agent_update(self, case_id, text, idempotency_key):
         self.update = (case_id, text, idempotency_key)
         return self.get_case(case_id)
+
+    def update_case(self, case_id, payload, idempotency_key):
+        self.updated_payload = (case_id, payload, idempotency_key)
+        case = self.get_case(case_id)
+        profile = payload["patientProfile"]
+        case["patient"].update({
+            "name": payload["patientName"],
+            "dateOfBirth": profile["dateOfBirth"],
+            "statedAge": profile["age"],
+            "age": profile["age"],
+            "gender": profile["gender"],
+            "phone": profile["phone"],
+            "email": profile["email"],
+            "address": profile["address"],
+            "city": profile["city"],
+            "region": profile["region"],
+            "occupation": profile["occupation"],
+            "profileNote": profile["profileNote"],
+        })
+        case["agentNote"] = payload["note"]
+        case["agentGrafts"] = payload["grafts"]
+        case["agentPrice"] = payload["price"]
+        return case
 
     def upload_case_photo(self, case_id, body, media_type, idempotency_key):
         self.upload = (case_id, body, media_type, idempotency_key)
@@ -240,6 +264,36 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(1, detail["minimum_photo_count"])
         self.assertEqual(0, detail["remaining_required_photos"])
 
+    def test_update_case_uses_stable_reference_and_preserves_omitted_fields(self):
+        client = FakeClient()
+        gateway = AgencyGateway(settings(enable_writes=True), client)
+
+        updated = gateway.update_case(
+            "ht-240910",
+            "case:update:12345678",
+            estimated_grafts="2600",
+            city="Manchester",
+            patient_need="Updated consultation need",
+        )
+
+        case_id, payload, key = client.updated_payload
+        self.assertEqual("case-internal-1", case_id)
+        self.assertEqual("case:update:12345678", key)
+        self.assertEqual("Test Patient", payload["patientName"])
+        self.assertEqual("2600", payload["grafts"])
+        self.assertEqual("2200", payload["price"])
+        self.assertEqual("Manchester", payload["patientProfile"]["city"])
+        self.assertEqual("Greater London", payload["patientProfile"]["region"])
+        self.assertEqual("HT-240910", updated["case_reference"])
+        self.assertEqual("Updated consultation need", updated["patient_need"])
+
+    def test_update_case_requires_a_change_and_valid_reference(self):
+        gateway = AgencyGateway(settings(enable_writes=True), FakeClient())
+        with self.assertRaisesRegex(GatewayError, "at least one field"):
+            gateway.update_case("HT-240910", "case:update:12345678")
+        with self.assertRaisesRegex(GatewayError, "case_reference"):
+            gateway.update_case("Sean Finch", "case:update:12345678", city="London")
+
     def test_rejects_bad_idempotency_key_before_write(self):
         gateway = AgencyGateway(settings(enable_writes=True), FakeClient())
         with self.assertRaisesRegex(GatewayError, "idempotency_key"):
@@ -360,6 +414,14 @@ class SharedAgencyTokenTests(unittest.TestCase):
 
     def test_gateway_write_uses_api_and_publishes_realtime_event(self):
         gateway = self._gateway(self.first, enable_writes=True)
+        existing = gateway.list_cases()["cases"][0]
+        corrected = gateway.update_case(
+            existing["case_reference"],
+            "mcp:update:existing123",
+            city="Updated by integration",
+        )
+        self.assertEqual(existing["case_reference"], corrected["case_reference"])
+        self.assertEqual("Updated by integration", corrected["patient"]["city"])
         before = self.api_server.changes.wait(-1, timeout=0)
         created = gateway.create_case(
             "MCP Realtime Patient",
@@ -377,7 +439,13 @@ class SharedAgencyTokenTests(unittest.TestCase):
         )
 
     def test_server_uses_shared_streamable_http_auth(self):
-        server = build_server(self.settings, self.database)
+        write_settings = settings(
+            database_path=self.settings.database_path,
+            media_root=self.settings.media_root,
+            api_base_url=self.settings.api_base_url,
+            enable_writes=True,
+        )
+        server = build_server(write_settings, self.database)
         from starlette.testclient import TestClient
 
         request = {
@@ -410,6 +478,13 @@ class SharedAgencyTokenTests(unittest.TestCase):
             )
             self.assertEqual(200, tool_call.status_code, tool_call.text)
             self.assertIn(self.agency_one["id"], tool_call.text)
+            tool_list = client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}},
+                headers={**headers, "Authorization": f"Bearer {self.first['accessToken']}"},
+            )
+            self.assertEqual(200, tool_list.status_code, tool_list.text)
+            self.assertIn('"name":"update_case"', tool_list.text)
             replacement = self.database.admin_rotate_mcp_token(self.agency_one["id"], self.admin)
             rejected_old = client.post(
                 "/mcp", json=request,

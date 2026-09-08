@@ -159,9 +159,13 @@ struct DoctorQueueView: View {
         } else {
             LazyVStack(spacing: 12) {
                 ForEach(filteredCases) { item in
-                    DoctorWorkCard(item: item) {
+                    DoctorWorkCard(
+                        item: item,
+                        unreadNotificationCount: state.unreadNotificationCount(for: item.id)
+                    ) {
                         isSearchFocused = false
                         selectedCase = item
+                        Task { await state.markCaseNotificationsRead(item.id) }
                     }
                 }
             }
@@ -198,6 +202,7 @@ struct DoctorQueueView: View {
 
 private struct DoctorWorkCard: View {
     let item: ConsultationCase
+    let unreadNotificationCount: Int
     let onOpen: () -> Void
 
     var body: some View {
@@ -213,6 +218,7 @@ private struct DoctorWorkCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                     Spacer(minLength: 8)
+                    CaseUnreadBadge(count: unreadNotificationCount)
                     Label(waitingTime, systemImage: "clock")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(isOverdue ? statusColor : AppTheme.muted)

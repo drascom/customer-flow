@@ -17,7 +17,8 @@ single bearer token generated for its agency by a Customer Flow administrator.
   and realtime `ChangeBroker` notifications.
 - The service account is created automatically and cannot be edited, disabled,
   or deleted through normal user-management endpoints. It owns MCP-created cases
-  for audit and write authorization; agency staff still see those cases.
+  for audit. Its tools may update, message, or add photos to another case only
+  when that case belongs to the same agency resolved from the MCP token.
 - MCP never accepts an employee password or session token. Agency employees
   cannot generate or rotate MCP tokens; these API operations are admin-only.
 - Internal IDs are removed from tool results. Admin, doctor assignment, delete,
@@ -25,7 +26,8 @@ single bearer token generated for its agency by a Customer Flow administrator.
 
 The verifier reads the token digest from the API database, but tool data access
 goes only through the API's narrow MCP bearer scope. That scope allows
-`GET /auth/me`, case list/detail/create, agent updates and case photo uploads;
+`GET /auth/me`, case list/detail/create, case metadata updates, agent messages
+and case photo uploads within the resolved agency;
 events, profiles, password operations, admin routes, deletes, doctor messages,
 case closing and every other authenticated route are rejected. Run MCP on the
 API host and set `CF_API_BASE_URL=http://127.0.0.1:8080/api/v1`. Tokens are bearer
@@ -41,8 +43,9 @@ agency's confidential patient data until an admin rotates it.
 | `who_am_i` | on | Confirm tenant and enabled capabilities |
 | `list_cases` | on | Agency-only summaries, capped at 100 |
 | `get_case` | on | One agency case by `HT-...` reference |
-| `create_case` | off | Idempotent case creation with separate patient need, city and region fields |
-| `add_case_message` | off | Idempotent update to an MCP-owned case |
+| `create_case` | off | Idempotent creation of a genuinely new consultation |
+| `update_case` | off | Idempotent partial metadata update by exact `HT-...` reference |
+| `add_case_message` | off | Idempotent message on an agency case |
 | `upload_case_photo` | off | Validated base64 JPEG/PNG/HEIC upload |
 
 Writes require `CF_MCP_ENABLE_WRITES=true`. Photos additionally require
@@ -57,6 +60,17 @@ least one call to `upload_case_photo`. Tool results expose
 `remaining_required_photos`; an automation must not consider the submission
 complete until `photo_requirement_met` is true. This matches the current iOS
 minimum of one photo.
+
+Before creating a patient, integrations should call `list_cases` with the name
+as `search`. `create_case` is only for a genuinely new consultation. Its result
+contains a stable `case_reference` such as `HT-240910`; the connected system
+must store that value as its Customer Flow record ID. Later corrections use
+`update_case` with that exact reference and only the supplied fields are
+changed. Reusing the same idempotency key safely retries the same update;
+reusing it with different values is rejected. If the same patient starts a
+genuinely new consultation, pass the earlier case as `previous_case_reference`.
+Use `duplicate_confirmed_different` only after verifying that a same-name match
+is a different person.
 
 Case reads expose `workflow_state` using the product language:
 `waiting_for_doctor`, `waiting_for_agent`, `confirmed`, or `closed`. A confirmed
@@ -112,6 +126,6 @@ patient records.
   reads and writes pass through the HTTP API. SQLite/WAL is suitable for the
   current staging load; higher concurrency should move credentials and clinical
   data to a transactional server database.
-- Write tools operate only on cases owned by the managed MCP account. This is a
-  deliberate least-privilege limit; expanding it requires an explicit agency
-  workflow and additional authorization tests.
+- Write tools accept only exact case references visible inside the agency
+  resolved from the bearer token. Cross-agency references remain undiscoverable
+  and are rejected by both the gateway and API authorization boundary.

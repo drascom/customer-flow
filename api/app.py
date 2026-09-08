@@ -709,12 +709,13 @@ class Database:
 
     def mark_notifications_read(self, payload: dict, user: sqlite3.Row) -> dict:
         mark_all = bool(payload.get("all"))
+        case_id = str(payload.get("caseID", "")).strip().lower()
         raw_ids = payload.get("notificationIDs", [])
-        if not mark_all and not isinstance(raw_ids, list):
+        if not mark_all and not case_id and not isinstance(raw_ids, list):
             raise APIError(422, "invalid_notification_ids", "Notification IDs must be a list.")
         notification_ids = [str(value).strip().lower() for value in raw_ids if str(value).strip()]
-        if not mark_all and not notification_ids:
-            raise APIError(422, "notifications_required", "Select notifications to mark as read.")
+        if not mark_all and not case_id and not notification_ids:
+            raise APIError(422, "notifications_required", "Select a case or notifications to mark as read.")
         if len(notification_ids) > 100:
             raise APIError(422, "too_many_notifications", "Mark no more than 100 notifications at once.")
         now = iso(utc_now())
@@ -723,6 +724,12 @@ class Database:
                 cursor = conn.execute(
                     "UPDATE notifications SET read_at=? WHERE recipient_user_id=? AND read_at IS NULL",
                     (now, user["id"]),
+                )
+            elif case_id:
+                cursor = conn.execute(
+                    "UPDATE notifications SET read_at=? WHERE recipient_user_id=? "
+                    "AND case_id=? AND read_at IS NULL",
+                    (now, user["id"], case_id),
                 )
             else:
                 placeholders = ",".join("?" for _ in notification_ids)
@@ -1508,18 +1515,44 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
-    def save_agent_values(self, case_id: str, payload: dict, user: sqlite3.Row) -> dict:
+    def save_agent_values(
+        self,
+        case_id: str,
+        payload: dict,
+        user: sqlite3.Row,
+        idempotency_key: str | None = None,
+        allow_agency_case: bool = False,
+    ) -> dict:
         self._require_role(user, "agent")
+        idempotency_key = validate_idempotency_key(idempotency_key)
+        fingerprint = request_fingerprint({"caseID": case_id, "payload": payload})
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                replay = self._idempotency_replay(
+                    conn, user["id"], "case.agent_values", idempotency_key, fingerprint
+                )
+                if replay is not None:
+                    replayed = IdempotentReplay(self._case_json(conn, self._case_row(conn, replay)))
+                    conn.execute("COMMIT")
+                    return replayed
                 row = self._case_row(conn, case_id)
-                self._assert_owner(row, user)
+                if allow_agency_case:
+                    self._assert_case_visible(row, user)
+                else:
+                    self._assert_owner(row, user)
                 name = str(payload.get("patientName", row["patient_name"])).strip()
                 normalized, tokens = normalize_name(name)
                 if len(tokens) < 2:
                     raise APIError(422, "full_name_required", "Enter the patient's first and last name.")
                 profile = patient_profile_values(payload, row)
+                note = str(payload.get("note", row["agent_note"])).strip()
+                if not note:
+                    raise APIError(422, "patient_need_required", "Enter the patient's consultation need.")
+                grafts = str(payload.get("grafts", row["agent_grafts"])).strip()
+                price = str(payload.get("price", row["agent_price"])).strip()
+                if not grafts or not price:
+                    raise APIError(422, "missing_fields", "Grafts and price are required.")
                 conn.execute(
                     "UPDATE patients SET name=?,normalized_name=?,date_of_birth=?,stated_age=?,gender=?,phone=?,email=?,"
                     "address=?,city=?,region=?,occupation=?,profile_note=?,last_updated=? WHERE id=?",
@@ -1530,10 +1563,16 @@ class Database:
                         iso(utc_now()), row["patient_id"],
                     ),
                 )
-                conn.execute("UPDATE cases SET agent_grafts=?, currency=?, agent_price=?, version=version+1 WHERE id=?",
-                             (str(payload["grafts"]), "GBP", str(payload["price"]), case_id))
+                conn.execute(
+                    "UPDATE cases SET agent_note=?,agent_grafts=?,currency=?,agent_price=?,version=version+1 "
+                    "WHERE id=?",
+                    (note, grafts, "GBP", price, case_id),
+                )
                 self._audit(conn, user["id"], "case.agent_values_updated", "case", case_id, {})
                 result = self._case_json(conn, self._case_row(conn, case_id))
+                self._store_idempotency_result(
+                    conn, user["id"], "case.agent_values", idempotency_key, fingerprint, case_id
+                )
                 conn.execute("COMMIT")
                 return result
             except Exception:
@@ -1546,6 +1585,7 @@ class Database:
         payload: dict,
         user: sqlite3.Row,
         idempotency_key: str | None = None,
+        allow_agency_case: bool = False,
     ) -> dict:
         self._require_role(user, "agent")
         idempotency_key = validate_idempotency_key(idempotency_key)
@@ -1564,7 +1604,10 @@ class Database:
                     conn.execute("COMMIT")
                     return replayed
                 row = self._case_row(conn, case_id)
-                self._assert_owner(row, user)
+                if allow_agency_case:
+                    self._assert_case_visible(row, user)
+                else:
+                    self._assert_owner(row, user)
                 if row["status"] == "closed":
                     raise APIError(409, "case_closed", "A closed case cannot be updated.")
                 now = iso(utc_now())
@@ -1759,6 +1802,7 @@ class Database:
         content_type: str,
         user: sqlite3.Row,
         idempotency_key: str | None = None,
+        allow_agency_case: bool = False,
     ) -> dict:
         self._require_role(user, "agent")
         idempotency_key = validate_idempotency_key(idempotency_key)
@@ -1783,7 +1827,10 @@ class Database:
                     conn.execute("COMMIT")
                     return replayed
                 row = self._case_row(conn, case_id)
-                self._assert_owner(row, user)
+                if allow_agency_case:
+                    self._assert_case_visible(row, user)
+                else:
+                    self._assert_owner(row, user)
                 photo_id = str(uuid.uuid4())
                 case_dir = self.media_root / case_id
                 case_dir.mkdir(parents=True, exist_ok=True)
@@ -2892,7 +2939,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._json(200, self.server.database.notifications(user, limit))
             if method == "POST" and path == f"{API_PREFIX}/notifications/read":
                 result = self.server.database.mark_notifications_read(self._read_json(), user)
-                return self._changed(200, result, "notifications.read", user["id"], user)
+                if result["updatedCount"]:
+                    return self._changed(200, result, "notifications.read", user["id"], user)
+                return self._json(200, result)
             if method == "POST" and path == f"{API_PREFIX}/notification-devices":
                 return self._json(
                     200, {"device": self.server.database.register_notification_device(self._read_json(), user)}
@@ -3021,11 +3070,23 @@ class APIHandler(BaseHTTPRequestHandler):
                 updated = self.server.database.send_recommendation(case_id, self._read_json(), user)
                 return self._changed(200, {"case": updated}, "message.created", case_id, user)
             if method == "PATCH" and action == "agent-values":
-                updated = self.server.database.save_agent_values(case_id, self._read_json(), user)
+                updated = self.server.database.save_agent_values(
+                    case_id,
+                    self._read_json(),
+                    user,
+                    self.headers.get("Idempotency-Key"),
+                    allow_agency_case=token.startswith("cfmcp_"),
+                )
+                if isinstance(updated, IdempotentReplay):
+                    return self._json(200, {"case": updated})
                 return self._changed(200, {"case": updated}, "case.updated", case_id, user)
             if method == "POST" and action == "agent-updates":
                 updated = self.server.database.add_agent_update(
-                    case_id, self._read_json(), user, self.headers.get("Idempotency-Key")
+                    case_id,
+                    self._read_json(),
+                    user,
+                    self.headers.get("Idempotency-Key"),
+                    allow_agency_case=token.startswith("cfmcp_"),
                 )
                 if isinstance(updated, IdempotentReplay):
                     return self._json(200, {"case": updated})
@@ -3050,7 +3111,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 body = self.rfile.read(self._content_length())
                 content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
                 updated = self.server.database.add_photo(
-                    case_id, body, content_type, user, self.headers.get("Idempotency-Key")
+                    case_id,
+                    body,
+                    content_type,
+                    user,
+                    self.headers.get("Idempotency-Key"),
+                    allow_agency_case=token.startswith("cfmcp_"),
                 )
                 if isinstance(updated, IdempotentReplay):
                     return self._json(201, {"case": updated})
@@ -3139,12 +3205,11 @@ class APIHandler(BaseHTTPRequestHandler):
         parts = path.removeprefix(prefix).split("/")
         if method == "GET" and len(parts) == 1 and parts[0]:
             return True
-        return (
-            method == "POST"
-            and len(parts) == 2
-            and bool(parts[0])
-            and parts[1] in {"agent-updates", "photos"}
-        )
+        if len(parts) != 2 or not parts[0]:
+            return False
+        if method == "PATCH" and parts[1] == "agent-values":
+            return True
+        return method == "POST" and parts[1] in {"agent-updates", "photos"}
 
     def _enforce_mcp_route_scope(self, method: str, path: str) -> None:
         """Reject scoped bearer credentials even on routes handled before normal auth."""

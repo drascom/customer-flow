@@ -201,7 +201,7 @@
     "Assigned doctor" : {
 
     },
-    "At least 10 characters" : {
+    "At least 6 characters" : {
 
     },
     "Back" : {
@@ -229,6 +229,9 @@
 
     },
     "Change assigned doctor" : {
+
+    },
+    "Change password" : {
 
     },
     "Change password and sign out?" : {
@@ -319,6 +322,9 @@
 
     },
     "Create user" : {
+
+    },
+    "Create your password" : {
 
     },
     "Current password" : {
@@ -943,10 +949,13 @@
     "Uploading photos…" : {
 
     },
-    "Use at least 10 characters. After changing it, you will be signed out and must sign in with the new password." : {
+    "Use at least 6 characters with at least one number and one symbol." : {
 
     },
-    "Use at least 10 characters. The code expires after 10 minutes." : {
+    "Use at least 6 characters with at least one number and one symbol. After changing it, you will be signed out and must sign in with the new password." : {
+
+    },
+    "Use at least 6 characters with at least one number and one symbol. The code expires after 10 minutes." : {
 
     },
     "Use this as context; your clinical recommendation can be different." : {
@@ -992,6 +1001,9 @@
 
     },
     "You can now sign in with your new password." : {
+
+    },
+    "Your administrator gave you a temporary password. Change it before continuing." : {
 
     },
     "Your existing patient · %@" : {

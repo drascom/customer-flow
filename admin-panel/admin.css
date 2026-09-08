@@ -206,6 +206,10 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .case-title-row, .case-meta, .latest-row { display: flex; align-items: center; gap: 8px; }
 .case-title-row strong { min-width: 0; overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .case-title-row .status { margin-left: auto; }
+.case-title-row .case-age { flex: none; color: var(--muted); white-space: nowrap; }
+.case-notification-badge { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; color: white; border-radius: 999px; background: var(--red); font-size: 10px; font-weight: 850; line-height: 1.2; white-space: nowrap; }
+.case-patient-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.case-patient-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .case-meta { color: var(--muted); font-size: 12px; }
 .case-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .case-meta .push { margin-left: auto; }

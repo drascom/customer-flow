@@ -108,7 +108,7 @@ actor RemoteAPIClient {
     }
 
     func fetchNotifications() async throws -> NotificationInbox {
-        try await get("notifications?limit=50")
+        try await get("notifications?limit=100")
     }
 
     func markNotificationsRead(_ notificationIDs: [String]) async throws {
@@ -117,6 +117,15 @@ actor RemoteAPIClient {
         let _: Response = try await send(
             "POST", path: "notifications/read", body: Body(notificationIDs: notificationIDs)
         )
+    }
+
+    func markCaseNotificationsRead(_ caseID: UUID) async throws -> Int {
+        struct Body: Encodable, Sendable { let caseID: UUID }
+        struct Response: Decodable, Sendable { let ok: Bool; let updatedCount: Int }
+        let response: Response = try await send(
+            "POST", path: "notifications/read", body: Body(caseID: caseID)
+        )
+        return response.updatedCount
     }
 
     func markAllNotificationsRead() async throws {

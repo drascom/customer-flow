@@ -527,8 +527,35 @@ final class AppState: ObservableObject {
         }
     }
 
+    func unreadNotificationCount(for caseID: UUID) -> Int {
+        notifications.filter { $0.caseID == caseID && $0.readAt == nil }.count
+    }
+
+    func markCaseNotificationsRead(_ caseID: UUID) async {
+        let unreadIDs = Set(notifications.compactMap { item in
+            item.caseID == caseID && item.readAt == nil ? item.id : nil
+        })
+        guard unreadNotificationCount > 0, let remoteClient else { return }
+        do {
+            let updatedCount = try await remoteClient.markCaseNotificationsRead(caseID)
+            let now = Date()
+            notifications = notifications.map { item in
+                guard unreadIDs.contains(item.id) else { return item }
+                var updated = item
+                updated.readAt = now
+                return updated
+            }
+            unreadNotificationCount = max(0, unreadNotificationCount - max(updatedCount, unreadIDs.count))
+        } catch {
+            errorMessage = error.localizedDescription
+            await loadNotifications()
+        }
+    }
+
     func openNotification(_ notification: AppNotification) async {
-        if notification.readAt == nil, let remoteClient {
+        if let caseID = notification.caseID {
+            await markCaseNotificationsRead(caseID)
+        } else if notification.readAt == nil, let remoteClient {
             do {
                 try await remoteClient.markNotificationsRead([notification.id])
                 if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
@@ -544,6 +571,7 @@ final class AppState: ObservableObject {
     }
 
     func openNotificationCase(_ caseID: UUID) async {
+        await markCaseNotificationsRead(caseID)
         await load()
         pendingNotificationCaseID = caseID
     }

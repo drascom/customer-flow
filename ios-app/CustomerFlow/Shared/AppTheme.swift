@@ -93,6 +93,25 @@ extension RevealablePasswordField where FocusValue == Bool {
     }
 }
 
+struct CaseUnreadBadge: View {
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "bell.fill")
+                Text(count > 99 ? "99+" : "\(count)")
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color.red, in: Capsule())
+            .accessibilityLabel("\(count) unread notifications")
+        }
+    }
+}
+
 enum AppTheme {
     static let brand = adaptive(
         light: UIColor(red: 47 / 255, green: 125 / 255, blue: 118 / 255, alpha: 1),

@@ -79,9 +79,11 @@ struct AgentCasesView: View {
                             ForEach(myCases) { item in
                                 AgentCaseListCard(
                                     item: item,
+                                    unreadNotificationCount: state.unreadNotificationCount(for: item.id),
                                     onOpen: {
                                         isSearchFocused = false
                                         selectedCaseID = item.id
+                                        Task { await state.markCaseNotificationsRead(item.id) }
                                     }
                                 )
                                 .padding(.horizontal, 12)
@@ -220,6 +222,7 @@ struct AgentCasesView: View {
 
 private struct AgentCaseListCard: View {
     let item: ConsultationCase
+    let unreadNotificationCount: Int
     let onOpen: () -> Void
 
     var body: some View {
@@ -231,6 +234,7 @@ private struct AgentCaseListCard: View {
                         .foregroundStyle(AppTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 6)
+                    CaseUnreadBadge(count: unreadNotificationCount)
                     statusChip
                 }
 
