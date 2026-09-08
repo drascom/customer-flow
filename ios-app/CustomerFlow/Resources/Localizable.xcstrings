@@ -104,6 +104,9 @@
     "%lld photos" : {
 
     },
+    "%lld unread notifications" : {
+
+    },
     "%lld/%lld · %@" : {
       "localizations" : {
         "en" : {

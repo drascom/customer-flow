@@ -238,6 +238,14 @@ function renderFilterChips() {
 
 function filteredCases() {
   const query = $("searchInput").value.trim().toLocaleLowerCase();
+  const unreadActivityByCase = new Map();
+  state.notifications.forEach((notification) => {
+    if (notification.readAt || !notification.caseID) return;
+    const caseID = String(notification.caseID).toLowerCase();
+    const activityTime = Date.parse(notification.createdAt) || 0;
+    unreadActivityByCase.set(caseID, Math.max(unreadActivityByCase.get(caseID) || 0, activityTime));
+  });
+
   return state.cases.filter((item) => {
     const haystack = `${patientName(item)} ${item.reference || ""} ${item.agentName || ""} ${item.agencyName || ""} ${item.doctorName || ""} ${caseNote(item)}`.toLocaleLowerCase();
     const assignmentOK = !state.filters.caseAssignment || (state.filters.caseAssignment === "assigned" ? Boolean(doctorID(item)) : !doctorID(item));
@@ -245,6 +253,13 @@ function filteredCases() {
       || (state.filters.caseStatus === "completed" ? Boolean(item.completedAt) : item.status === state.filters.caseStatus && !item.completedAt);
     return (!query || haystack.includes(query)) && statusOK && assignmentOK
       && (!state.filters.caseAgency || item.agencyName === state.filters.caseAgency) && (!state.filters.caseDoctor || doctorID(item) === state.filters.caseDoctor);
+  }).sort((left, right) => {
+    const leftActivity = unreadActivityByCase.get(String(left.id).toLowerCase());
+    const rightActivity = unreadActivityByCase.get(String(right.id).toLowerCase());
+    if (leftActivity === undefined && rightActivity === undefined) return 0;
+    if (leftActivity === undefined) return 1;
+    if (rightActivity === undefined) return -1;
+    return rightActivity - leftActivity;
   });
 }
 
