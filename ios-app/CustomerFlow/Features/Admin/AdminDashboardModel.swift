@@ -273,6 +273,15 @@ final class AdminDashboardModel {
         }
     }
 
+    func deleteCase(_ item: AdminCase) async {
+        do {
+            try await repository.deleteCase(caseID: item.id)
+            cases.removeAll { $0.id == item.id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func purgePhoto(id: String) async {
         do {
             try await repository.purgePhoto(id: id)

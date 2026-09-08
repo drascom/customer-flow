@@ -17,7 +17,6 @@ import json
 import os
 import re
 import secrets
-import shutil
 import smtplib
 import sqlite3
 import threading
@@ -365,6 +364,8 @@ CREATE TABLE IF NOT EXISTS cases (
   completed_at TEXT,
   completed_by TEXT REFERENCES users(id),
   completed_by_role TEXT,
+  deleted_at TEXT,
+  deleted_by TEXT REFERENCES users(id),
   version INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_cases_doctor_status ON cases(assigned_doctor_id, status);
@@ -546,6 +547,10 @@ class Database:
                     conn.execute("ALTER TABLE cases ADD COLUMN completed_by TEXT REFERENCES users(id)")
                 if "completed_by_role" not in case_columns:
                     conn.execute("ALTER TABLE cases ADD COLUMN completed_by_role TEXT")
+                if "deleted_at" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN deleted_at TEXT")
+                if "deleted_by" not in case_columns:
+                    conn.execute("ALTER TABLE cases ADD COLUMN deleted_by TEXT REFERENCES users(id)")
                 conn.execute("DELETE FROM photos WHERE file_path IS NULL")
                 conn.execute(
                     "UPDATE cases SET photo_count=(SELECT COUNT(*) FROM photos p "
@@ -690,11 +695,15 @@ class Database:
             rows = conn.execute(
                 "SELECT n.*,u.display_name actor_name FROM notifications n "
                 "LEFT JOIN users u ON u.id=n.actor_user_id "
-                "WHERE n.recipient_user_id=? ORDER BY n.created_at DESC,n.rowid DESC LIMIT ?",
+                "LEFT JOIN cases c ON c.id=n.case_id "
+                "WHERE n.recipient_user_id=? AND (n.case_id IS NULL OR c.deleted_at IS NULL) "
+                "ORDER BY n.created_at DESC,n.rowid DESC LIMIT ?",
                 (user["id"], limit),
             ).fetchall()
             unread_count = conn.execute(
-                "SELECT COUNT(*) FROM notifications WHERE recipient_user_id=? AND read_at IS NULL",
+                "SELECT COUNT(*) FROM notifications n LEFT JOIN cases c ON c.id=n.case_id "
+                "WHERE n.recipient_user_id=? AND n.read_at IS NULL "
+                "AND (n.case_id IS NULL OR c.deleted_at IS NULL)",
                 (user["id"],),
             ).fetchone()[0]
         return {
@@ -837,13 +846,15 @@ class Database:
                 case = conn.execute(
                     "SELECT c.*,p.name patient_name,u.agency_id FROM cases c "
                     "JOIN patients p ON p.id=c.patient_id JOIN users u ON u.id=c.agent_id "
-                    "WHERE c.patient_id=? AND c.status!='closed' ORDER BY c.uploaded_at DESC LIMIT 1",
+                    "WHERE c.patient_id=? AND c.status!='closed' AND c.deleted_at IS NULL "
+                    "ORDER BY c.uploaded_at DESC LIMIT 1",
                     (entity_id,),
                 ).fetchone()
             else:
                 case = conn.execute(
                     "SELECT c.*,p.name patient_name,u.agency_id FROM cases c "
-                    "JOIN patients p ON p.id=c.patient_id JOIN users u ON u.id=c.agent_id WHERE c.id=?",
+                    "JOIN patients p ON p.id=c.patient_id JOIN users u ON u.id=c.agent_id "
+                    "WHERE c.id=? AND c.deleted_at IS NULL",
                     (entity_id,),
                 ).fetchone()
             if not case:
@@ -1306,12 +1317,12 @@ class Database:
                 raise
 
     def fetch_cases(self, user: sqlite3.Row) -> list[dict]:
-        where, params = "", []
+        where, params = "WHERE c.deleted_at IS NULL", []
         if user["role"] == "agent":
             if user["agency_id"]:
-                where, params = "WHERE u.agency_id=?", [user["agency_id"]]
+                where, params = "WHERE c.deleted_at IS NULL AND u.agency_id=?", [user["agency_id"]]
             else:
-                where, params = "WHERE c.agent_id=?", [user["id"]]
+                where, params = "WHERE c.deleted_at IS NULL AND c.agent_id=?", [user["id"]]
         with self.connect() as conn:
             rows = conn.execute(
                 f"SELECT c.*, p.name patient_name, p.assigned_doctor_id patient_doctor, p.last_updated, "
@@ -1341,13 +1352,14 @@ class Database:
             if user["agency_id"]:
                 patients = conn.execute(
                     "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
-                    "JOIN users u ON u.id=c.agent_id WHERE u.agency_id=? ORDER BY p.last_updated DESC",
+                    "JOIN users u ON u.id=c.agent_id WHERE u.agency_id=? AND c.deleted_at IS NULL "
+                    "ORDER BY p.last_updated DESC",
                     (user["agency_id"],),
                 ).fetchall()
             else:
                 patients = conn.execute(
                     "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
-                    "WHERE c.agent_id=? ORDER BY p.last_updated DESC",
+                    "WHERE c.agent_id=? AND c.deleted_at IS NULL ORDER BY p.last_updated DESC",
                     (user["id"],),
                 ).fetchall()
             result = []
@@ -1357,7 +1369,7 @@ class Database:
                     continue
                 latest = conn.execute(
                     "SELECT c.*, a.display_name agent_name FROM cases c JOIN users a ON a.id=c.agent_id "
-                    "WHERE c.patient_id=? AND "
+                    "WHERE c.patient_id=? AND c.deleted_at IS NULL AND "
                     + ("a.agency_id=? " if user["agency_id"] else "c.agent_id=? ")
                     + "ORDER BY c.uploaded_at DESC LIMIT 1",
                     (patient["id"], user["agency_id"] or user["id"]),
@@ -1404,13 +1416,14 @@ class Database:
                 if user["agency_id"]:
                     candidates = conn.execute(
                         "SELECT DISTINCT p.id,p.name FROM patients p JOIN cases c ON c.patient_id=p.id "
-                        "JOIN users u ON u.id=c.agent_id WHERE p.normalized_name=? AND u.agency_id=?",
+                        "JOIN users u ON u.id=c.agent_id WHERE p.normalized_name=? AND u.agency_id=? "
+                        "AND c.deleted_at IS NULL",
                         (normalized, user["agency_id"]),
                     ).fetchall()
                 else:
                     candidates = conn.execute(
                         "SELECT DISTINCT p.id,p.name FROM patients p JOIN cases c ON c.patient_id=p.id "
-                        "WHERE p.normalized_name=? AND c.agent_id=?",
+                        "WHERE p.normalized_name=? AND c.agent_id=? AND c.deleted_at IS NULL",
                         (normalized, user["id"]),
                     ).fetchall()
                 existing_id = payload.get("existingPatientID")
@@ -1422,13 +1435,14 @@ class Database:
                     if user["agency_id"]:
                         patient = conn.execute(
                             "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
-                            "JOIN users u ON u.id=c.agent_id WHERE p.id=? AND u.agency_id=?",
+                            "JOIN users u ON u.id=c.agent_id WHERE p.id=? AND u.agency_id=? "
+                            "AND c.deleted_at IS NULL",
                             (existing_id, user["agency_id"]),
                         ).fetchone()
                     else:
                         patient = conn.execute(
                             "SELECT DISTINCT p.* FROM patients p JOIN cases c ON c.patient_id=p.id "
-                            "WHERE p.id=? AND c.agent_id=?",
+                            "WHERE p.id=? AND c.agent_id=? AND c.deleted_at IS NULL",
                             (existing_id, user["id"]),
                         ).fetchone()
                     if not patient:
@@ -1934,40 +1948,29 @@ class Database:
 
     def admin_delete_case(self, case_id: str, user: sqlite3.Row) -> dict:
         self._require_role(user, "admin")
-        case_directory = None
-        patient_profile_path = None
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                case = self._case_row(conn, case_id)
-                patient = conn.execute(
-                    "SELECT * FROM patients WHERE id=?", (case["patient_id"],)
-                ).fetchone()
+                case = conn.execute("SELECT * FROM cases WHERE id=?", (case_id,)).fetchone()
+                if not case:
+                    raise APIError(404, "case_not_found", "The case could not be found.")
+                if case["deleted_at"]:
+                    raise APIError(409, "case_already_deleted", "This case has already been deleted.")
                 photo_count = conn.execute(
                     "SELECT COUNT(*) FROM photos WHERE case_id=?", (case_id,)
                 ).fetchone()[0]
                 message_count = conn.execute(
                     "SELECT COUNT(*) FROM messages WHERE case_id=?", (case_id,)
                 ).fetchone()[0]
-
-                media_root = self.media_root.resolve()
-                candidate_directory = (media_root / case_id).resolve()
-                if media_root not in candidate_directory.parents:
-                    raise APIError(409, "invalid_case_path", "The stored case media path is invalid.")
-                case_directory = candidate_directory
-
-                conn.execute("DELETE FROM cases WHERE id=?", (case_id,))
-                remaining_cases = conn.execute(
-                    "SELECT COUNT(*) FROM cases WHERE patient_id=?", (case["patient_id"],)
-                ).fetchone()[0]
-                patient_deleted = remaining_cases == 0
-                if patient_deleted:
-                    if patient and patient["profile_photo_path"]:
-                        candidate = (media_root / patient["profile_photo_path"]).resolve()
-                        if media_root not in candidate.parents:
-                            raise APIError(409, "invalid_patient_photo_path", "The stored patient photo path is invalid.")
-                        patient_profile_path = candidate
-                    conn.execute("DELETE FROM patients WHERE id=?", (case["patient_id"],))
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE cases SET deleted_at=?,deleted_by=?,version=version+1 WHERE id=?",
+                    (now, user["id"], case_id),
+                )
+                conn.execute(
+                    "UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE case_id=?",
+                    (now, case_id),
+                )
 
                 self._audit(
                     conn,
@@ -1978,7 +1981,7 @@ class Database:
                     {
                         "reference": case["reference"],
                         "patientID": case["patient_id"],
-                        "patientDeleted": patient_deleted,
+                        "softDeletedAt": now,
                         "photoCount": photo_count,
                         "messageCount": message_count,
                     },
@@ -1987,22 +1990,11 @@ class Database:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
-
-        if case_directory and case_directory.is_dir():
-            try:
-                shutil.rmtree(case_directory)
-            except OSError:
-                pass
-        if patient_profile_path and patient_profile_path.is_file():
-            try:
-                patient_profile_path.unlink()
-            except OSError:
-                pass
         return {
             "id": case_id,
             "reference": case["reference"],
             "deleted": True,
-            "patientDeleted": patient_deleted,
+            "deletedAt": now,
             "photoCount": photo_count,
             "messageCount": message_count,
         }
@@ -2011,7 +2003,8 @@ class Database:
         with self.connect() as conn:
             photo = conn.execute(
                 "SELECT p.*,c.agent_id,c.assigned_doctor_id,u.agency_id case_agency_id FROM photos p "
-                "JOIN cases c ON c.id=p.case_id JOIN users u ON u.id=c.agent_id WHERE p.id=?",
+                "JOIN cases c ON c.id=p.case_id JOIN users u ON u.id=c.agent_id "
+                "WHERE p.id=? AND c.deleted_at IS NULL",
                 (photo_id,),
             ).fetchone()
             if not photo:
@@ -2145,7 +2138,7 @@ class Database:
             message = conn.execute(
                 "SELECT m.attachment_path,m.attachment_content_type,m.deleted_at,c.agent_id,c.assigned_doctor_id,"
                 "u.agency_id case_agency_id FROM messages m JOIN cases c ON c.id=m.case_id "
-                "JOIN users u ON u.id=c.agent_id WHERE m.id=?",
+                "JOIN users u ON u.id=c.agent_id WHERE m.id=? AND c.deleted_at IS NULL",
                 (message_id,),
             ).fetchone()
             if not message or not message["attachment_path"] or not message["attachment_content_type"]:
@@ -2615,6 +2608,7 @@ class Database:
                 "JOIN users a ON a.id=c.agent_id LEFT JOIN agencies ag ON ag.id=a.agency_id "
                 "LEFT JOIN users d ON d.id=p.assigned_doctor_id "
                 "LEFT JOIN users cb ON cb.id=c.completed_by "
+                "WHERE c.deleted_at IS NULL "
                 "ORDER BY c.uploaded_at DESC"
             ).fetchall()
             result = []
@@ -2698,7 +2692,8 @@ class Database:
                     raise APIError(422, "reason_required", "Enter a reason when changing the assigned doctor.")
                 now = iso(utc_now())
                 conn.execute("UPDATE patients SET assigned_doctor_id=?, last_updated=? WHERE id=?", (doctor_id, now, patient_id))
-                conn.execute("UPDATE cases SET assigned_doctor_id=?, version=version+1 WHERE patient_id=? AND status!='closed'",
+                conn.execute("UPDATE cases SET assigned_doctor_id=?, version=version+1 "
+                             "WHERE patient_id=? AND status!='closed' AND deleted_at IS NULL",
                              (doctor_id, patient_id))
                 self._audit(conn, user["id"], "patient.doctor_assigned", "patient", patient_id,
                             {"from": previous, "to": doctor_id, "reason": reason})
@@ -2802,7 +2797,8 @@ class Database:
             "cb.display_name completed_by_name "
             "FROM cases c JOIN patients p ON p.id=c.patient_id "
             "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies a ON a.id=u.agency_id "
-            "LEFT JOIN users cb ON cb.id=c.completed_by WHERE c.id=?", (case_id,),
+            "LEFT JOIN users cb ON cb.id=c.completed_by "
+            "WHERE c.id=? AND c.deleted_at IS NULL", (case_id,),
         ).fetchone()
         if not row:
             raise APIError(404, "case_not_found", "The case could not be found.")

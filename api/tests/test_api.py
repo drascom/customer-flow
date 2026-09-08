@@ -1413,14 +1413,14 @@ class APITestCase(unittest.TestCase):
         updated = self.request("GET", "/admin/cases", token=admin)["cases"]
         self.assertTrue(all(item["doctorID"] == "doctor-emre" for item in updated if item["patientID"] == target["patientID"]))
 
-    def test_only_admin_can_permanently_delete_case_and_all_media(self):
+    def test_only_admin_can_soft_delete_case_without_removing_history(self):
         agent = self.login("user1", "demo123")
         manager = self.login("manager", "demo123")
         admin = self.login("admin", "demo123")
         created = self.request("POST", "/cases", {
             "patientName": "Delete Test " + uuid.uuid4().hex[:8],
             "grafts": "2100", "currency": "GBP", "price": "2000",
-            "note": "Permanent case deletion test", "photoCount": 0,
+            "note": "Soft case deletion test", "photoCount": 0,
         }, token=agent, expected=201)["case"]
         case_id = created["id"]
         patient_id = created["patient"]["id"]
@@ -1449,16 +1449,26 @@ class APITestCase(unittest.TestCase):
 
         deleted = self.request("DELETE", f"/admin/cases/{case_id}", token=admin)["case"]
         self.assertTrue(deleted["deleted"])
-        self.assertTrue(deleted["patientDeleted"])
+        self.assertIsNotNone(deleted["deletedAt"])
         self.assertGreaterEqual(deleted["photoCount"], 1)
         self.assertGreaterEqual(deleted["messageCount"], 1)
-        self.assertTrue(all(not path.exists() for path in media_paths))
+        self.assertTrue(all(path.is_file() for path in media_paths))
+
+        self.assertTrue(all(item["id"] != case_id for item in self.request("GET", "/cases", token=agent)["cases"]))
+        self.assertTrue(all(item["id"] != case_id for item in self.request("GET", "/admin/cases", token=admin)["cases"]))
+        self.request("GET", f"/cases/{case_id}", token=agent, expected=404)
+        repeated = self.request("DELETE", f"/admin/cases/{case_id}", token=admin, expected=409)
+        self.assertEqual("case_already_deleted", repeated["error"]["code"])
 
         with self.server.database.connect() as conn:
-            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM cases WHERE id=?", (case_id,)).fetchone()[0])
-            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM photos WHERE case_id=?", (case_id,)).fetchone()[0])
-            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM messages WHERE case_id=?", (case_id,)).fetchone()[0])
-            self.assertEqual(0, conn.execute("SELECT COUNT(*) FROM patients WHERE id=?", (patient_id,)).fetchone()[0])
+            retained_case = conn.execute(
+                "SELECT deleted_at,deleted_by FROM cases WHERE id=?", (case_id,)
+            ).fetchone()
+            self.assertIsNotNone(retained_case["deleted_at"])
+            self.assertEqual("admin-local", retained_case["deleted_by"])
+            self.assertGreaterEqual(conn.execute("SELECT COUNT(*) FROM photos WHERE case_id=?", (case_id,)).fetchone()[0], 1)
+            self.assertGreaterEqual(conn.execute("SELECT COUNT(*) FROM messages WHERE case_id=?", (case_id,)).fetchone()[0], 1)
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM patients WHERE id=?", (patient_id,)).fetchone()[0])
 
     def test_admin_can_auto_generate_unique_usernames_from_display_name(self):
         admin = self.login("admin", "demo123")

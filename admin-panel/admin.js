@@ -604,7 +604,14 @@ async function loadClientVersion() {
 }
 
 async function assignDoctor(event) { event.stopPropagation(); const select = event.currentTarget, previous = select.dataset.previous, doctor = select.value || null; let reason = ""; if (previous && previous !== (doctor || "")) { reason = prompt("Reason for changing the assigned doctor:", "Administrative reassignment") || ""; if (!reason.trim()) return select.value = previous; } try { await api(`/admin/patients/${encodeURIComponent(select.dataset.patient)}`, { method: "PATCH", body: { doctorID: doctor, reason } }); await loadData(); toast("Doctor assignment updated."); } catch (error) { select.value = previous; toast(error.message); } }
-async function deleteCase(event) { event.stopPropagation(); const b = event.currentTarget; if ((prompt(`Type ${b.dataset.caseReference} to permanently delete this case and every photo:`) || "") !== b.dataset.caseReference) return; await api(`/admin/cases/${b.dataset.deleteCase}`, { method: "DELETE" }); await loadData(); toast("Case permanently deleted."); }
+async function deleteCase(event) {
+  event.stopPropagation();
+  const button = event.currentTarget;
+  if (!confirm(`Delete ${button.dataset.caseReference} from active records? Patient details, messages and photos will be retained.`)) return;
+  await api(`/admin/cases/${button.dataset.deleteCase}`, { method: "DELETE" });
+  await loadData();
+  toast("Case deleted from active records.");
+}
 async function toggleUser(event) { const id = event.currentTarget.dataset.toggleUser, user = state.users.find((u) => u.id === id); if (user.active && !confirm("Deactivate this user and end active sessions?")) return; await api(`/admin/users/${id}`, { method: "PATCH", body: { active: !user.active } }); await loadData(); toast(user.active ? "User deactivated." : "User reactivated."); }
 async function resetUserPassword(event) { const id = event.currentTarget.dataset.resetPassword, user = state.users.find((u) => u.id === id); if (!user || !confirm(`Reset ${user.displayName}'s password to demo123? All active sessions for this user will end, and they must choose a new password after signing in.`)) return; const button = event.currentTarget; button.disabled = true; try { await api(`/admin/users/${id}/reset-password`, { method: "POST", body: {} }); toast(`${user.displayName}'s password is now demo123. A password change will be required.`); } catch (error) { toast(error.message); } finally { button.disabled = false; } }
 

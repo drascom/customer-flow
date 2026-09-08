@@ -344,6 +344,12 @@ struct AdminDashboardView: View {
                         },
                         onAssign: { requestAssignment(for: item, doctorID: $0) },
                         onUndoConfirmation: { Task { await model.unconfirmCase(item) } },
+                        onDelete: {
+                            Task {
+                                await model.deleteCase(item)
+                                if expandedCaseID == item.id { expandedCaseID = nil }
+                            }
+                        },
                         onPurgePhoto: { photoID in Task { await model.purgePhoto(id: photoID) } },
                         onSendOperationalNote: { text in
                             await model.addOperationalNote(to: item, text: text)

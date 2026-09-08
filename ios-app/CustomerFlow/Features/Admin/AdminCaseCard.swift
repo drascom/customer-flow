@@ -10,6 +10,7 @@ struct AdminCaseCard: View {
     let onToggle: () -> Void
     let onAssign: (String?) -> Void
     let onUndoConfirmation: () -> Void
+    let onDelete: () -> Void
     let onPurgePhoto: (String) -> Void
     let onSendOperationalNote: (String) async -> AdminCase?
 
@@ -17,6 +18,7 @@ struct AdminCaseCard: View {
     @State private var pendingPurgePhotoID: String?
     @State private var showsConversation = false
     @State private var showsUndoConfirmation = false
+    @State private var showsDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -151,6 +153,19 @@ struct AdminCaseCard: View {
                     }
                 }
                 .padding(.top, 10)
+
+                if !isReadOnly {
+                    Button {
+                        showsDeleteConfirmation = true
+                    } label: {
+                        Label("Delete case", systemImage: "trash")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 42)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .padding(.top, 10)
+                }
             }
         }
         .padding(14)
@@ -182,6 +197,18 @@ struct AdminCaseCard: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The final grafts, price and appointment will be cleared. The case will return to Answered.")
+        }
+        .confirmationDialog(
+            "Delete this case?",
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete case", role: .destructive) {
+                onDelete()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The case will disappear from active records. Its patient details, messages and photos will be retained on the server.")
         }
         .confirmationDialog(
             "Permanently delete this photo?",

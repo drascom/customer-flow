@@ -139,6 +139,17 @@ actor RemoteAdminRepository: AdminRepository {
         )
     }
 
+    func deleteCase(caseID: String) async throws {
+        struct Empty: Encodable, Sendable {}
+        struct Mutation: Decodable, Sendable { let id: String; let deleted: Bool }
+        struct Envelope: Decodable, Sendable { let `case`: Mutation }
+        let _: Envelope = try await client.send(
+            "DELETE",
+            path: "admin/cases/\(caseID)",
+            body: Empty()
+        )
+    }
+
     func purgePhoto(id: String) async throws {
         struct Empty: Encodable, Sendable {}
         struct Mutation: Decodable, Sendable { let id: String; let purged: Bool }
