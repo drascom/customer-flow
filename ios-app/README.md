@@ -28,6 +28,7 @@ The app validates `/api/v1/health` automatically. Release builds require HTTPS. 
 - **Profile:** contact details, password change and role-specific quick tour.
 
 Authentication and roles are controlled by the server. Session tokens are stored in iOS Keychain. Password recovery is delivered by the server through SMTP; Firebase is not used.
+Accounts using an administrator-issued temporary password are taken directly to a mandatory password-change screen. Permanent passwords require at least 6 characters, one number and one symbol.
 
 The app includes an in-app notification centre and APNs device registration.
 The selected Apple Development Team and provisioning profile must allow Push

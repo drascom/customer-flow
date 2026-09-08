@@ -37,6 +37,7 @@ from apns import APNSPushDispatcher
 API_PREFIX = "/api/v1"
 UTC = timezone.utc
 ADMIN_RESET_PASSWORD = "demo123"
+KNOWN_TEMPORARY_PASSWORDS = (ADMIN_RESET_PASSWORD, "demo123456")
 IDEMPOTENCY_KEY_ALLOWED = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-"
 )
@@ -190,6 +191,17 @@ def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
     return salt.hex(), digest.hex()
 
 
+def validate_permanent_password(password: str) -> None:
+    if len(password) < 6 or not any(ch.isdigit() for ch in password) or not any(
+        not ch.isalnum() and not ch.isspace() for ch in password
+    ):
+        raise APIError(
+            422,
+            "weak_password",
+            "The password must be at least 6 characters and include at least one number and one symbol.",
+        )
+
+
 def validate_idempotency_key(value: str | None) -> str | None:
     """Validate an optional caller-provided key used to deduplicate writes."""
     if value is None:
@@ -283,6 +295,8 @@ CREATE TABLE IF NOT EXISTS users (
   agency_id TEXT REFERENCES agencies(id),
   email TEXT,
   phone TEXT,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
+  password_change_exempt INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
@@ -488,6 +502,10 @@ class Database:
                     conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
                 if "phone" not in columns:
                     conn.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+                if "must_change_password" not in columns:
+                    conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+                if "password_change_exempt" not in columns:
+                    conn.execute("ALTER TABLE users ADD COLUMN password_change_exempt INTEGER NOT NULL DEFAULT 0")
                 patient_columns = {row["name"] for row in conn.execute("PRAGMA table_info(patients)").fetchall()}
                 patient_profile_columns = {
                     "date_of_birth": "TEXT", "stated_age": "INTEGER", "gender": "TEXT", "phone": "TEXT",
@@ -557,6 +575,31 @@ class Database:
             self.ensure_demo_agencies()
             if seed:
                 self.seed_demo()
+                with self.connect() as conn:
+                    conn.execute(
+                        "UPDATE users SET password_change_exempt=1,must_change_password=0 "
+                        "WHERE id IN ('doctor-emre','doctor-two','agent-selin','agent-mert',"
+                        "'manager-local','admin-local')"
+                    )
+            with self.connect() as conn:
+                default_password_users = conn.execute(
+                    "SELECT id,password_salt,password_hash FROM users "
+                    "WHERE password_change_exempt=0 AND must_change_password=0"
+                ).fetchall()
+                for existing_user in default_password_users:
+                    salt = bytes.fromhex(existing_user["password_salt"])
+                    uses_temporary_password = any(
+                        hmac.compare_digest(
+                            hash_password(password, salt)[1],
+                            existing_user["password_hash"],
+                        )
+                        for password in KNOWN_TEMPORARY_PASSWORDS
+                    )
+                    if uses_temporary_password:
+                        conn.execute(
+                            "UPDATE users SET must_change_password=1 WHERE id=?",
+                            (existing_user["id"],),
+                        )
 
     def client_version_policy(self, force_refresh: bool = False) -> dict:
         with self.connect() as conn:
@@ -919,11 +962,14 @@ class Database:
                 "role TEXT NOT NULL CHECK(role IN ('doctor','agent','admin','manager')), "
                 "password_salt TEXT NOT NULL, password_hash TEXT NOT NULL, "
                 "agency_id TEXT REFERENCES agencies(id), email TEXT, phone TEXT, "
+                "must_change_password INTEGER NOT NULL DEFAULT 0, "
+                "password_change_exempt INTEGER NOT NULL DEFAULT 0, "
                 "active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)"
             )
             conn.execute(
                 "INSERT INTO users_migrated "
-                "SELECT id,username,display_name,role,password_salt,password_hash,agency_id,email,phone,active,created_at "
+                "SELECT id,username,display_name,role,password_salt,password_hash,agency_id,email,phone,"
+                "must_change_password,password_change_exempt,active,created_at "
                 "FROM users"
             )
             conn.execute("DROP TABLE users")
@@ -1001,7 +1047,9 @@ class Database:
                 for user_id, username, display_name, role, agency_id, password in demo_users:
                     salt, digest = hash_password(password)
                     conn.execute(
-                        "INSERT INTO users(id,username,display_name,role,password_salt,password_hash,agency_id,active,created_at) VALUES (?,?,?,?,?,?,?,1,?)",
+                        "INSERT INTO users(id,username,display_name,role,password_salt,password_hash,agency_id,"
+                        "must_change_password,password_change_exempt,active,created_at) "
+                        "VALUES (?,?,?,?,?,?,?,0,1,1,?)",
                         (user_id, username, display_name, role, salt, digest, agency_id, now),
                     )
                 cases = [
@@ -1096,6 +1144,8 @@ class Database:
             "role": row["role"], "agencyID": row["agency_id"] if "agency_id" in row.keys() else None,
             "email": row["email"] if "email" in row.keys() else None,
             "phone": row["phone"] if "phone" in row.keys() else None,
+            "mustChangePassword": bool(row["must_change_password"])
+            if "must_change_password" in row.keys() else False,
         }
 
     def update_profile(self, payload: dict, user: sqlite3.Row) -> dict:
@@ -1124,8 +1174,7 @@ class Database:
     def change_password(self, payload: dict, user: sqlite3.Row, token: str) -> dict:
         current_password = str(payload.get("currentPassword", ""))
         new_password = str(payload.get("newPassword", ""))
-        if len(new_password) < 10:
-            raise APIError(422, "weak_password", "The new password must be at least 10 characters.")
+        validate_permanent_password(new_password)
         _, candidate = hash_password(current_password, bytes.fromhex(user["password_salt"]))
         if not hmac.compare_digest(candidate, user["password_hash"]):
             raise APIError(403, "incorrect_password", "The current password is incorrect.")
@@ -1134,7 +1183,10 @@ class Database:
         salt, digest = hash_password(new_password)
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         with self.connect() as conn:
-            conn.execute("UPDATE users SET password_salt=?, password_hash=? WHERE id=?", (salt, digest, user["id"]))
+            conn.execute(
+                "UPDATE users SET password_salt=?, password_hash=?, must_change_password=0 WHERE id=?",
+                (salt, digest, user["id"]),
+            )
             conn.execute("DELETE FROM sessions WHERE user_id=? AND token_hash<>?", (user["id"], token_hash))
             self._audit(conn, user["id"], "password.changed", "user", user["id"], {})
         return {"ok": True}
@@ -1206,8 +1258,7 @@ class Database:
         identifier = str(payload.get("identifier", "")).strip()
         code = str(payload.get("code", "")).strip()
         new_password = str(payload.get("newPassword", ""))
-        if len(new_password) < 10:
-            raise APIError(422, "weak_password", "The new password must be at least 10 characters.")
+        validate_permanent_password(new_password)
         if len(code) != 6 or not code.isdigit():
             raise APIError(422, "invalid_reset_code", "The reset code is invalid or has expired.")
         with self.connect() as conn:
@@ -1230,7 +1281,10 @@ class Database:
                     conn.execute("COMMIT")
                     raise APIError(422, "invalid_reset_code", "The reset code is invalid or has expired.")
                 salt, digest = hash_password(new_password)
-                conn.execute("UPDATE users SET password_salt=?, password_hash=? WHERE id=?", (salt, digest, user["id"]))
+                conn.execute(
+                    "UPDATE users SET password_salt=?, password_hash=?, must_change_password=0 WHERE id=?",
+                    (salt, digest, user["id"]),
+                )
                 conn.execute("UPDATE password_reset_codes SET consumed_at=? WHERE id=?", (iso(utc_now()), reset["id"]))
                 conn.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
                 self._audit(conn, user["id"], "password.reset_completed", "user", user["id"], {})
@@ -2086,8 +2140,8 @@ class Database:
         password = str(payload.get("password", ""))
         if not display_name or role not in {"doctor", "agent", "admin", "manager"}:
             raise APIError(422, "invalid_user", "Display name and a valid role are required.")
-        if len(password) < 10:
-            raise APIError(422, "weak_password", "The temporary password must contain at least 10 characters.")
+        if len(password) < 6:
+            raise APIError(422, "weak_password", "The temporary password must contain at least 6 characters.")
         if username and any(ch.isspace() for ch in username):
             raise APIError(422, "invalid_username", "Username cannot contain spaces.")
         agency_id = str(payload.get("agencyID", "")).strip() or None
@@ -2112,7 +2166,8 @@ class Database:
                 else:
                     agency_id = None
                 conn.execute(
-                    "INSERT INTO users(id,username,display_name,role,password_salt,password_hash,agency_id,active,created_at) VALUES (?,?,?,?,?,?,?,1,?)",
+                    "INSERT INTO users(id,username,display_name,role,password_salt,password_hash,agency_id,"
+                    "must_change_password,active,created_at) VALUES (?,?,?,?,?,?,?,1,1,?)",
                     (user_id, username, display_name, role, salt, digest, agency_id, iso(utc_now())),
                 )
                 self._audit(conn, user["id"], "user.created", "user", user_id,
@@ -2171,15 +2226,19 @@ class Database:
                         raise APIError(422, "agency_required", "Select an active agency for the agent.")
                 else:
                     agency_id = None
-                if new_password and len(new_password) < 10:
-                    raise APIError(422, "weak_password", "The new temporary password must contain at least 10 characters.")
+                if new_password and len(new_password) < 6:
+                    raise APIError(422, "weak_password", "The new temporary password must contain at least 6 characters.")
                 conn.execute(
                     "UPDATE users SET username=?,display_name=?,role=?,agency_id=? WHERE id=?",
                     (username, display_name, role, agency_id, user_id),
                 )
                 if new_password:
                     salt, digest = hash_password(new_password)
-                    conn.execute("UPDATE users SET password_salt=?,password_hash=? WHERE id=?", (salt, digest, user_id))
+                    conn.execute(
+                        "UPDATE users SET password_salt=?,password_hash=?,must_change_password="
+                        "CASE WHEN password_change_exempt=1 THEN 0 ELSE 1 END WHERE id=?",
+                        (salt, digest, user_id),
+                    )
                     conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
                 self._audit(conn, user["id"], "user.updated", "user", user_id,
                             {"username": username, "displayName": display_name, "role": role,
@@ -2229,7 +2288,8 @@ class Database:
                     )
                 salt, digest = hash_password(ADMIN_RESET_PASSWORD)
                 conn.execute(
-                    "UPDATE users SET password_salt=?,password_hash=? WHERE id=?",
+                    "UPDATE users SET password_salt=?,password_hash=?,must_change_password="
+                    "CASE WHEN password_change_exempt=1 THEN 0 ELSE 1 END WHERE id=?",
                     (salt, digest, user_id),
                 )
                 conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
@@ -2788,7 +2848,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
-                                        "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
+                                        "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "mandatory-password-change", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
             if method == "GET" and path == f"{API_PREFIX}/client-version/ios":
                 return self._json(200, {"policy": self.server.database.client_version_policy()})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
@@ -2799,6 +2859,20 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and path == f"{API_PREFIX}/auth/password-reset/confirm":
                 return self._json(200, self.server.database.reset_password(self._read_json()))
             token, user = self._authenticated_user(method, path)
+            if method == "GET" and path == f"{API_PREFIX}/auth/me":
+                return self._json(200, {"user": self.server.database._public_user(user)})
+            if method == "POST" and path == f"{API_PREFIX}/auth/logout":
+                self._read_json()
+                self.server.database.logout(token)
+                return self._json(200, {"ok": True})
+            if method == "POST" and path == f"{API_PREFIX}/auth/change-password":
+                return self._json(200, self.server.database.change_password(self._read_json(), user, token))
+            if bool(user["must_change_password"]):
+                raise APIError(
+                    403,
+                    "password_change_required",
+                    "Change your temporary password before continuing.",
+                )
             if method == "GET" and path == f"{API_PREFIX}/events":
                 raw_since = parse_qs(parsed.query).get("since", ["0"])[0]
                 try:
@@ -2806,17 +2880,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 except ValueError:
                     raise APIError(422, "invalid_revision", "The event revision must be a number.")
                 return self._json(200, self.server.changes.wait(since))
-            if method == "GET" and path == f"{API_PREFIX}/auth/me":
-                return self._json(200, {"user": self.server.database._public_user(user)})
-            if method == "POST" and path == f"{API_PREFIX}/auth/logout":
-                self._read_json()
-                self.server.database.logout(token)
-                return self._json(200, {"ok": True})
             if method == "PATCH" and path == f"{API_PREFIX}/auth/profile":
                 updated = self.server.database.update_profile(self._read_json(), user)
                 return self._changed(200, {"user": updated}, "user.updated", updated["id"], user)
-            if method == "POST" and path == f"{API_PREFIX}/auth/change-password":
-                return self._json(200, self.server.database.change_password(self._read_json(), user, token))
             if method == "GET" and path == f"{API_PREFIX}/notifications":
                 raw_limit = parse_qs(parsed.query).get("limit", ["50"])[0]
                 try:
@@ -3150,7 +3216,7 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store" if filename == "index.html" else "public, max-age=300")
+        self.send_header("Cache-Control", "no-store" if filename == "index.html" else "no-cache, must-revalidate")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")

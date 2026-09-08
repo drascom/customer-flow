@@ -9,6 +9,9 @@ struct AuthenticatedUser: Codable, Sendable {
     let agencyID: String?
     let email: String?
     let phone: String?
+    let mustChangePassword: Bool?
+
+    var requiresPasswordChange: Bool { mustChangePassword ?? false }
 }
 
 struct ServerSession: Codable, Sendable {

@@ -41,7 +41,7 @@ struct AdminCreateUserSheet: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(AppTheme.muted)
                         RevealablePasswordField(
-                            "At least 10 characters",
+                            "At least 6 characters",
                             text: $password,
                             textContentType: .newPassword
                         )
@@ -115,7 +115,7 @@ struct AdminCreateUserSheet: View {
 
     private var isReady: Bool {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && password.count >= 10
+            && password.count >= 6
             && (role != .agent || !agencyID.isEmpty)
     }
 
@@ -264,7 +264,7 @@ struct AdminEditUserSheet: View {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !username.contains(where: \.isWhitespace)
-            && (password.isEmpty || password.count >= 10)
+            && (password.isEmpty || password.count >= 6)
             && (role != .agent || !agencyID.isEmpty)
     }
 

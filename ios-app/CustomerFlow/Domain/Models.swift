@@ -1,5 +1,13 @@
 import Foundation
 
+extension String {
+    var satisfiesAccountPasswordPolicy: Bool {
+        count >= 6
+            && contains(where: \.isNumber)
+            && contains { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }
+    }
+}
+
 enum AppCurrency {
     static let code = "GBP"
     static let symbol = "£"

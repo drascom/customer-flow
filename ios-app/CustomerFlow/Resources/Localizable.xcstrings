@@ -174,9 +174,6 @@
     "Added by %@" : {
 
     },
-    "Address, city or region" : {
-
-    },
     "Admin action failed" : {
 
     },
@@ -246,6 +243,9 @@
     "Choose from Photo Library" : {
 
     },
+    "City" : {
+
+    },
     "Clear" : {
 
     },
@@ -307,6 +307,9 @@
 
     },
     "Copy token" : {
+
+    },
+    "County, state or region" : {
 
     },
     "Create agency" : {
@@ -859,6 +862,9 @@
 
     },
     "Start using the app" : {
+
+    },
+    "Street address" : {
 
     },
     "Submit" : {

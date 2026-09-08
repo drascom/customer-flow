@@ -68,8 +68,10 @@ final class AppState: ObservableObject {
                 let user = try await client.restoreSession()
                 activate(client: client, user: user)
                 phase = .authenticated
-                await registerPendingNotificationDevice()
-                await load()
+                if !user.requiresPasswordChange {
+                    await registerPendingNotificationDevice()
+                    await load()
+                }
             } catch {
                 SecureTokenStore.clear()
                 await client.setAccessToken(nil)
@@ -114,8 +116,10 @@ final class AppState: ObservableObject {
             try SecureTokenStore.save(session.token)
             activate(client: remoteClient, user: session.user)
             phase = .authenticated
-            await registerPendingNotificationDevice()
-            await load()
+            if !session.user.requiresPasswordChange {
+                await registerPendingNotificationDevice()
+                await load()
+            }
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -224,6 +228,7 @@ final class AppState: ObservableObject {
 
     func load() async {
         guard phase == .authenticated else { return }
+        guard currentUser?.requiresPasswordChange != true else { return }
         guard !caseLoadInProgress else {
             caseReloadRequested = true
             return
@@ -247,6 +252,7 @@ final class AppState: ObservableObject {
 
     func refreshAfterForeground() async {
         guard phase == .authenticated, let remoteClient else { return }
+        guard currentUser?.requiresPasswordChange != true else { return }
         isRefreshingAfterForeground = true
         defer { isRefreshingAfterForeground = false }
         startLiveUpdates(client: remoteClient)
@@ -553,11 +559,14 @@ final class AppState: ObservableObject {
             ? RemoteAdminRepository(client: client)
             : nil
         currentUser = user
-        startLiveUpdates(client: client)
+        if !user.requiresPasswordChange {
+            startLiveUpdates(client: client)
+        }
     }
 
     private func registerPendingNotificationDevice() async {
         guard phase == .authenticated, let remoteClient, let deviceTokenHex else { return }
+        guard currentUser?.requiresPasswordChange != true else { return }
         do {
             try await remoteClient.registerNotificationDevice(
                 token: deviceTokenHex, environment: Self.notificationEnvironment

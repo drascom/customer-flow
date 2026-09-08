@@ -170,6 +170,7 @@ Implicit TLS is used by default. Set `CF_SMTP_SSL=0` to use STARTTLS. Firebase i
 
 - Put the service behind an HTTPS reverse proxy.
 - Use strong initial passwords and protect all environment variables.
+- Administrator-created and administrator-reset accounts must replace their temporary password before accessing application data. Permanent passwords require at least 6 characters, one number and one symbol. Built-in public demo accounts are exempt so their shared credentials remain reusable.
 - Back up `data/` and `media/` securely.
 - Never commit the SQLite database, uploaded patient media or SMTP credentials.
 - The optional systemd unit in `deploy/` is an example and may need path changes for your server.

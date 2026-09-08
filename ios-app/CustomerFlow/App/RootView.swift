@@ -11,32 +11,36 @@ struct RootView: View {
     var body: some View {
         Group {
             if state.phase == .authenticated {
-                NavigationStack {
-                    Group {
-                        switch state.role {
-                        case .doctor:
-                            DoctorQueueView()
-                        case .agent:
-                            AgentCasesView()
-                        case .admin, .manager:
-                            if let repository = state.adminRepository, let user = state.currentUser {
-                                AdminDashboardView(
-                                    repository: repository,
-                                    currentUserID: user.id,
-                                    isReadOnly: user.role == .manager,
-                                    liveRevision: state.liveRevision,
-                                    notificationCaseID: state.pendingNotificationCaseID,
-                                    consumeNotificationCase: state.consumePendingNotificationCase
-                                )
-                            } else {
-                                ProgressView()
+                if state.currentUser?.requiresPasswordChange == true {
+                    RequiredPasswordChangeView()
+                } else {
+                    NavigationStack {
+                        Group {
+                            switch state.role {
+                            case .doctor:
+                                DoctorQueueView()
+                            case .agent:
+                                AgentCasesView()
+                            case .admin, .manager:
+                                if let repository = state.adminRepository, let user = state.currentUser {
+                                    AdminDashboardView(
+                                        repository: repository,
+                                        currentUserID: user.id,
+                                        isReadOnly: user.role == .manager,
+                                        liveRevision: state.liveRevision,
+                                        notificationCaseID: state.pendingNotificationCaseID,
+                                        consumeNotificationCase: state.consumePendingNotificationCase
+                                    )
+                                } else {
+                                    ProgressView()
+                                }
                             }
                         }
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            appHeader
+                        }
+                        .toolbar(.hidden, for: .navigationBar)
                     }
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        appHeader
-                    }
-                    .toolbar(.hidden, for: .navigationBar)
                 }
             } else {
                 OnboardingView()
@@ -87,6 +91,7 @@ struct RootView: View {
         }
         .task(id: state.phase == .authenticated ? state.currentUser?.id : nil) {
             guard state.phase == .authenticated, let user = state.currentUser else { return }
+            guard !user.requiresPasswordChange else { return }
             await tourModel.presentIfNeeded(
                 userID: user.id,
                 serverAddress: state.savedServerAddress,
@@ -249,6 +254,112 @@ private struct RequiredUpdateView: View {
     }
 }
 
+private struct RequiredPasswordChangeView: View {
+    @EnvironmentObject private var state: AppState
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmation = ""
+    @State private var formError = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                Image("BrandMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 58, height: 58)
+                    .clipShape(Circle())
+
+                VStack(spacing: 7) {
+                    Text("Create your password")
+                        .font(.title2.bold())
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Your administrator gave you a temporary password. Change it before continuing.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.muted)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    RevealablePasswordField(
+                        "Temporary password",
+                        text: $currentPassword,
+                        textContentType: .password
+                    )
+                    RevealablePasswordField(
+                        "New password",
+                        text: $newPassword,
+                        textContentType: .newPassword
+                    )
+                    RevealablePasswordField(
+                        "Confirm new password",
+                        text: $confirmation,
+                        textContentType: .newPassword
+                    )
+
+                    Text("Use at least 6 characters with at least one number and one symbol.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+
+                    if !formError.isEmpty {
+                        Text(formError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    Button {
+                        changePassword()
+                    } label: {
+                        HStack {
+                            Text("Change password")
+                            Spacer()
+                            if state.isWorking { ProgressView().tint(.white) }
+                            else { Image(systemName: "arrow.right") }
+                        }
+                        .frame(minHeight: 30)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(currentPassword.isEmpty || newPassword.isEmpty || confirmation.isEmpty || state.isWorking)
+
+                    Button("Sign out", role: .cancel) {
+                        Task { await state.logout() }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .disabled(state.isWorking)
+                }
+                .padding(20)
+                .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(AppTheme.border))
+            }
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 54)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(AppTheme.background.ignoresSafeArea())
+    }
+
+    private func changePassword() {
+        formError = ""
+        guard newPassword.satisfiesAccountPasswordPolicy else {
+            formError = "Use at least 6 characters with at least one number and one symbol."
+            return
+        }
+        guard newPassword == confirmation else {
+            formError = "The passwords do not match."
+            return
+        }
+        Task {
+            if await state.changePassword(currentPassword: currentPassword, newPassword: newPassword) {
+                await state.logout()
+            } else {
+                formError = "The password could not be changed. Check the temporary password and try again."
+            }
+        }
+    }
+}
+
 struct ProfileView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.dismiss) private var dismiss
@@ -325,7 +436,7 @@ struct ProfileView: View {
                 } header: {
                     Text("Security")
                 } footer: {
-                    Text("Use at least 10 characters. After changing it, you will be signed out and must sign in with the new password.")
+                    Text("Use at least 6 characters with at least one number and one symbol. After changing it, you will be signed out and must sign in with the new password.")
                 }
 
                 if state.role != .admin && state.role != .manager {
@@ -393,8 +504,8 @@ struct ProfileView: View {
 
     private func requestPasswordChange() {
         passwordMessage = ""
-        guard newPassword.count >= 10 else {
-            passwordMessage = "The new password must be at least 10 characters."
+        guard newPassword.satisfiesAccountPasswordPolicy else {
+            passwordMessage = "Use at least 6 characters with at least one number and one symbol."
             return
         }
         guard newPassword == passwordConfirmation else {

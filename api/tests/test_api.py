@@ -14,7 +14,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from unittest.mock import patch
 
-from app import create_server
+from app import Database, create_server, hash_password
 
 
 class APITestCase(unittest.TestCase):
@@ -74,6 +74,18 @@ class APITestCase(unittest.TestCase):
     def login(self, username, password):
         return self.request("POST", "/auth/login", {"username": username, "password": password})["token"]
 
+    def activate_temporary_password(self, username, temporary_password, new_password="Ready1!"):
+        login = self.request(
+            "POST", "/auth/login", {"username": username, "password": temporary_password}
+        )
+        self.assertTrue(login["user"]["mustChangePassword"])
+        self.request(
+            "POST", "/auth/change-password",
+            {"currentPassword": temporary_password, "newPassword": new_password},
+            token=login["token"],
+        )
+        return login["token"]
+
     def test_health_and_login(self):
         health = self.request("GET", "/health")
         self.assertEqual("ok", health["status"])
@@ -85,6 +97,62 @@ class APITestCase(unittest.TestCase):
         self.assertIn("client-version-policy", health["capabilities"])
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
+        self.assertFalse(result["user"]["mustChangePassword"])
+
+    def test_temporary_password_requires_secure_replacement_before_access(self):
+        admin = self.login("admin", "demo123")
+        username = "forced-password-" + uuid.uuid4().hex[:8]
+        temporary_password = "temp12"
+        created = self.request("POST", "/admin/users", {
+            "username": username, "displayName": "Forced Password", "role": "doctor",
+            "password": temporary_password,
+        }, token=admin, expected=201)["user"]
+        self.assertTrue(created["mustChangePassword"])
+
+        login = self.request("POST", "/auth/login", {
+            "username": username, "password": temporary_password,
+        })
+        token = login["token"]
+        self.assertTrue(login["user"]["mustChangePassword"])
+        blocked = self.request("GET", "/cases", token=token, expected=403)
+        self.assertEqual("password_change_required", blocked["error"]["code"])
+        events = self.request("GET", "/events?since=-1", token=token, expected=403)
+        self.assertEqual("password_change_required", events["error"]["code"])
+
+        for weak_password in ("short", "abcdef!", "123456"):
+            weak = self.request("POST", "/auth/change-password", {
+                "currentPassword": temporary_password, "newPassword": weak_password,
+            }, token=token, expected=422)
+            self.assertEqual("weak_password", weak["error"]["code"])
+
+        self.request("POST", "/auth/change-password", {
+            "currentPassword": temporary_password, "newPassword": "Secure1!",
+        }, token=token)
+        me = self.request("GET", "/auth/me", token=token)["user"]
+        self.assertFalse(me["mustChangePassword"])
+        self.request("GET", "/cases", token=token)
+
+    def test_existing_default_password_is_marked_for_change_during_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = Database(root / "existing.sqlite3", root / "media")
+            database.initialize(seed=False)
+            salt, digest = hash_password("demo123456")
+            with database.connect() as conn:
+                conn.execute(
+                    "INSERT INTO users(id,username,display_name,role,password_salt,password_hash,"
+                    "active,created_at) VALUES (?,?,?,?,?,?,1,?)",
+                    ("existing-default", "existing-default", "Existing User", "doctor", salt, digest,
+                     "2026-01-01T00:00:00Z"),
+                )
+
+            database.initialize(seed=False)
+
+            with database.connect() as conn:
+                user = conn.execute(
+                    "SELECT must_change_password FROM users WHERE id='existing-default'"
+                ).fetchone()
+            self.assertEqual(1, user["must_change_password"])
 
     def test_client_version_policy_is_public_and_only_admin_can_change_minimum(self):
         with self.server.database.connect() as conn:
@@ -414,7 +482,7 @@ class APITestCase(unittest.TestCase):
             "username": peer_username, "displayName": "Notification Peer", "role": "agent",
             "agencyID": "agency-drascom", "password": "Temporary!123",
         }, token=admin, expected=201)
-        peer_agent = self.login(peer_username, "Temporary!123")
+        peer_agent = self.activate_temporary_password(peer_username, "Temporary!123")
 
         def inbox(token):
             return self.request("GET", "/notifications", token=token)
@@ -556,6 +624,11 @@ class APITestCase(unittest.TestCase):
             "agencyID": "agency-drascom", "password": original_password
         }, token=admin, expected=201)["user"]
         token = self.login(username, original_password)
+        changed_password = "ChangedPass!123"
+        self.request("POST", "/auth/change-password", {
+            "currentPassword": original_password, "newPassword": changed_password
+        }, token=token)
+
         email = f"{username}@example.test"
         profile = self.request("PATCH", "/auth/profile", {
             "displayName": "Updated Profile", "email": email, "phone": "+44 7700 900123"
@@ -563,10 +636,6 @@ class APITestCase(unittest.TestCase):
         self.assertEqual(email, profile["email"])
         self.assertEqual("+44 7700 900123", profile["phone"])
 
-        changed_password = "ChangedPass!123"
-        self.request("POST", "/auth/change-password", {
-            "currentPassword": original_password, "newPassword": changed_password
-        }, token=token)
         self.request("POST", "/auth/login", {"username": username, "password": original_password}, expected=401)
         changed_token = self.login(username, changed_password)
 
@@ -1133,7 +1202,7 @@ class APITestCase(unittest.TestCase):
             "username": username, "displayName": "Agency Peer", "role": "agent",
             "agencyID": agency["id"], "password": "Temporary!789",
         }, token=admin, expected=201)["user"]
-        peer_token = self.login(username, "Temporary!789")
+        peer_token = self.activate_temporary_password(username, "Temporary!789")
 
         created = self.request("POST", "/cases", {
             "patientName": "Shared Agency Patient", "grafts": "2400", "currency": "GBP",
@@ -1190,7 +1259,13 @@ class APITestCase(unittest.TestCase):
         self.assertTrue(reset["passwordReset"])
         self.request("GET", "/cases", token=new_user_token, expected=401)
         self.request("POST", "/auth/login", {"username": username, "password": "Temporary!123"}, expected=401)
-        new_user_token = self.login(username, "demo123")
+        reset_login = self.request(
+            "POST", "/auth/login", {"username": username, "password": "demo123"}
+        )
+        self.assertTrue(reset_login["user"]["mustChangePassword"])
+        new_user_token = reset_login["token"]
+        blocked = self.request("GET", "/cases", token=new_user_token, expected=403)
+        self.assertEqual("password_change_required", blocked["error"]["code"])
         deactivated = self.request("PATCH", f"/admin/users/{created['id']}", {"active": False}, token=admin)["user"]
         self.assertFalse(deactivated["active"])
         expired = self.request("GET", "/cases", token=new_user_token, expected=401)
@@ -1203,7 +1278,7 @@ class APITestCase(unittest.TestCase):
             "username": history_username, "displayName": "History Agent", "role": "agent",
             "agencyID": agency["id"], "password": "Temporary!456"
         }, token=admin, expected=201)["user"]
-        history_token = self.login(history_username, "Temporary!456")
+        history_token = self.activate_temporary_password(history_username, "Temporary!456")
         self.request("POST", "/cases", {
             "patientName": "History Patient", "grafts": "2000", "currency": "GBP",
             "price": "2000", "note": "History protection test", "photoCount": 2,

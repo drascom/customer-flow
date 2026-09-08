@@ -21,6 +21,7 @@ const caseGrafts = (item) => item.finalGrafts || item.agentGrafts || item.grafts
 const casePrice = (item) => item.finalPrice || item.agentPrice || item.price || "—";
 const photoIDs = (item) => item.photoIDs || (item.photos || []).filter((p) => !p.deleted && p.available !== false).map((p) => p.id);
 const latestMessage = (item) => item.latestMessage || [...(item.messages || [])].reverse().find((m) => !m.deletedAt && m.role !== "system");
+const validPermanentPassword = (value) => value.length >= 6 && /\d/.test(value) && /[^\p{L}\p{N}\s]/u.test(value);
 
 async function api(path, options = {}) {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
@@ -81,6 +82,7 @@ async function signOut(callServer = true) {
   if (callServer && state.token) await api("/auth/logout", { method: "POST", body: {} }).catch(() => {});
   localStorage.removeItem("cfToken"); sessionStorage.removeItem("cfToken");
   state.token = null; state.user = null; state.cases = []; state.notifications = [];
+  if ($("requiredPasswordDialog").open) $("requiredPasswordDialog").close();
   state.unreadNotifications = 0; showLogin();
 }
 
@@ -88,6 +90,7 @@ async function restore() {
   if (!state.token) return showLogin();
   try {
     state.user = (await api("/auth/me")).user;
+    if (state.user.mustChangePassword) return showRequiredPasswordChange();
     showApp(); await loadData(); startLiveUpdates();
   } catch (error) {
     localStorage.removeItem("cfToken"); sessionStorage.removeItem("cfToken"); state.token = null; showLogin(error.message);
@@ -230,13 +233,13 @@ function renderCases() {
 
 function caseCardHTML(item) {
   const latest = latestMessage(item); const status = statusPresentation(item.status, item.completedAt);
-  const agent = item.agentName || "Agency representative"; const agency = item.agencyName || "";
+  const agent = item.agentName || "Agency representative"; const agency = item.agencyName || "No agency";
   const bandTone = item.completedAt ? "completed" : item.status === "closed" ? "closed" :
     ((state.user?.role === "agent" ? item.status === "answered" : item.status === "waiting") ? "needs-action" : "waiting-on-other");
   return `<button class="case-card" data-open-case="${escapeHTML(item.id)}" type="button">
     <div class="case-card-body">
       <div class="case-title-row"><strong>${escapeHTML(patientName(item))}</strong><span>${relativeTime(item.patient?.lastUpdated || item.uploadedAt)}</span></div>
-      <div class="case-meta"><span>◉ ${escapeHTML(agent)}</span>${state.user.role === "doctor" && agency ? `<span class="push">▦ ${escapeHTML(agency)}</span>` : ""}</div>
+      <div class="case-meta"><span class="agency-name">▦ ${escapeHTML(agency)}</span><span class="push">◉ ${escapeHTML(agent)}</span></div>
       <p class="case-summary">${escapeHTML(caseNote(item) || latest?.text || "Open the consultation to review patient details.")}</p>
       <div class="case-metrics"><span class="metric"><small>Est. grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>Est. price</small><strong>£${escapeHTML(casePrice(item))}</strong></span><span class="metric"><small>Media</small><strong>${photoIDs(item).length} · ${(item.messages || []).length}</strong></span></div>
       ${latest ? `<div class="latest-row"><strong>${escapeHTML(latest.authorName || latest.author || "Update")}</strong><span class="message-preview">${escapeHTML(latest.text || "Photo sent")}</span><time>${relativeTime(latest.createdAt)}</time></div>` : ""}
@@ -462,9 +465,10 @@ async function renderPhotoViewer() {
 // Lightweight markup editor: pen drawing, undo, text, note and authenticated send.
 const editor = { ctx: null, image: null, drawing: false, history: [], textItems: [] };
 async function openEditor() {
-  const src = $("photoPreviewImage").src; editor.image = await loadImage(src); $("editorDialog").showModal();
+  const src = $("photoPreviewImage").src; editor.image = await loadImage(src); $("photoMessageNote").value = ""; $("editorDialog").showModal();
   requestAnimationFrame(setupCanvas);
 }
+function closeEditor() { $("photoMessageNote").value = ""; $("editorDialog").close(); }
 function loadImage(src) { return new Promise((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = src; }); }
 function setupCanvas() {
   const stage = $("canvasStage"), canvas = $("markupCanvas"), ratio = Math.min(stage.clientWidth / editor.image.naturalWidth, stage.clientHeight / editor.image.naturalHeight);
@@ -489,7 +493,7 @@ async function sendEditedPhoto() {
   const canvas = $("markupCanvas"), rect = canvas.getBoundingClientRect();
   editor.textItems.forEach((node) => { const clone = node.cloneNode(true); clone.querySelector(".text-resize")?.remove(); const scale = canvas.width / rect.width; editor.ctx.font = `700 ${parseFloat(getComputedStyle(node).fontSize) * scale}px sans-serif`; editor.ctx.fillStyle = "white"; editor.ctx.strokeStyle = "rgba(0,0,0,.75)"; editor.ctx.lineWidth = 4 * scale; const text = clone.textContent.trim(); const x = node.offsetLeft * scale, y = (node.offsetTop + parseFloat(getComputedStyle(node).fontSize)) * scale; editor.ctx.strokeText(text, x, y); editor.ctx.fillText(text, x, y); });
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", .92)); const note = $("photoMessageNote").value.trim();
-  try { await api(`/cases/${state.selectedCaseID}/message-photos`, { method: "POST", headers: { "Content-Type": "image/jpeg", "X-Message-Text": utf8Base64(note), "Idempotency-Key": crypto.randomUUID() }, body: blob }); $("editorDialog").close(); $("photoDialog").close(); await reloadSelected("Annotated photo sent."); requestAnimationFrame(() => $("conversationSection")?.scrollIntoView({ behavior: "smooth", block: "start" })); } catch (error) { toast(error.message); }
+  try { await api(`/cases/${state.selectedCaseID}/message-photos`, { method: "POST", headers: { "Content-Type": "image/jpeg", "X-Message-Text": utf8Base64(note), "Idempotency-Key": crypto.randomUUID() }, body: blob }); closeEditor(); $("photoDialog").close(); await reloadSelected("Annotated photo sent."); requestAnimationFrame(() => $("conversationSection")?.scrollIntoView({ behavior: "smooth", block: "start" })); } catch (error) { toast(error.message); }
 }
 function utf8Base64(value) { const bytes = new TextEncoder().encode(value); let binary = ""; bytes.forEach((b) => { binary += String.fromCharCode(b); }); return btoa(binary); }
 
@@ -553,7 +557,7 @@ async function loadClientVersion() {
 async function assignDoctor(event) { event.stopPropagation(); const select = event.currentTarget, previous = select.dataset.previous, doctor = select.value || null; let reason = ""; if (previous && previous !== (doctor || "")) { reason = prompt("Reason for changing the assigned doctor:", "Administrative reassignment") || ""; if (!reason.trim()) return select.value = previous; } try { await api(`/admin/patients/${encodeURIComponent(select.dataset.patient)}`, { method: "PATCH", body: { doctorID: doctor, reason } }); await loadData(); toast("Doctor assignment updated."); } catch (error) { select.value = previous; toast(error.message); } }
 async function deleteCase(event) { event.stopPropagation(); const b = event.currentTarget; if ((prompt(`Type ${b.dataset.caseReference} to permanently delete this case and every photo:`) || "") !== b.dataset.caseReference) return; await api(`/admin/cases/${b.dataset.deleteCase}`, { method: "DELETE" }); await loadData(); toast("Case permanently deleted."); }
 async function toggleUser(event) { const id = event.currentTarget.dataset.toggleUser, user = state.users.find((u) => u.id === id); if (user.active && !confirm("Deactivate this user and end active sessions?")) return; await api(`/admin/users/${id}`, { method: "PATCH", body: { active: !user.active } }); await loadData(); toast(user.active ? "User deactivated." : "User reactivated."); }
-async function resetUserPassword(event) { const id = event.currentTarget.dataset.resetPassword, user = state.users.find((u) => u.id === id); if (!user || !confirm(`Reset ${user.displayName}'s password to demo123? All active sessions for this user will end.`)) return; const button = event.currentTarget; button.disabled = true; try { await api(`/admin/users/${id}/reset-password`, { method: "POST", body: {} }); toast(`${user.displayName}'s password is now demo123.`); } catch (error) { toast(error.message); } finally { button.disabled = false; } }
+async function resetUserPassword(event) { const id = event.currentTarget.dataset.resetPassword, user = state.users.find((u) => u.id === id); if (!user || !confirm(`Reset ${user.displayName}'s password to demo123? All active sessions for this user will end, and they must choose a new password after signing in.`)) return; const button = event.currentTarget; button.disabled = true; try { await api(`/admin/users/${id}/reset-password`, { method: "POST", body: {} }); toast(`${user.displayName}'s password is now demo123. A password change will be required.`); } catch (error) { toast(error.message); } finally { button.disabled = false; } }
 
 function renderAgencyOptions() { if (!$("newAgency")) return; $("newAgency").innerHTML = `<option value="">Select agency</option>${state.agencies.filter((a) => a.active).map((a) => `<option value="${escapeHTML(a.id)}">${escapeHTML(a.name)}</option>`).join("")}<option value="__new__">+ Add new agency…</option>`; updateAgencyFields(); }
 function updateAgencyFields() { const agent = $("newRole").value === "agent", adding = agent && $("newAgency").value === "__new__"; $("agencyField").hidden = !agent; $("newAgency").required = agent; $("newAgencyField").hidden = !adding; $("newAgencyName").required = adding; }
@@ -564,7 +568,11 @@ function switchView(view) { if (view === "client-version" && !canMutateAdmin()) 
 let toastTimer; function toast(message) { clearTimeout(toastTimer); $("toast").textContent = message; $("toast").hidden = false; toastTimer = setTimeout(() => $("toast").hidden = true, 3200); }
 
 // Authentication and global navigation.
-$("loginForm").onsubmit = async (event) => { event.preventDefault(); const submit = event.currentTarget.querySelector("button[type=submit]"); submit.disabled = true; $("loginError").textContent = ""; try { const result = await api("/auth/login", { method: "POST", body: { username: $("loginUsername").value.trim(), password: $("loginPassword").value } }); state.token = result.token; state.user = result.user; const storage = $("rememberSession").checked ? localStorage : sessionStorage; storage.setItem("cfToken", state.token); $("loginPassword").value = ""; showApp(); await loadData(); startLiveUpdates(); } catch (error) { $("loginError").textContent = error.message; } finally { submit.disabled = false; } };
+function showRequiredPasswordChange() { showLogin(); $("loginError").textContent = ""; $("requiredPasswordError").textContent = ""; if (!$("requiredPasswordDialog").open) $("requiredPasswordDialog").showModal(); }
+$("loginForm").onsubmit = async (event) => { event.preventDefault(); const submit = event.currentTarget.querySelector("button[type=submit]"); submit.disabled = true; $("loginError").textContent = ""; try { const result = await api("/auth/login", { method: "POST", body: { username: $("loginUsername").value.trim(), password: $("loginPassword").value } }); state.token = result.token; state.user = result.user; const storage = $("rememberSession").checked ? localStorage : sessionStorage; storage.setItem("cfToken", state.token); $("loginPassword").value = ""; if (state.user.mustChangePassword) return showRequiredPasswordChange(); showApp(); await loadData(); startLiveUpdates(); } catch (error) { $("loginError").textContent = error.message; } finally { submit.disabled = false; } };
+$("requiredPasswordForm").onsubmit = async (event) => { event.preventDefault(); const submit = event.currentTarget.querySelector("button[type=submit]"); const currentPassword = $("requiredCurrentPassword").value, newPassword = $("requiredNewPassword").value, confirmation = $("requiredPasswordConfirmation").value; $("requiredPasswordError").textContent = ""; if (!validPermanentPassword(newPassword)) return $("requiredPasswordError").textContent = "Use at least 6 characters with at least one number and one symbol."; if (newPassword !== confirmation) return $("requiredPasswordError").textContent = "The passwords do not match."; submit.disabled = true; try { await api("/auth/change-password", { method: "POST", body: { currentPassword, newPassword } }); event.currentTarget.reset(); $("requiredPasswordDialog").close(); await signOut(true); showLogin("Password changed. Sign in with your new password."); } catch (error) { $("requiredPasswordError").textContent = error.message; } finally { submit.disabled = false; } };
+$("requiredPasswordDialog").addEventListener("cancel", (event) => event.preventDefault());
+$("requiredPasswordSignOut").onclick = () => signOut(true);
 function setAccountMenu(open) { $("accountDropdown").hidden = !open; $("accountMenuButton").setAttribute("aria-expanded", String(open)); }
 function setNotificationMenu(open) { $("notificationDropdown").hidden = !open; $("notificationButton").setAttribute("aria-expanded", String(open)); }
 $("accountMenuButton").onclick = () => { setNotificationMenu(false); setAccountMenu($("accountDropdown").hidden); };
@@ -579,12 +587,12 @@ $("clearCaseFilters").onclick = () => { Object.assign(state.filters, { caseStatu
 $("clearUserFilters").onclick = () => { Object.assign(state.filters, { userRole: "", userStatus: "", userAgency: "" }); renderFilterChips(); renderUsers(); };
 $("closeCaseDialog").onclick = () => $("caseDialog").close(); $("closeNewCase").onclick = $("cancelNewCase").onclick = () => $("newCaseDialog").close(); $("newCaseForm").onsubmit = submitNewCase; $("casePatientName").onblur = checkPatientMatch; $("casePatientName").oninput = () => { state.duplicate = { matches: [], confirmed: false, existingPatientID: null }; $("patientMatchHint").textContent = ""; }; $("casePhotos").onchange = (event) => { state.pendingFiles.push(...event.target.files); renderPendingPhotos(); event.target.value = ""; };
 $("closePhotoDialog").onclick = () => $("photoDialog").close(); $("previousPhoto").onclick = () => { state.photoIndex = (state.photoIndex + state.photoItems.length - 1) % state.photoItems.length; renderPhotoViewer(); }; $("nextPhoto").onclick = () => { state.photoIndex = (state.photoIndex + 1) % state.photoItems.length; renderPhotoViewer(); }; $("editPhotoButton").onclick = openEditor;
-$("editorClose").onclick = () => $("editorDialog").close(); $("markupCanvas").addEventListener("pointerdown", editorPointerDown); $("markupCanvas").addEventListener("pointermove", editorPointerMove); $("markupCanvas").addEventListener("pointerup", editorPointerUp); $("markupCanvas").addEventListener("pointercancel", editorPointerUp); $("editorText").onclick = addEditorText; $("editorUndo").onclick = () => { if (editor.history.length > 1) editor.history.pop(); if (editor.history.length) editor.ctx.putImageData(editor.history.at(-1), 0, 0); }; $("sendEditedPhoto").onclick = sendEditedPhoto;
+$("editorClose").onclick = closeEditor; $("markupCanvas").addEventListener("pointerdown", editorPointerDown); $("markupCanvas").addEventListener("pointermove", editorPointerMove); $("markupCanvas").addEventListener("pointerup", editorPointerUp); $("markupCanvas").addEventListener("pointercancel", editorPointerUp); $("editorText").onclick = addEditorText; $("editorUndo").onclick = () => { if (editor.history.length > 1) editor.history.pop(); if (editor.history.length) editor.ctx.putImageData(editor.history.at(-1), 0, 0); }; $("sendEditedPhoto").onclick = sendEditedPhoto;
 
 // Profile.
 $("profileButton").onclick = () => { setAccountMenu(false); $("profileDisplayName").value = state.user.displayName || ""; $("profileEmail").value = state.user.email || ""; $("profilePhone").value = state.user.phone || ""; $("profileError").textContent = ""; $("profileDialog").showModal(); }; $("closeProfile").onclick = () => $("profileDialog").close();
 $("profileForm").onsubmit = async (event) => { event.preventDefault(); try { state.user = (await api("/auth/profile", { method: "PATCH", body: { displayName: $("profileDisplayName").value.trim(), email: $("profileEmail").value.trim() || null, phone: $("profilePhone").value.trim() || null } })).user; showApp(); toast("Profile updated."); } catch (error) { $("profileError").textContent = error.message; } };
-$("changePassword").onclick = async () => { try { await api("/auth/change-password", { method: "POST", body: { currentPassword: $("currentPassword").value, newPassword: $("newProfilePassword").value } }); $("currentPassword").value = $("newProfilePassword").value = ""; toast("Password changed."); } catch (error) { $("profileError").textContent = error.message; } };
+$("changePassword").onclick = async () => { const newPassword = $("newProfilePassword").value; $("profileError").textContent = ""; if (!validPermanentPassword(newPassword)) return $("profileError").textContent = "Use at least 6 characters with at least one number and one symbol."; try { await api("/auth/change-password", { method: "POST", body: { currentPassword: $("currentPassword").value, newPassword } }); $("currentPassword").value = $("newProfilePassword").value = ""; $("profileDialog").close(); await signOut(true); showLogin("Password changed. Sign in with your new password."); } catch (error) { $("profileError").textContent = error.message; } };
 
 // Admin users and agencies.
 $("addUserButton").onclick = () => { $("userForm").reset(); renderAgencyOptions(); $("userDialog").showModal(); }; $("closeDialog").onclick = $("cancelUser").onclick = () => $("userDialog").close(); $("newRole").onchange = updateAgencyFields; $("newAgency").onchange = updateAgencyFields;

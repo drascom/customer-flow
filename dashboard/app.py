@@ -7,6 +7,7 @@ import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 
@@ -30,13 +31,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "CustomerFlowWeb/2.0"
 
     def do_GET(self):
-        if self.path in {"/", "/admin", "/admin/"}:
+        path = urlparse(self.path).path
+        if path in {"/", "/admin", "/admin/"}:
             return self._serve_asset("index.html", "text/html; charset=utf-8")
-        if self.path in {"/admin/admin.css", "/admin/admin.js"}:
-            return self._serve_asset(self.path.rsplit("/", 1)[-1])
-        if self.path == "/dashboard/health":
+        if path in {"/admin/admin.css", "/admin/admin.js"}:
+            return self._serve_asset(path.rsplit("/", 1)[-1])
+        if path == "/dashboard/health":
             return self._json(200, {"status": "ok", "service": "customer-flow-dashboard"})
-        return self._proxy("GET") if self.path.startswith("/api/v1/") else self._not_found()
+        return self._proxy("GET") if path.startswith("/api/v1/") else self._not_found()
 
     def do_POST(self):
         return self._proxy_mutation("POST")

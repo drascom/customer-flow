@@ -263,7 +263,7 @@ struct PasswordResetView: View {
                     } header: {
                         Text("Verification")
                     } footer: {
-                        Text("Use at least 10 characters. The code expires after 10 minutes.")
+                        Text("Use at least 6 characters with at least one number and one symbol. The code expires after 10 minutes.")
                     }
                     Section {
                         Button {
@@ -326,8 +326,8 @@ struct PasswordResetView: View {
 
     private func confirmReset() {
         formError = ""
-        guard newPassword.count >= 10 else {
-            formError = "The password must be at least 10 characters."
+        guard newPassword.satisfiesAccountPasswordPolicy else {
+            formError = "Use at least 6 characters with at least one number and one symbol."
             return
         }
         guard newPassword == confirmation else {

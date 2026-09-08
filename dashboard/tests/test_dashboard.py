@@ -60,6 +60,12 @@ class DashboardTestCase(unittest.TestCase):
             me = self.request("GET", "/api/v1/auth/me", token=token)
             self.assertEqual(username, me["user"]["username"])
 
+    def test_versioned_dashboard_assets_are_served(self):
+        css = self.request("GET", "/admin/admin.css?v=card-grid")
+        javascript = self.request("GET", "/admin/admin.js?v=card-grid")
+        self.assertIn(b".case-card .case-metrics", css)
+        self.assertIn(b"function caseCardHTML", javascript)
+
     def test_role_authorization_is_enforced_by_api(self):
         agent = self.login("user1")
         self.request("GET", "/api/v1/cases", token=agent)
