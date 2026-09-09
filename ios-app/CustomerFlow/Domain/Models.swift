@@ -49,6 +49,7 @@ enum ConsultationStatus: String, Codable, Sendable {
 }
 
 enum DoctorQueueFilter: String, CaseIterable, Identifiable {
+    case all
     case waiting
     case answered
     case confirmed
@@ -57,6 +58,7 @@ enum DoctorQueueFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .all: "All"
         case .waiting: "Waiting"
         case .answered: "Answered"
         case .confirmed: "Confirmed"

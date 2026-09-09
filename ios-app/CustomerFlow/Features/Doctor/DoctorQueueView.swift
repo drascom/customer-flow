@@ -2,7 +2,8 @@ import SwiftUI
 
 struct DoctorQueueView: View {
     @EnvironmentObject private var state: AppState
-    @State private var filter: DoctorQueueFilter = .waiting
+    @State private var filter: DoctorQueueFilter = .all
+    @State private var selectedAgencyName: String?
     @State private var searchText = ""
     @State private var oldestFirst = true
     @State private var selectedCase: ConsultationCase?
@@ -12,6 +13,10 @@ struct DoctorQueueView: View {
         state.cases
             .filter(matchesQueue)
             .filter { item in
+                guard let selectedAgencyName else { return true }
+                return item.agencyName == selectedAgencyName
+            }
+            .filter { item in
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !query.isEmpty else { return true }
                 return [item.patient.name, item.reference, item.agencyName, item.agentName, item.agentNote]
@@ -20,6 +25,14 @@ struct DoctorQueueView: View {
                     .localizedCaseInsensitiveContains(query)
             }
             .sorted { oldestFirst ? $0.uploadedAt < $1.uploadedAt : $0.uploadedAt > $1.uploadedAt }
+    }
+
+    private var agencyOptions: [String] {
+        Array(Set(state.cases.compactMap { item in
+            let name = item.agencyName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return name?.isEmpty == false ? name : nil
+        }))
+        .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     var body: some View {
@@ -66,29 +79,33 @@ struct DoctorQueueView: View {
 
     private var searchHeader: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(AppTheme.muted)
-            TextField("Search patients, agencies or notes", text: $searchText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($isSearchFocused)
-                .submitLabel(.done)
-                .onSubmit { isSearchFocused = false }
-            if isSearchFocused || !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                    isSearchFocused = false
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(AppTheme.muted)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(AppTheme.muted)
+                TextField("Search patients, agencies or notes", text: $searchText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($isSearchFocused)
+                    .submitLabel(.done)
+                    .onSubmit { isSearchFocused = false }
+                if isSearchFocused || !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                        isSearchFocused = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(AppTheme.muted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search and close keyboard")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search and close keyboard")
             }
+            .padding(.horizontal, 13)
+            .frame(maxWidth: 620, minHeight: 42)
+            .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+
+            agencyFilterButton
         }
-        .padding(.horizontal, 13)
-        .frame(maxWidth: 620, minHeight: 42)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -135,6 +152,7 @@ struct DoctorQueueView: View {
                 Text("\(filteredCases.count) \(filteredCases.count == 1 ? "patient" : "patients")")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.muted)
+                    .lineLimit(1)
                 Spacer()
                 Button {
                     isSearchFocused = false
@@ -149,6 +167,41 @@ struct DoctorQueueView: View {
             .padding(.horizontal, 4)
         }
         .padding(.vertical, 7)
+    }
+
+    private var agencyFilterButton: some View {
+        Menu {
+            Button {
+                selectedAgencyName = nil
+            } label: {
+                Label("All agencies", systemImage: selectedAgencyName == nil ? "checkmark" : "building.2")
+            }
+            if !agencyOptions.isEmpty {
+                Divider()
+                ForEach(agencyOptions, id: \.self) { agencyName in
+                    Button {
+                        selectedAgencyName = agencyName
+                    } label: {
+                        if selectedAgencyName == agencyName {
+                            Label(agencyName, systemImage: "checkmark")
+                        } else {
+                            Text(agencyName)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: selectedAgencyName == nil
+                  ? "line.3.horizontal.decrease.circle"
+                  : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(selectedAgencyName == nil ? AppTheme.muted : AppTheme.brand)
+                .frame(width: 42, height: 42)
+                .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(selectedAgencyName.map { "Agency filter, \($0)" } ?? "Agency filter, all agencies")
     }
 
     @ViewBuilder
@@ -175,6 +228,7 @@ struct DoctorQueueView: View {
 
     private func filterTitle(_ item: DoctorQueueFilter) -> String {
         switch item {
+        case .all: "All"
         case .waiting: "Waiting"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
@@ -183,18 +237,23 @@ struct DoctorQueueView: View {
 
     private func matchesQueue(_ item: ConsultationCase) -> Bool {
         switch filter {
+        case .all: true
         case .waiting: item.status == .waiting && !item.isCompleted
         case .answered: item.status == .answered && !item.isCompleted
-        case .confirmed: item.status == .closed
+        case .confirmed: item.status == .closed && !item.isCompleted
         }
     }
 
     private func count(for filter: DoctorQueueFilter) -> Int {
         state.cases.filter { item in
+            guard let selectedAgencyName else { return true }
+            return item.agencyName == selectedAgencyName
+        }.filter { item in
             switch filter {
+            case .all: true
             case .waiting: item.status == .waiting && !item.isCompleted
             case .answered: item.status == .answered && !item.isCompleted
-            case .confirmed: item.status == .closed
+            case .confirmed: item.status == .closed && !item.isCompleted
             }
         }.count
     }
