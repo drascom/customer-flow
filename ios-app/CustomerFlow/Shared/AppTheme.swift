@@ -367,14 +367,40 @@ struct NativePhotoPreview: View {
         VStack(spacing: 0) {
             previewHeader
             if showsThumbnails { thumbnailStrip }
-            TabView(selection: $selectedIndex) {
-                ForEach(request.fileURLs.indices, id: \.self) { index in
-                    PreviewPhotoPage(url: request.fileURLs[index])
-                        .tag(index)
+            ZStack {
+                TabView(selection: $selectedIndex) {
+                    ForEach(request.fileURLs.indices, id: \.self) { index in
+                        PreviewPhotoPage(url: request.fileURLs[index])
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .background(Color.black)
+
+                if request.fileURLs.count > 1 {
+                    HStack {
+                        previewNavigationButton(
+                            symbol: "chevron.left",
+                            label: "Previous photo",
+                            enabled: selectedIndex > request.fileURLs.startIndex,
+                            shortcut: .leftArrow
+                        ) {
+                            moveSelection(by: -1)
+                        }
+                        Spacer()
+                        previewNavigationButton(
+                            symbol: "chevron.right",
+                            label: "Next photo",
+                            enabled: selectedIndex < request.fileURLs.index(before: request.fileURLs.endIndex),
+                            shortcut: .rightArrow
+                        ) {
+                            moveSelection(by: 1)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .allowsHitTesting(true)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(Color.black)
             previewActions
         }
         .background(Color.black.ignoresSafeArea())
@@ -421,6 +447,36 @@ struct NativePhotoPreview: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.black.opacity(0.94))
+    }
+
+    private func previewNavigationButton(
+        symbol: String,
+        label: String,
+        enabled: Bool,
+        shortcut: KeyEquivalent,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.title2.bold())
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 64)
+                .background(.black.opacity(0.56), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.28)
+        .keyboardShortcut(shortcut, modifiers: [])
+        .accessibilityLabel(label)
+    }
+
+    private func moveSelection(by offset: Int) {
+        let destination = selectedIndex + offset
+        guard request.fileURLs.indices.contains(destination) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedIndex = destination
+        }
     }
 
     private var thumbnailStrip: some View {

@@ -19,6 +19,7 @@ final class AppState: ObservableObject {
     @Published private(set) var liveRevision = 0
     @Published private(set) var isRefreshingAfterForeground = false
     @Published private(set) var updateRequirement: AppUpdateRequirement?
+    @Published private(set) var previousServerAddress: String?
     @Published var errorMessage: String?
     @Published var isWorking = false
 
@@ -95,6 +96,7 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(baseURL.absoluteString, forKey: serverAddressKey)
             remoteClient = client
             connectedServerName = health.service
+            previousServerAddress = nil
             await checkClientVersion(using: client)
             phase = .login
             return true
@@ -206,6 +208,7 @@ final class AppState: ObservableObject {
     }
 
     func changeServer() async {
+        previousServerAddress = savedServerAddress
         liveUpdatesTask?.cancel()
         liveUpdatesTask = nil
         await unregisterNotificationDevice()
@@ -224,6 +227,11 @@ final class AppState: ObservableObject {
         updateRequirement = nil
         dismissedRecommendedVersion = nil
         phase = .serverSetup
+    }
+
+    func returnToPreviousServer() async {
+        guard let previousServerAddress else { return }
+        _ = await connect(serverAddress: previousServerAddress)
     }
 
     func load() async {

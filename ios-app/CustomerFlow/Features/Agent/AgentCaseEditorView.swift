@@ -241,8 +241,9 @@ struct AgentCasesView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(filter == item ? AppTheme.accentInk : AppTheme.ink)
                         .padding(.horizontal, 12)
-                        .frame(minHeight: 42)
+                        .frame(maxWidth: .infinity, minHeight: 42)
                         .background(filter == item ? AppTheme.accent : Color.clear, in: RoundedRectangle(cornerRadius: 13))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -428,11 +429,19 @@ private struct AgentCaseListCard: View {
         .buttonStyle(.plain)
         .foregroundStyle(AppTheme.ink)
         .frame(maxWidth: .infinity)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(
+            isSelected ? AppTheme.brand.opacity(0.11) : AppTheme.surfaceStrong,
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(isSelected ? AppTheme.brand : AppTheme.border, lineWidth: isSelected ? 2 : 1)
+                .stroke(isSelected ? AppTheme.brand : AppTheme.border, lineWidth: isSelected ? 2.5 : 1)
         }
+        .shadow(
+            color: isSelected ? AppTheme.brand.opacity(0.18) : .clear,
+            radius: 11,
+            y: 3
+        )
         .accessibilityHint("Opens case details")
     }
 
@@ -457,10 +466,10 @@ private struct AgentCaseListCard: View {
     }
 
     private var statusColor: Color {
-        if item.isCompleted { return Color(red: 0.08, green: 0.52, blue: 0.32) }
+        if item.isCompleted { return AppTheme.muted }
         return switch item.status {
-        case .waiting: AppTheme.accent
-        case .answered: Color(red: 0.78, green: 0.16, blue: 0.14)
+        case .waiting: Color(red: 0.78, green: 0.16, blue: 0.14)
+        case .answered: AppTheme.accent
         case .closed: Color(red: 0.08, green: 0.52, blue: 0.32)
         }
     }

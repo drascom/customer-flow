@@ -53,6 +53,9 @@ struct RootView: View {
             }
         }
         .background(AppTheme.background.ignoresSafeArea())
+#if targetEnvironment(macCatalyst)
+        .background(CatalystWindowTitleConfigurator())
+#endif
         .tint(AppTheme.brand)
         .overlay {
             if let requirement = state.updateRequirement, requirement.isRequired {
@@ -237,6 +240,33 @@ struct RootView: View {
         )
     }
 }
+
+#if targetEnvironment(macCatalyst)
+private struct CatalystWindowTitleConfigurator: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = WindowConfigurationView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        (uiView as? WindowConfigurationView)?.configureTitlebar()
+    }
+
+    private final class WindowConfigurationView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            configureTitlebar()
+        }
+
+        func configureTitlebar() {
+            guard let titlebar = window?.windowScene?.titlebar else { return }
+            titlebar.titleVisibility = .hidden
+            titlebar.toolbar = nil
+        }
+    }
+}
+#endif
 
 private struct RequiredUpdateView: View {
     let requirement: AppUpdateRequirement

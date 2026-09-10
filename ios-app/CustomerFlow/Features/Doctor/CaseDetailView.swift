@@ -12,7 +12,6 @@ struct CaseDetailView: View {
     let caseID: UUID
     var showsCloseButton = true
 
-    @State private var photoIndex = 0
     @State private var grafts = ""
     @State private var price = ""
     @State private var response = ""
@@ -245,7 +244,10 @@ struct CaseDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18))
         } else {
             VStack(alignment: .leading, spacing: 9) {
-                TabView(selection: $photoIndex) {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 150, maximum: 260), spacing: 10)],
+                    spacing: 10
+                ) {
                     ForEach(0..<item.photoCount, id: \.self) { index in
                         CasePhotoView(
                             photoID: item.photoIDs.indices.contains(index) ? item.photoIDs[index] : nil,
@@ -254,36 +256,22 @@ struct CaseDetailView: View {
                                 Task { await openNativePreview(photoID: item.photoIDs[index], caseID: item.id) }
                             } : nil
                         )
-                        .tag(index)
+                        .aspectRatio(4 / 3, contentMode: .fit)
+                        .overlay(alignment: .bottomTrailing) {
+                            Label("\(index + 1)", systemImage: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(.black.opacity(0.62), in: Capsule())
+                                .padding(8)
+                        }
                     }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .frame(height: 340)
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-                .overlay(alignment: .bottomTrailing) {
-                    Text("\(photoIndex + 1) / \(item.photoCount)")
-                        .font(.caption.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .background(.black.opacity(0.62), in: Capsule())
-                        .padding(12)
                 }
 
-                HStack {
-                    Label("Swipe to review all photos", systemImage: "hand.draw")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.muted)
-                    Spacer()
-                    Button("Enlarge & Mark Up", systemImage: "pencil.and.outline") {
-                        guard item.photoIDs.indices.contains(photoIndex) else { return }
-                        Task { await openNativePreview(photoID: item.photoIDs[photoIndex], caseID: item.id) }
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppTheme.accent)
-                }
+                Label("Select a photo to enlarge or mark it up", systemImage: "photo.on.rectangle.angled")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
             }
         }
     }

@@ -162,8 +162,9 @@ struct DoctorQueueView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(filter == item ? AppTheme.accentInk : AppTheme.ink)
                         .padding(.horizontal, 12)
-                        .frame(minHeight: 42)
+                        .frame(maxWidth: .infinity, minHeight: 42)
                         .background(filter == item ? AppTheme.accent : Color.clear, in: RoundedRectangle(cornerRadius: 13))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -497,22 +498,27 @@ private struct DoctorWorkCard: View {
             .padding(16)
             .padding(.leading, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20))
+            .background(
+                isSelected ? AppTheme.brand.opacity(0.11) : AppTheme.surfaceStrong,
+                in: RoundedRectangle(cornerRadius: 20)
+            )
             .overlay(alignment: .leading) {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 20,
-                    bottomLeadingRadius: 20,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: 0
-                )
-                .fill(statusColor)
-                .frame(width: 5)
+                Capsule()
+                    .fill(statusColor)
+                    .frame(width: 5)
+                    .padding(.leading, 5)
+                    .padding(.vertical, 12)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(isSelected ? AppTheme.brand : AppTheme.border, lineWidth: isSelected ? 2 : 1)
+                    .stroke(isSelected ? AppTheme.brand : AppTheme.border, lineWidth: isSelected ? 2.5 : 1)
             )
-            .shadow(color: AppTheme.ink.opacity(0.04), radius: 8, y: 3)
+            .shadow(
+                color: isSelected ? AppTheme.brand.opacity(0.18) : AppTheme.ink.opacity(0.04),
+                radius: isSelected ? 11 : 8,
+                y: 3
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens patient details")
@@ -542,14 +548,11 @@ private struct DoctorWorkCard: View {
     }
 
     private var statusColor: Color {
-        if item.isCompleted { return Color(red: 0.08, green: 0.52, blue: 0.32) }
+        if item.isCompleted { return AppTheme.muted }
         return switch item.status {
-        case .waiting:
-            isOverdue ? Color(red: 0.78, green: 0.16, blue: 0.14) : AppTheme.accent
-        case .answered:
-            AppTheme.brand
-        case .closed:
-            AppTheme.muted
+        case .waiting: Color(red: 0.78, green: 0.16, blue: 0.14)
+        case .answered: AppTheme.accent
+        case .closed: Color(red: 0.08, green: 0.52, blue: 0.32)
         }
     }
 
@@ -597,9 +600,9 @@ struct StatusChip: View {
 
     private var color: Color {
         switch status {
-        case .waiting: AppTheme.accent
-        case .answered: AppTheme.brand
-        case .closed: AppTheme.muted
+        case .waiting: Color(red: 0.78, green: 0.16, blue: 0.14)
+        case .answered: AppTheme.accent
+        case .closed: Color(red: 0.08, green: 0.52, blue: 0.32)
         }
     }
 }

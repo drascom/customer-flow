@@ -96,6 +96,19 @@ struct OnboardingView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isWorking)
 
+                if state.previousServerAddress != nil {
+                    Button {
+                        focusedField = nil
+                        Task { await state.returnToPreviousServer() }
+                    } label: {
+                        Label("Back to sign in", systemImage: "arrow.left")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(state.isWorking)
+                }
+
                 Text("Enter the address supplied by your organisation. The app checks the server before asking for your login.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)

@@ -234,11 +234,12 @@ struct AdminDashboardView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(model.selectedSection == section ? AppTheme.accentInk : AppTheme.ink)
             .padding(.horizontal, 12)
-            .frame(minHeight: 42)
+            .frame(maxWidth: .infinity, minHeight: 42)
             .background(
                 model.selectedSection == section ? AppTheme.accent : Color.clear,
                 in: RoundedRectangle(cornerRadius: 13)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

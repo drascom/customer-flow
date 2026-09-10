@@ -107,6 +107,9 @@
     "%lld unread notifications" : {
 
     },
+    "%lld visible cases" : {
+
+    },
     "%lld/%lld · %@" : {
       "localizations" : {
         "en" : {
@@ -183,10 +186,16 @@
     "Admin section" : {
 
     },
+    "Admin workspace" : {
+
+    },
     "Age if date of birth is unknown" : {
 
     },
     "Agencies" : {
+
+    },
+    "AGENCY" : {
 
     },
     "Agency filter, %@" : {
@@ -253,6 +262,12 @@
 
     },
     "Checking patient records…" : {
+
+    },
+    "Choose a case to review photos, details and conversation." : {
+
+    },
+    "Choose a case to view details, photos and conversation." : {
 
     },
     "Choose from Photo Library" : {
@@ -361,6 +376,9 @@
         }
       }
     },
+    "Dashboard" : {
+
+    },
     "DD/MM/YYYY" : {
 
     },
@@ -425,9 +443,6 @@
 
     },
     "Enlarge" : {
-
-    },
-    "Enlarge & Mark Up" : {
 
     },
     "Enter agency name" : {
@@ -520,6 +535,9 @@
     "Manage agencies" : {
 
     },
+    "Manager workspace" : {
+
+    },
     "Managers can view all records and add operational notes. Clinical and case data remain read-only." : {
 
     },
@@ -541,10 +559,16 @@
     "Minimum 1" : {
 
     },
+    "My cases" : {
+
+    },
     "New" : {
 
     },
     "New agency" : {
+
+    },
+    "New case" : {
 
     },
     "New password" : {
@@ -831,6 +855,12 @@
     "Security" : {
 
     },
+    "Select a patient" : {
+
+    },
+    "Select a photo to enlarge or mark it up" : {
+
+    },
     "Selected patient photo %lld" : {
 
     },
@@ -892,9 +922,6 @@
 
     },
     "Submit" : {
-
-    },
-    "Swipe to review all photos" : {
 
     },
     "Take Photo" : {
