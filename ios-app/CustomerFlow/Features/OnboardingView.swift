@@ -157,6 +157,11 @@ struct OnboardingView: View {
                 Text("Accounts are created by your server administrator. There is no public registration in the app.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
+
+                Text("Version \(AppVersionInfo.current)")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.muted)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
         case .authenticated:

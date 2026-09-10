@@ -189,7 +189,16 @@
     "Agencies" : {
 
     },
+    "Agency filter, %@" : {
+
+    },
+    "Agency filter, all agencies" : {
+
+    },
     "Agency name" : {
+
+    },
+    "All agencies" : {
 
     },
     "Annotated patient photo" : {
@@ -364,10 +373,16 @@
     "Delete %@" : {
 
     },
+    "Delete case" : {
+
+    },
     "Delete permanently" : {
 
     },
     "Delete photo permanently" : {
+
+    },
+    "Delete this case?" : {
 
     },
     "Deleted by %@" : {
@@ -891,6 +906,9 @@
     "The agent confirmed and closed this case." : {
 
     },
+    "The case will disappear from active records. Its patient details, messages and photos will be retained on the server." : {
+
+    },
     "The comment will disappear from the conversation, but administrators will retain the record." : {
 
     },
@@ -940,6 +958,9 @@
     "Undo this confirmation?" : {
 
     },
+    "Update" : {
+
+    },
     "Update available" : {
 
     },
@@ -977,6 +998,9 @@
 
     },
     "Verification" : {
+
+    },
+    "Version %@" : {
 
     },
     "View conversation" : {

@@ -1,6 +1,11 @@
 import SwiftUI
 import UIKit
 
+enum AppVersionInfo {
+    static let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        ?? "0.0.0"
+}
+
 struct RootView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.scenePhase) private var scenePhase
@@ -189,6 +194,9 @@ struct RootView: View {
                     dismissKeyboard()
                     showsProfile = true
                 }
+                Link(destination: URL(string: "https://apps.apple.com/gb/app/customerflow-by-natchatt/id6802274147")!) {
+                    Label("Update", systemImage: "arrow.down.app")
+                }
                 Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
                     dismissKeyboard()
                     Task { await state.logout() }
@@ -197,6 +205,8 @@ struct RootView: View {
                     dismissKeyboard()
                     Task { await state.changeServer() }
                 }
+                Divider()
+                Text("Version \(AppVersionInfo.current)")
             } label: {
                 Image(systemName: "person.crop.circle.fill")
                     .font(.system(size: 32))
