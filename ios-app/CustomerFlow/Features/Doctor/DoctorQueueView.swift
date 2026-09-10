@@ -54,6 +54,10 @@ struct DoctorQueueView: View {
             selectedCase = item
             state.consumePendingNotificationCase()
         }
+        .onChange(of: filter) { _, _ in reconcileSelectedCase() }
+        .onChange(of: selectedAgencyName) { _, _ in reconcileSelectedCase() }
+        .onChange(of: searchText) { _, _ in reconcileSelectedCase() }
+        .onChange(of: state.cases) { _, _ in reconcileSelectedCase() }
         .sheet(item: Binding(
             get: { usesWideLayout ? nil : selectedCase },
             set: { selectedCase = $0 }
@@ -70,6 +74,15 @@ struct DoctorQueueView: View {
                 Button("Done") { isSearchFocused = false }
             }
         }
+    }
+
+    private func reconcileSelectedCase() {
+        guard let selectedCase else { return }
+        guard filteredCases.contains(where: { $0.id == selectedCase.id }) else {
+            self.selectedCase = nil
+            return
+        }
+        self.selectedCase = state.cases.first(where: { $0.id == selectedCase.id })
     }
 
     private var compactWorkspace: some View {
