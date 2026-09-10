@@ -351,6 +351,7 @@ struct NativePhotoPreview: View {
     @State private var selectedIndex: Int
     @State private var showsThumbnails = false
     @State private var editorRequest: PhotoEditorRequest?
+    @FocusState private var acceptsKeyboardNavigation: Bool
 
     init(
         request: NativePhotoPreviewRequest,
@@ -405,6 +406,21 @@ struct NativePhotoPreview: View {
         }
         .background(Color.black.ignoresSafeArea())
         .statusBarHidden()
+        .focusable()
+        .focused($acceptsKeyboardNavigation)
+        .onAppear { acceptsKeyboardNavigation = true }
+        .onKeyPress(.leftArrow) {
+            guard selectedIndex > request.fileURLs.startIndex else { return .ignored }
+            moveSelection(by: -1)
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            guard selectedIndex < request.fileURLs.index(before: request.fileURLs.endIndex) else {
+                return .ignored
+            }
+            moveSelection(by: 1)
+            return .handled
+        }
         .fullScreenCover(item: $editorRequest) { item in
             PhotoMarkupEditor(
                 image: item.image,
