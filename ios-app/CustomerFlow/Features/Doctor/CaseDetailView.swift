@@ -10,6 +10,7 @@ struct CaseDetailView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.dismiss) private var dismiss
     let caseID: UUID
+    var showsCloseButton = true
 
     @State private var photoIndex = 0
     @State private var grafts = ""
@@ -119,17 +120,19 @@ struct CaseDetailView: View {
             .navigationTitle("Patient review")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption.bold())
-                            .foregroundStyle(AppTheme.ink)
-                            .frame(width: 34, height: 34)
-                            .background(AppTheme.surfaceStrong, in: Circle())
+                if showsCloseButton {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption.bold())
+                                .foregroundStyle(AppTheme.ink)
+                                .frame(width: 34, height: 34)
+                                .background(AppTheme.surfaceStrong, in: Circle())
+                        }
+                        .accessibilityLabel("Close")
                     }
-                    .accessibilityLabel("Close")
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {

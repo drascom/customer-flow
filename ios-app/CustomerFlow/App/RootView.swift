@@ -9,6 +9,7 @@ enum AppVersionInfo {
 struct RootView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Bindable var tourModel: AppTourModel
     @State private var showsProfile = false
     @State private var showsNotifications = false
@@ -216,7 +217,15 @@ struct RootView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(AppTheme.background.ignoresSafeArea(edges: .top))
+        .background {
+            if horizontalSizeClass == .regular {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea(edges: .top)
+            } else {
+                AppTheme.background.ignoresSafeArea(edges: .top)
+            }
+        }
     }
 
     private func dismissKeyboard() {

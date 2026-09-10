@@ -8,6 +8,7 @@ struct AdminDashboardView: View {
     }
 
     @State private var model: AdminDashboardModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     private let isReadOnly: Bool
     private let liveRevision: Int
     private let notificationCaseID: UUID?
@@ -28,6 +29,8 @@ struct AdminDashboardView: View {
     @State private var showsAssignmentPrompt = false
     @FocusState private var isSearchFocused: Bool
 
+    private var usesWideLayout: Bool { horizontalSizeClass == .regular }
+
     init(
         repository: any AdminRepository,
         currentUserID: String,
@@ -44,21 +47,12 @@ struct AdminDashboardView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    if isReadOnly {
-                        readOnlyNotice
-                    }
-                    overview
-                    filters
-                    content
-                } header: {
-                    controls
-                }
+        Group {
+            if usesWideLayout {
+                wideWorkspace
+            } else {
+                dashboardContent
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 24)
         }
         .background(AppTheme.background.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
@@ -147,19 +141,142 @@ struct AdminDashboardView: View {
         }
     }
 
-    private var controls: some View {
-        VStack(spacing: 10) {
-            Picker("Admin section", selection: $model.selectedSection) {
-                ForEach(AdminDashboardSection.allCases) { section in
-                    Text(section.rawValue).tag(section)
+    private var dashboardContent: some View {
+        ScrollView {
+            LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
+                Section {
+                    if isReadOnly {
+                        readOnlyNotice
+                    }
+                    overview
+                    filters
+                    content
+                } header: {
+                    controls
                 }
             }
-            .pickerStyle(.segmented)
-            .onChange(of: model.selectedSection) {
-                isSearchFocused = false
-                model.searchText = ""
-                expandedCaseID = nil
-                expandedUserID = nil
+            .padding(.horizontal, 14)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private var wideWorkspace: some View {
+        HStack(spacing: 0) {
+            adminSidebar
+                .frame(width: 230)
+                .background(.ultraThinMaterial)
+            Divider()
+            dashboardContent
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var adminSidebar: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Dashboard")
+                    .font(.title2.bold())
+                    .foregroundStyle(AppTheme.ink)
+                Text(isReadOnly ? "Manager workspace" : "Admin workspace")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+            }
+
+            VStack(spacing: 7) {
+                sidebarSectionButton(.cases, symbol: "person.3.sequence")
+                sidebarSectionButton(.users, symbol: "person.2")
+            }
+
+            Divider()
+
+            if model.selectedSection == .cases {
+                sidebarMetric("All cases", value: model.cases.count)
+                sidebarMetric("Waiting", value: model.cases.filter { $0.status == .waiting && !$0.isCompleted }.count)
+                sidebarMetric("Unassigned", value: model.cases.filter { $0.doctorID == nil }.count)
+            } else {
+                sidebarMetric("All users", value: model.users.count)
+                sidebarMetric("Active", value: model.users.filter(\.active).count)
+                sidebarMetric("Doctors", value: model.users.filter { $0.role == .doctor }.count)
+            }
+
+            Spacer()
+
+            if model.selectedSection == .users && !isReadOnly {
+                Button {
+                    showsNewUser = true
+                } label: {
+                    Label("New user", systemImage: "person.badge.plus")
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    showsAgencyManagement = true
+                } label: {
+                    Label("Manage agencies", systemImage: "building.2")
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(16)
+    }
+
+    private func sidebarSectionButton(_ section: AdminDashboardSection, symbol: String) -> some View {
+        Button {
+            selectSection(section)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).frame(width: 20)
+                Text(section.rawValue)
+                Spacer()
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(model.selectedSection == section ? AppTheme.accentInk : AppTheme.ink)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 42)
+            .background(
+                model.selectedSection == section ? AppTheme.accent : Color.clear,
+                in: RoundedRectangle(cornerRadius: 13)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sidebarMetric(_ label: String, value: Int) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text("\(value)").fontWeight(.bold)
+        }
+        .font(.subheadline)
+        .foregroundStyle(AppTheme.muted)
+    }
+
+    private func selectSection(_ section: AdminDashboardSection) {
+        guard model.selectedSection != section else { return }
+        model.selectedSection = section
+        isSearchFocused = false
+        model.searchText = ""
+        expandedCaseID = nil
+        expandedUserID = nil
+    }
+
+    private var controls: some View {
+        VStack(spacing: 10) {
+            if !usesWideLayout {
+                Picker("Admin section", selection: $model.selectedSection) {
+                    ForEach(AdminDashboardSection.allCases) { section in
+                        Text(section.rawValue).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: model.selectedSection) {
+                    isSearchFocused = false
+                    model.searchText = ""
+                    expandedCaseID = nil
+                    expandedUserID = nil
+                }
             }
 
             HStack(spacing: 9) {
@@ -200,7 +317,7 @@ struct AdminDashboardView: View {
                 .buttonStyle(.bordered)
                 .tint(AppTheme.brand)
 
-                if model.selectedSection == .users && !isReadOnly {
+                if model.selectedSection == .users && !isReadOnly && !usesWideLayout {
                     Menu {
                         Button("New user", systemImage: "person.badge.plus") { showsNewUser = true }
                         Button("Manage agencies", systemImage: "building.2.crop.circle") { showsAgencyManagement = true }
@@ -331,54 +448,74 @@ struct AdminDashboardView: View {
         } else if model.selectedSection == .cases {
             if model.filteredCases.isEmpty {
                 emptyState("No cases found", icon: "tray")
+            } else if usesWideLayout {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 430), spacing: 12)], spacing: 12) {
+                    ForEach(model.filteredCases) { item in
+                        caseCard(item)
+                    }
+                }
             } else {
                 ForEach(model.filteredCases) { item in
-                    AdminCaseCard(
-                        item: item,
-                        doctors: model.activeDoctors,
-                        isReadOnly: isReadOnly,
-                        isExpanded: expandedCaseID == item.id,
-                        onToggle: {
-                            isSearchFocused = false
-                            withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id }
-                        },
-                        onAssign: { requestAssignment(for: item, doctorID: $0) },
-                        onUndoConfirmation: { Task { await model.unconfirmCase(item) } },
-                        onDelete: {
-                            Task {
-                                await model.deleteCase(item)
-                                if expandedCaseID == item.id { expandedCaseID = nil }
-                            }
-                        },
-                        onPurgePhoto: { photoID in Task { await model.purgePhoto(id: photoID) } },
-                        onSendOperationalNote: { text in
-                            await model.addOperationalNote(to: item, text: text)
-                        }
-                    )
+                    caseCard(item)
                 }
             }
         } else if model.filteredUsers.isEmpty {
             emptyState("No users found", icon: "person.2")
+        } else if usesWideLayout {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 380), spacing: 12)], spacing: 12) {
+                ForEach(model.filteredUsers) { user in
+                    userCard(user)
+                }
+            }
         } else {
             ForEach(model.filteredUsers) { user in
-                AdminUserCard(
-                    user: user,
-                    currentUserID: model.currentUserID,
-                    isReadOnly: isReadOnly,
-                    isExpanded: expandedUserID == user.id,
-                    onToggle: {
-                        isSearchFocused = false
-                        withAnimation { expandedUserID = expandedUserID == user.id ? nil : user.id }
-                    },
-                    onEdit: {
-                        isSearchFocused = false
-                        editingUser = user
-                    },
-                    onSetActive: { requestUserAction(user, active: $0, delete: false) },
-                    onDelete: { requestUserAction(user, active: false, delete: true) }
-                )
+                userCard(user)
             }
         }
+    }
+
+    private func caseCard(_ item: AdminCase) -> some View {
+        AdminCaseCard(
+            item: item,
+            doctors: model.activeDoctors,
+            isReadOnly: isReadOnly,
+            isExpanded: expandedCaseID == item.id,
+            onToggle: {
+                isSearchFocused = false
+                withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id }
+            },
+            onAssign: { requestAssignment(for: item, doctorID: $0) },
+            onUndoConfirmation: { Task { await model.unconfirmCase(item) } },
+            onDelete: {
+                Task {
+                    await model.deleteCase(item)
+                    if expandedCaseID == item.id { expandedCaseID = nil }
+                }
+            },
+            onPurgePhoto: { photoID in Task { await model.purgePhoto(id: photoID) } },
+            onSendOperationalNote: { text in
+                await model.addOperationalNote(to: item, text: text)
+            }
+        )
+    }
+
+    private func userCard(_ user: AdminUser) -> some View {
+        AdminUserCard(
+            user: user,
+            currentUserID: model.currentUserID,
+            isReadOnly: isReadOnly,
+            isExpanded: expandedUserID == user.id,
+            onToggle: {
+                isSearchFocused = false
+                withAnimation { expandedUserID = expandedUserID == user.id ? nil : user.id }
+            },
+            onEdit: {
+                isSearchFocused = false
+                editingUser = user
+            },
+            onSetActive: { requestUserAction(user, active: $0, delete: false) },
+            onDelete: { requestUserAction(user, active: false, delete: true) }
+        )
     }
 
     private var searchPlaceholder: String {

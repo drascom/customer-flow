@@ -24,10 +24,13 @@ private enum AgentCaseFilter: String, CaseIterable, Identifiable {
 
 struct AgentCasesView: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var filter: AgentCaseFilter = .all
     @State private var searchText = ""
     @State private var selectedCaseID: UUID?
     @FocusState private var isSearchFocused: Bool
+
+    private var usesWideLayout: Bool { horizontalSizeClass == .regular }
 
     private var myCases: [ConsultationCase] {
         state.cases
@@ -51,6 +54,58 @@ struct AgentCasesView: View {
     }
 
     var body: some View {
+        Group {
+            if usesWideLayout {
+                wideWorkspace
+            } else {
+                compactWorkspace
+            }
+        }
+        .background(AppTheme.background)
+        .scrollDismissesKeyboard(.interactively)
+        .onChange(of: state.pendingNotificationCaseID) { _, caseID in
+            guard let caseID, state.cases.contains(where: { $0.id == caseID }) else { return }
+            selectedCaseID = caseID
+            state.consumePendingNotificationCase()
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { !usesWideLayout && selectedCaseID != nil },
+                set: { if !$0 { selectedCaseID = nil } }
+            )
+        ) {
+            if let caseID = selectedCaseID {
+                NavigationStack {
+                    AgentCaseEditorView(caseID: caseID)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button {
+                                    selectedCaseID = nil
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.subheadline.bold())
+                                }
+                                .accessibilityLabel("Close case details")
+                            }
+                        }
+                        .toolbarBackground(AppTheme.opaqueSurface, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                }
+                .presentationDetents([.fraction(0.97)])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(28)
+                .presentationContentInteraction(.scrolls)
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { isSearchFocused = false }
+            }
+        }
+    }
+
+    private var compactWorkspace: some View {
         ScrollView {
             LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
                 Section {
@@ -96,49 +151,131 @@ struct AgentCasesView: View {
                 }
             }
         }
-        .background(AppTheme.background)
-        .scrollDismissesKeyboard(.interactively)
         .refreshable { await state.load() }
-        .onChange(of: state.pendingNotificationCaseID) { _, caseID in
-            guard let caseID, state.cases.contains(where: { $0.id == caseID }) else { return }
-            selectedCaseID = caseID
-            state.consumePendingNotificationCase()
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { selectedCaseID != nil },
-                set: { if !$0 { selectedCaseID = nil } }
-            )
-        ) {
-            if let caseID = selectedCaseID {
-                NavigationStack {
-                    AgentCaseEditorView(caseID: caseID)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button {
-                                    selectedCaseID = nil
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.subheadline.bold())
-                                }
-                                .accessibilityLabel("Close case details")
+    }
+
+    private var wideWorkspace: some View {
+        HStack(spacing: 0) {
+            wideSidebar
+                .frame(width: 220)
+                .background(.ultraThinMaterial)
+
+            Divider()
+
+            VStack(spacing: 0) {
+                searchHeader
+                Divider().overlay(AppTheme.border)
+                ScrollView {
+                    VStack(spacing: 12) {
+                        if myCases.isEmpty {
+                            ContentUnavailableView(
+                                "No cases",
+                                systemImage: "tray",
+                                description: Text("No cases match this view.")
+                            )
+                            .frame(minHeight: 420)
+                        } else {
+                            ForEach(myCases) { item in
+                                AgentCaseListCard(
+                                    item: item,
+                                    unreadNotificationCount: state.unreadNotificationCount(for: item.id),
+                                    isSelected: selectedCaseID == item.id,
+                                    onOpen: { open(item) }
+                                )
                             }
                         }
-                        .toolbarBackground(AppTheme.opaqueSurface, for: .navigationBar)
-                        .toolbarBackground(.visible, for: .navigationBar)
+                    }
+                    .padding(12)
                 }
-                .presentationDetents([.fraction(0.97)])
-                .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(28)
-                .presentationContentInteraction(.scrolls)
+                .refreshable { await state.load() }
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { isSearchFocused = false }
+            .frame(minWidth: 340, idealWidth: 400, maxWidth: 470)
+
+            Divider()
+
+            Group {
+                if let selectedCaseID {
+                    AgentCaseEditorView(caseID: selectedCaseID)
+                        .id(selectedCaseID)
+                } else {
+                    ContentUnavailableView(
+                        "Select a patient",
+                        systemImage: "person.text.rectangle",
+                        description: Text("Choose a case to view details, photos and conversation.")
+                    )
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppTheme.background)
         }
+    }
+
+    private var wideSidebar: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("My cases")
+                    .font(.title2.bold())
+                    .foregroundStyle(AppTheme.ink)
+                Text("\(myCases.count) visible cases")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+            }
+
+            VStack(spacing: 7) {
+                ForEach(AgentCaseFilter.allCases) { item in
+                    Button {
+                        isSearchFocused = false
+                        withAnimation(.easeInOut(duration: 0.18)) { filter = item }
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: sidebarSymbol(for: item))
+                                .frame(width: 20)
+                            Text(item.title)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Spacer()
+                            Text("\(count(for: item))")
+                                .font(.caption.bold())
+                                .foregroundStyle(filter == item ? AppTheme.accentInk : AppTheme.muted)
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(filter == item ? AppTheme.accentInk : AppTheme.ink)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 42)
+                        .background(filter == item ? AppTheme.accent : Color.clear, in: RoundedRectangle(cornerRadius: 13))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer()
+
+            NavigationLink {
+                AgentCaseEditorView()
+            } label: {
+                Label("New case", systemImage: "plus")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(16)
+    }
+
+    private func sidebarSymbol(for item: AgentCaseFilter) -> String {
+        switch item {
+        case .all: "tray.full"
+        case .waiting: "clock"
+        case .answered: "bubble.left.and.bubble.right"
+        case .completed: "checkmark.circle"
+        case .closed: "checkmark.seal"
+        }
+    }
+
+    private func open(_ item: ConsultationCase) {
+        isSearchFocused = false
+        selectedCaseID = item.id
+        Task { await state.markCaseNotificationsRead(item.id) }
     }
 
     private var searchHeader: some View {
@@ -223,6 +360,7 @@ struct AgentCasesView: View {
 private struct AgentCaseListCard: View {
     let item: ConsultationCase
     let unreadNotificationCount: Int
+    var isSelected = false
     let onOpen: () -> Void
 
     var body: some View {
@@ -293,7 +431,7 @@ private struct AgentCaseListCard: View {
         .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(AppTheme.border, lineWidth: 1)
+                .stroke(isSelected ? AppTheme.brand : AppTheme.border, lineWidth: isSelected ? 2 : 1)
         }
         .accessibilityHint("Opens case details")
     }
