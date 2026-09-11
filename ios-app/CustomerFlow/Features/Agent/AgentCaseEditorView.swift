@@ -517,7 +517,9 @@ struct AgentCaseEditorView: View {
     @State private var price = ""
     @State private var finalGrafts = ""
     @State private var finalPrice = ""
-    @State private var appointmentAt = Self.defaultAppointmentDate()
+    @State private var appointmentAt: Date
+    @State private var appointmentDateText: String
+    @State private var appointmentTimeText: String
     @State private var agentNote = ""
     @State private var updateText = ""
     @State private var photoCount: Int
@@ -543,9 +545,13 @@ struct AgentCaseEditorView: View {
     @FocusState private var isUpdateTextFocused: Bool
 
     init(caseID: UUID? = nil) {
+        let defaultAppointment = Self.defaultAppointmentDate()
         _editingCaseID = State(initialValue: caseID)
         _detailsExpanded = State(initialValue: caseID == nil)
         _photoCount = State(initialValue: caseID == nil ? 0 : 3)
+        _appointmentAt = State(initialValue: defaultAppointment)
+        _appointmentDateText = State(initialValue: Self.appointmentDateText(from: defaultAppointment))
+        _appointmentTimeText = State(initialValue: Self.appointmentTimeText(from: defaultAppointment))
     }
 
     private enum DuplicateResolution { case existing, different }
@@ -590,7 +596,11 @@ struct AgentCaseEditorView: View {
     private var finalPlanReady: Bool {
         !finalGrafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !finalPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && appointmentAt > .now
+            && parsedAppointmentAt.map { $0 > .now } == true
+    }
+
+    private var parsedAppointmentAt: Date? {
+        Self.appointment(dateText: appointmentDateText, timeText: appointmentTimeText)
     }
 
     private var missingItems: [String] {
@@ -1134,6 +1144,79 @@ struct AgentCaseEditorView: View {
         return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
     }
 
+    private static func appointmentDateText(from date: Date) -> String {
+        let components = Calendar.current.dateComponents([.day, .month, .year], from: date)
+        return String(
+            format: "%02d/%02d/%04d",
+            components.day ?? 0,
+            components.month ?? 0,
+            components.year ?? 0
+        )
+    }
+
+    private static func appointmentTimeText(from date: Date) -> String {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", components.hour ?? 0, components.minute ?? 0)
+    }
+
+    private static func maskedAppointmentTime(_ value: String) -> String {
+        let digits = String(value.filter(\.isNumber).prefix(4))
+        guard digits.count > 2 else { return digits }
+        let hourEnd = digits.index(digits.startIndex, offsetBy: 2)
+        return "\(digits[..<hourEnd]):\(digits[hourEnd...])"
+    }
+
+    private static func appointment(dateText: String, timeText: String) -> Date? {
+        guard dateText.range(of: #"^\d{2}/\d{2}/\d{4}$"#, options: .regularExpression) != nil,
+              timeText.range(of: #"^\d{2}:\d{2}$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+
+        let dateParts = dateText.split(separator: "/").compactMap { Int($0) }
+        let timeParts = timeText.split(separator: ":").compactMap { Int($0) }
+        guard dateParts.count == 3,
+              timeParts.count == 2,
+              (0...23).contains(timeParts[0]),
+              (0...59).contains(timeParts[1]) else {
+            return nil
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let requested = DateComponents(
+            year: dateParts[2],
+            month: dateParts[1],
+            day: dateParts[0],
+            hour: timeParts[0],
+            minute: timeParts[1]
+        )
+        guard let date = calendar.date(from: requested) else { return nil }
+        let verified = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        guard verified.year == requested.year,
+              verified.month == requested.month,
+              verified.day == requested.day,
+              verified.hour == requested.hour,
+              verified.minute == requested.minute else {
+            return nil
+        }
+        return date
+    }
+
+    private func updateAppointmentFromText(dateText: String? = nil, timeText: String? = nil) {
+        if let appointment = Self.appointment(
+            dateText: dateText ?? appointmentDateText,
+            timeText: timeText ?? appointmentTimeText
+        ) {
+            appointmentAt = appointment
+        }
+    }
+
+    private func setAppointment(_ date: Date) {
+        appointmentAt = date
+        appointmentDateText = Self.appointmentDateText(from: date)
+        appointmentTimeText = Self.appointmentTimeText(from: date)
+    }
+
     private static func maskedDateOfBirth(_ value: String) -> String {
         let digits = String(value.filter(\.isNumber).prefix(8))
         guard digits.count > 2 else { return digits }
@@ -1548,7 +1631,11 @@ struct AgentCaseEditorView: View {
                     }
                 }
 
-                if appointmentAt <= .now {
+                if parsedAppointmentAt == nil {
+                    Text("Enter a valid appointment date and time.")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                } else if let parsedAppointmentAt, parsedAppointmentAt <= .now {
                     Text("Choose a future appointment date and time.")
                         .font(.caption2)
                         .foregroundStyle(.red)
@@ -1578,42 +1665,45 @@ struct AgentCaseEditorView: View {
 
     private var appointmentDateField: some View {
         labeledField("Appointment date", required: true) {
-            DatePicker(
-                "Appointment date",
-                selection: $appointmentAt,
-                displayedComponents: .date
-            )
-            .labelsHidden()
-            .datePickerStyle(.compact)
-            .tint(AppTheme.brand)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            TextField("DD/MM/YYYY", text: $appointmentDateText)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: appointmentDateText) { _, newValue in
+                    let masked = Self.maskedDateOfBirth(newValue)
+                    if masked != newValue {
+                        appointmentDateText = masked
+                    }
+                    updateAppointmentFromText(dateText: masked)
+                }
         }
         .frame(minWidth: 150)
     }
 
     private var appointmentTimeField: some View {
         labeledField("Time", required: true) {
-            DatePicker(
-                "Appointment time",
-                selection: $appointmentAt,
-                displayedComponents: .hourAndMinute
-            )
-            .labelsHidden()
-            .datePickerStyle(.compact)
-            .tint(AppTheme.brand)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            TextField("HH:MM", text: $appointmentTimeText)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: appointmentTimeText) { _, newValue in
+                    let masked = Self.maskedAppointmentTime(newValue)
+                    if masked != newValue {
+                        appointmentTimeText = masked
+                    }
+                    updateAppointmentFromText(timeText: masked)
+                }
         }
         .frame(minWidth: 105)
     }
 
     private func confirmAppointmentButton(_ item: ConsultationCase) -> some View {
         Button("Confirm", systemImage: "checkmark") {
+            guard let parsedAppointmentAt else { return }
             Task {
                 if await state.confirmAndClose(
                     caseID: item.id,
                     finalGrafts: finalGrafts,
                     finalPrice: finalPrice,
-                    appointmentAt: appointmentAt
+                    appointmentAt: parsedAppointmentAt
                 ) {
                     statusText = "Appointment confirmed"
                 }
@@ -1880,7 +1970,7 @@ struct AgentCaseEditorView: View {
                     String(AppCurrency.amount(recommended).dropFirst())
                 }
                 ?? ""
-            appointmentAt = item.appointmentAt ?? Self.defaultAppointmentDate()
+            setAppointment(item.appointmentAt ?? Self.defaultAppointmentDate())
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = item.status.title
@@ -1902,7 +1992,7 @@ struct AgentCaseEditorView: View {
             price = ""
             finalGrafts = ""
             finalPrice = ""
-            appointmentAt = Self.defaultAppointmentDate()
+            setAppointment(Self.defaultAppointmentDate())
             agentNote = ""
             photoCount = 0
             pendingPhotos = []
@@ -2052,7 +2142,7 @@ struct AgentCaseEditorView: View {
                     String(AppCurrency.amount(recommended).dropFirst())
                 }
                 ?? ""
-            appointmentAt = item.appointmentAt ?? Self.defaultAppointmentDate()
+            setAppointment(item.appointmentAt ?? Self.defaultAppointmentDate())
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = "Existing patient · Assigned doctor preserved"

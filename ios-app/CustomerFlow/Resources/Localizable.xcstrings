@@ -216,7 +216,10 @@
     "Annotated patient photo" : {
 
     },
-    "Appointment date and time" : {
+    "Appointment date" : {
+
+    },
+    "Appointment time" : {
 
     },
     "Approx. %@ grafts" : {
@@ -279,6 +282,9 @@
     "Choose a case to view details, photos and conversation." : {
 
     },
+    "Choose a future appointment date and time." : {
+
+    },
     "Choose from Photo Library" : {
 
     },
@@ -318,7 +324,7 @@
     "Confirm" : {
 
     },
-    "Confirm Appointment" : {
+    "Confirm appointment" : {
 
     },
     "Confirm new password" : {
@@ -500,6 +506,9 @@
 
     },
     "Final agreed plan" : {
+
+    },
+    "Finalise the agreed plan and schedule in one step." : {
 
     },
     "Forgot password?" : {
@@ -1037,9 +1046,6 @@
 
     },
     "Username or email" : {
-
-    },
-    "Using the doctor’s recommendation, enter the final plan and scheduled examination or procedure time." : {
 
     },
     "ustomer " : {
