@@ -1582,7 +1582,7 @@ struct AgentCaseEditorView: View {
         }
         .font(.caption.weight(.semibold))
         .buttonStyle(.bordered)
-        .tint(AppTheme.muted)
+        .tint(AppTheme.accent)
         .frame(maxWidth: .infinity)
     }
 
