@@ -42,7 +42,7 @@ enum ConsultationStatus: String, Codable, Sendable {
     var title: String {
         switch self {
         case .waiting: "Waiting for Doctor"
-        case .answered: "Waiting for Agent Confirmation"
+        case .answered: "Action Needed"
         case .closed: "Confirmed"
         }
     }

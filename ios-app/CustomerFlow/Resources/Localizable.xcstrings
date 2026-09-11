@@ -171,6 +171,9 @@
     "Add a patient photo" : {
 
     },
+    "Add an update or question" : {
+
+    },
     "Add photo" : {
 
     },
@@ -297,6 +300,12 @@
     "Close conversation" : {
 
     },
+    "Close it when no further patient follow-up is needed." : {
+
+    },
+    "Close this consultation when no more patient follow-up is needed. A new message will reopen it automatically." : {
+
+    },
     "Closed" : {
 
     },
@@ -328,6 +337,9 @@
 
     },
     "Consultation already exists" : {
+
+    },
+    "Consultation finished?" : {
 
     },
     "Continue" : {
@@ -637,9 +649,6 @@
     "Not specified" : {
 
     },
-    "Nothing else to add?" : {
-
-    },
     "notifications.close" : {
       "localizations" : {
         "en" : {
@@ -696,16 +705,7 @@
     "Oldest first" : {
 
     },
-    "One tap closes it; the agent does not need to close it too." : {
-
-    },
-    "One tap is enough; the other side does not need to close it too." : {
-
-    },
     "Only inactive users without consultation history can be permanently deleted." : {
-
-    },
-    "Only one person needs to close it. A new doctor or agent message will reopen the case automatically." : {
 
     },
     "Open App Store" : {
@@ -879,6 +879,9 @@
     "Selected patient photo %lld" : {
 
     },
+    "Send" : {
+
+    },
     "Send a message below to reopen this case." : {
 
     },
@@ -897,7 +900,7 @@
     "Send note" : {
 
     },
-    "Send to doctor" : {
+    "Sending" : {
 
     },
     "Sending your first message assigns the patient to you." : {
