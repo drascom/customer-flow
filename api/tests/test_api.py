@@ -630,6 +630,13 @@ class APITestCase(unittest.TestCase):
         }, token=agent, expected=422)
         self.assertEqual("invalid_patient_age", invalid_age["error"]["code"])
 
+        invalid_email = self.request("POST", "/cases", {
+            "patientName": "Invalid Email Patient", "grafts": "2000",
+            "currency": "GBP", "price": "1800", "note": "Invalid email",
+            "photoCount": 0, "patientProfile": {"email": "not-an-email@example"},
+        }, token=agent, expected=422)
+        self.assertEqual("invalid_patient_email", invalid_email["error"]["code"])
+
     def test_authenticated_clients_receive_live_change_events(self):
         admin = self.login("admin", "demo123")
         agent = self.login("user1", "demo123")

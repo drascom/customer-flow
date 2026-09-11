@@ -147,6 +147,7 @@ PATIENT_PROFILE_FIELDS = {
     "profileNote": ("profile_note", 1000),
 }
 PATIENT_GENDERS = {"male", "female", "non_binary", "other", "prefer_not_to_say"}
+PATIENT_EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
 
 
 def patient_profile_values(payload: dict, defaults: sqlite3.Row | None = None) -> dict:
@@ -196,7 +197,7 @@ def patient_profile_values(payload: dict, defaults: sqlite3.Row | None = None) -
     if gender and gender not in PATIENT_GENDERS:
         raise APIError(422, "invalid_gender", "Select a valid gender option.")
     email = result["email"]
-    if email and ("@" not in email or email.startswith("@") or email.endswith("@")):
+    if email and PATIENT_EMAIL_PATTERN.fullmatch(email) is None:
         raise APIError(422, "invalid_patient_email", "Enter a valid patient email address.")
     return result
 

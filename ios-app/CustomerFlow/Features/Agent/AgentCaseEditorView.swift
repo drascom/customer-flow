@@ -512,9 +512,9 @@ struct AgentCaseEditorView: View {
     @State private var patientRegion = ""
     @State private var occupation = ""
     @State private var profileNote = ""
-    @State private var grafts = "3,200"
+    @State private var grafts = ""
     @State private var currency = AppCurrency.code
-    @State private var price = "2,850"
+    @State private var price = ""
     @State private var finalGrafts = ""
     @State private var finalPrice = ""
     @State private var appointmentAt = Date().addingTimeInterval(86_400)
@@ -932,9 +932,21 @@ struct AgentCaseEditorView: View {
 
             labeledField("Date of birth", required: false) {
                 TextField("DD/MM/YYYY", text: $dateOfBirthText)
-                    .keyboardType(.numbersAndPunctuation)
+                    .keyboardType(.numberPad)
                     .textContentType(.birthdate)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: dateOfBirthText) { oldValue, newValue in
+                        let maskedValue = Self.maskedDateOfBirth(newValue)
+                        if maskedValue != newValue {
+                            dateOfBirthText = maskedValue
+                            return
+                        }
+                        if let selectedAge {
+                            patientAge = String(selectedAge)
+                        } else if Self.date(fromDisplay: oldValue) != nil {
+                            patientAge = ""
+                        }
+                    }
                 if !dateOfBirthText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isDateOfBirthValid {
                     Text("Enter the date as DD/MM/YYYY.")
                         .font(.caption2)
@@ -948,9 +960,6 @@ struct AgentCaseEditorView: View {
                     .textFieldStyle(.roundedBorder)
                     .disabled(selectedAge != nil)
                     .opacity(selectedAge == nil ? 1 : 0.72)
-                    .onChange(of: dateOfBirthText) { _, _ in
-                        if let selectedAge { patientAge = String(selectedAge) }
-                    }
                 if selectedAge != nil {
                     Text("Calculated automatically from the date of birth.")
                         .font(.caption2)
@@ -985,8 +994,14 @@ struct AgentCaseEditorView: View {
                 TextField("Patient email address", text: $patientEmail)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .textContentType(.emailAddress)
                     .textFieldStyle(.roundedBorder)
+                if !isPatientEmailValid {
+                    Text("Enter a valid email address, for example name@example.com.")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
             }
             labeledField("Address", required: false) {
                 TextField("Street address", text: $patientAddress, axis: .vertical)
@@ -1066,8 +1081,17 @@ struct AgentCaseEditorView: View {
             || Int(patientAge).map { (0...130).contains($0) } == true
     }
 
+    private var isPatientEmailValid: Bool {
+        let value = patientEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return true }
+        return value.range(
+            of: #"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     private var patientProfileIsValid: Bool {
-        isDateOfBirthValid && isPatientAgeValid
+        isDateOfBirthValid && isPatientAgeValid && isPatientEmailValid
     }
 
     private var patientProfileInput: PatientProfileInput {
@@ -1103,10 +1127,26 @@ struct AgentCaseEditorView: View {
         return String(format: "%02d/%02d/%04d", components[2], components[1], components[0])
     }
 
+    private static func maskedDateOfBirth(_ value: String) -> String {
+        let digits = String(value.filter(\.isNumber).prefix(8))
+        guard digits.count > 2 else { return digits }
+
+        let dayEnd = digits.index(digits.startIndex, offsetBy: 2)
+        let day = digits[..<dayEnd]
+        let remainder = digits[dayEnd...]
+        guard remainder.count > 2 else { return "\(day)/\(remainder)" }
+
+        let monthEnd = remainder.index(remainder.startIndex, offsetBy: 2)
+        return "\(day)/\(remainder[..<monthEnd])/\(remainder[monthEnd...])"
+    }
+
     private static func date(fromDisplay value: String) -> Date? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let components = trimmed.split(whereSeparator: { "/-.".contains($0) }).compactMap { Int($0) }
+        guard trimmed.range(
+            of: #"^\d{2}/\d{2}/\d{4}$"#,
+            options: .regularExpression
+        ) != nil else { return nil }
+        let components = trimmed.split(separator: "/").compactMap { Int($0) }
         guard components.count == 3 else { return nil }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
@@ -1117,6 +1157,8 @@ struct AgentCaseEditorView: View {
         guard verified.year == components[2], verified.month == components[1], verified.day == components[0] else {
             return nil
         }
+        guard let age = calendar.dateComponents([.year], from: date, to: .now).year,
+              (0...130).contains(age) else { return nil }
         return date
     }
 
@@ -1688,18 +1730,22 @@ struct AgentCaseEditorView: View {
 
             Spacer()
 
-            if isSubmitting {
-                ProgressView()
-            } else if canAdvance {
-                Button(createStep == .photos ? "Submit" : "Continue") {
-                    if createStep == .photos {
-                        submitNewCase()
-                    } else if let next = CreateStep(rawValue: createStep.rawValue + 1) {
-                        createStep = next
-                    }
+            Button {
+                if createStep == .photos {
+                    submitNewCase()
+                } else if let next = CreateStep(rawValue: createStep.rawValue + 1) {
+                    createStep = next
                 }
-                .buttonStyle(.borderedProminent)
+            } label: {
+                if isSubmitting {
+                    ProgressView()
+                        .frame(minWidth: 72)
+                } else {
+                    Text(createStep == .photos ? "Submit" : "Continue")
+                }
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canAdvance || isSubmitting)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -1709,7 +1755,9 @@ struct AgentCaseEditorView: View {
     private var canAdvance: Bool {
         switch createStep {
         case .patient:
-            return patientProfileIsValid
+            return patientName.trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(whereSeparator: \.isWhitespace).count >= 2
+                && patientProfileIsValid
                 && (patientVerification == .newPatient || patientVerification == .differentConfirmed)
         case .needs:
             return !agentNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1784,9 +1832,9 @@ struct AgentCaseEditorView: View {
             patientRegion = ""
             occupation = ""
             profileNote = ""
-            grafts = "3,200"
+            grafts = ""
             currency = AppCurrency.code
-            price = "2,850"
+            price = ""
             finalGrafts = ""
             finalPrice = ""
             appointmentAt = Date().addingTimeInterval(86_400)
