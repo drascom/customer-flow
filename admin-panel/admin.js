@@ -350,7 +350,11 @@ function renderCaseDetail(item) {
   bindDetailActions(item);
 }
 
-function canEditAgentCase(item) { return state.user.role === "agent" && (item.agentID === state.user.id || (!item.agentID && item.agentName === state.user.displayName)); }
+// The API only returns cases belonging to the signed-in agent's agency and
+// enforces the same agency boundary on every mutation. A case may have been
+// created by the agency's MCP service account, so comparing its agent ID with
+// the current employee would incorrectly make that shared case read-only.
+function canEditAgentCase(_item) { return state.user.role === "agent"; }
 
 function patientDetailCard(item, patient, details, editable) {
   return `<section class="detail-section patient-flip-card"><div id="patientFlipper" class="patient-flipper">

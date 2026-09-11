@@ -568,11 +568,10 @@ struct AgentCaseEditorView: View {
     private var isEditMode: Bool { editingCaseID != nil }
 
     private var canEditCase: Bool {
-        guard let editCase else { return true }
-        if let agentID = editCase.agentID {
-            return agentID == state.currentUser?.id
-        }
-        return editCase.agentName == state.currentAgentName
+        // The server scopes an agent's case list and mutations to their agency.
+        // Cases created by that agency's MCP account are therefore shared with
+        // its signed-in employees, even though the creator IDs are different.
+        state.role == .agent
     }
 
     private var editCase: ConsultationCase? {
