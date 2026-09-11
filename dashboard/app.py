@@ -4,6 +4,9 @@
 import argparse
 import json
 import mimetypes
+import os
+import re
+import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -18,6 +21,26 @@ FORWARDED_HEADERS = (
 )
 
 
+def deployment_commit(repo_root):
+    for name in ("CF_DEPLOY_COMMIT", "GIT_COMMIT", "SOURCE_VERSION"):
+        value = os.getenv(name, "").strip()
+        if re.fullmatch(r"[0-9a-fA-F]{7,40}", value):
+            return value[:8].lower()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        value = result.stdout.strip()
+        return value if re.fullmatch(r"[0-9a-f]{7,12}", value) else "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
 class DashboardServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -25,6 +48,7 @@ class DashboardServer(ThreadingHTTPServer):
         super().__init__(address, DashboardHandler)
         self.admin_dir = Path(admin_dir).resolve()
         self.api_url = api_url.rstrip("/")
+        self.deployment_commit = deployment_commit(self.admin_dir.parent)
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -37,7 +61,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path in {"/admin/admin.css", "/admin/admin.js"}:
             return self._serve_asset(path.rsplit("/", 1)[-1])
         if path == "/dashboard/health":
-            return self._json(200, {"status": "ok", "service": "customer-flow-dashboard"})
+            return self._json(200, {
+                "status": "ok",
+                "service": "customer-flow-dashboard",
+                "commit": self.server.deployment_commit,
+            })
         return self._proxy("GET") if path.startswith("/api/v1/") else self._not_found()
 
     def do_POST(self):
@@ -98,7 +126,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         content_type = forced_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         if content_type.startswith(("text/", "application/javascript")) and "charset" not in content_type:
             content_type += "; charset=utf-8"
-        self._send_bytes(200, content_type, path.read_bytes())
+        content = path.read_bytes()
+        if filename == "index.html":
+            content = content.replace(b"__CF_DEPLOY_COMMIT__", self.server.deployment_commit.encode())
+        self._send_bytes(200, content_type, content)
 
     def _send_bytes(self, status, content_type, content):
         self.send_response(status)

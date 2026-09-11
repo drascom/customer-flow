@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 import threading
@@ -57,6 +58,8 @@ class DashboardTestCase(unittest.TestCase):
         self.assertNotIn(b"data-direct-admin", html)
         self.assertEqual(2, html.count(b'class="product-footer'))
         self.assertIn(b"Version 0.4.0", html)
+        self.assertNotIn(b"__CF_DEPLOY_COMMIT__", html)
+        self.assertEqual(2, len(re.findall(rb"Commit [0-9a-f]{7,12}", html)))
         self.assertIn(b"Developed by Drascom @ 2026", html)
         self.assertIn(b"https://github.com/drascom/customer-flow", html)
         for username in ("admin", "manager", "user1", "doctor1"):
@@ -69,6 +72,11 @@ class DashboardTestCase(unittest.TestCase):
         javascript = self.request("GET", "/admin/admin.js?v=card-grid")
         self.assertIn(b".case-card .case-metrics", css)
         self.assertIn(b"function caseCardHTML", javascript)
+
+    def test_dashboard_health_reports_deployed_commit(self):
+        health = self.request("GET", "/dashboard/health")
+        self.assertEqual("ok", health["status"])
+        self.assertRegex(health["commit"], r"^[0-9a-f]{7,12}$")
 
     def test_role_authorization_is_enforced_by_api(self):
         agent = self.login("user1")
