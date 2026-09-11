@@ -369,7 +369,7 @@ function renderCaseDetail(item) {
   const details = [["Date of birth", formatDOB(patient.dateOfBirth)], ["Age", patient.age], ["Gender", prettyGender(patient.gender)], ["Phone", patient.phone], ["Email", patient.email], ["Address", patient.address], ["City", patient.city], ["Region", patient.region], ["Occupation", patient.occupation], ["Info", patient.profileNote]].filter(([, v]) => v !== null && v !== undefined && v !== "");
   const mayEdit = canEditAgentCase(item);
   $("caseDialogContent").innerHTML = `<section class="case-hero"><div><span class="status ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span><h3>${escapeHTML(patient.name)}</h3><p>${escapeHTML(caseNote(item) || "Patient consultation")}</p></div><div class="case-metrics"><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} grafts</small><strong>${escapeHTML(caseGrafts(item))}</strong></span><span class="metric"><small>${item.status === "closed" ? "Final" : "Estimated"} price</small><strong>£${escapeHTML(casePrice(item))}</strong></span>${item.appointmentAt ? `<span class="metric"><small>Appointment</small><strong>${escapeHTML(formatDate(item.appointmentAt))}</strong></span>` : ""}</div></section>
-    ${item.status === "closed" ? unconfirmControl(item) : (mayEdit && item.status === "answered" && !item.completedAt ? closeCaseForm(item) : "")}
+    ${item.status === "closed" ? unconfirmControl(item) : (mayEdit && !item.completedAt && latestDoctorRecommendation(item) ? closeCaseForm(item) : "")}
     ${details.length || mayEdit ? patientDetailCard(item, patient, details, mayEdit && item.status !== "closed") : ""}
     <section class="detail-section"><div class="section-heading"><h3>Photos</h3><span>${ids.length} photos</span></div><div class="photo-grid">${renderPhotos(item)}</div>${mayEdit ? `<label class="upload-button">+ Add photos<input id="detailPhotoUpload" type="file" accept="image/*" multiple hidden></label>` : ""}</section>
     <section id="conversationSection" class="detail-section"><div class="section-heading"><h3>Conversation</h3><span>${messages.length} updates</span></div><div class="conversation">${messages.map((m) => messageHTML(item, m)).join("") || `<p>No messages yet.</p>`}</div>${completionControl(item)}${conversationForm(item)}</section>`;
@@ -430,11 +430,17 @@ function completionControl(item) {
 }
 
 function closeCaseForm(item) {
-  const recommendation = [...(item.messages || [])].reverse().find((m) => m.role === "doctor");
+  const recommendation = latestDoctorRecommendation(item);
   const localDate = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
   const today = new Date();
   const defaultAppointment = new Date(); defaultAppointment.setDate(defaultAppointment.getDate() + 1);
   return `<section class="detail-section confirmation-section"><form id="closeCaseForm" class="confirmation-form"><div class="confirmation-copy"><h3>Confirm appointment</h3><p>Finalise the agreed plan and schedule.</p></div><label>Final grafts<input id="finalGrafts" value="${escapeHTML(recommendation?.approximateGrafts || item.agentGrafts || "")}" placeholder="Grafts" required></label><label>Final price (£)<input id="finalPrice" value="${escapeHTML(String(recommendation?.recommendedPrice || item.agentPrice || "").replace(/[^0-9.,-]/g, ""))}" placeholder="Price" required></label><label>Appointment date<input id="appointmentDate" type="date" min="${localDate(today)}" value="${localDate(defaultAppointment)}" required></label><label>Time<input id="appointmentTime" type="time" value="09:00" required></label><button class="confirmation-submit" type="submit">✓ Confirm</button></form></section>`;
+}
+
+function latestDoctorRecommendation(item) {
+  return [...(item.messages || [])].reverse().find((message) =>
+    message.role === "doctor" && (message.approximateGrafts || message.recommendedPrice)
+  );
 }
 
 function unconfirmControl(item) {

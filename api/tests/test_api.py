@@ -1011,6 +1011,11 @@ class APITestCase(unittest.TestCase):
         }, token=agent, expected=201)["case"]
         self.assertEqual("waiting", created["status"])
         self.assertEqual("GBP", created["currency"])
+        premature = self.request("POST", f"/cases/{created['id']}/close", {
+            "finalGrafts": "2550", "finalPrice": "2450",
+            "appointmentAt": "2026-10-20T09:30:00Z",
+        }, token=agent, expected=409)
+        self.assertEqual("not_ready_to_close", premature["error"]["code"])
         answered = self.request("POST", f"/cases/{created['id']}/recommendations", {
             "approximateGrafts": "2400-2600", "recommendedPrice": "£2500", "text": "Suitable donor area."
         }, token=doctor)["case"]
@@ -1024,6 +1029,10 @@ class APITestCase(unittest.TestCase):
             "finalGrafts": "2550", "finalPrice": "2450",
         }, token=agent, expected=422)
         self.assertEqual("appointment_required", missing_appointment["error"]["code"])
+        follow_up = self.request("POST", f"/cases/{created['id']}/agent-updates", {
+            "text": "Additional information before booking.",
+        }, token=agent)["case"]
+        self.assertEqual("waiting", follow_up["status"])
         closed = self.request("POST", f"/cases/{created['id']}/close", {
             "finalGrafts": "2550", "finalPrice": "2450",
             "appointmentAt": "2026-10-20T09:30:00Z",

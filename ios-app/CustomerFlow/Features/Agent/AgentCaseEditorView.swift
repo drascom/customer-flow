@@ -1567,7 +1567,7 @@ struct AgentCaseEditorView: View {
 
     @ViewBuilder
     private func caseOutcomeButtons(_ item: ConsultationCase) -> some View {
-        if item.status == .answered && latestDoctorRecommendation != nil {
+        if item.status != .closed && latestDoctorRecommendation != nil {
             Button("Confirm appointment", systemImage: "calendar.badge.checkmark") {
                 showsAppointmentConfirmation = true
             }

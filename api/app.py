@@ -1804,8 +1804,18 @@ class Database:
             try:
                 row = self._case_row(conn, case_id)
                 self._assert_owner(row, user)
-                if row["status"] != "answered":
-                    raise APIError(409, "not_ready_to_close", "Only an answered case can be confirmed and closed.")
+                has_doctor_recommendation = conn.execute(
+                    "SELECT 1 FROM messages WHERE case_id=? AND role='doctor' "
+                    "AND (NULLIF(TRIM(approximate_grafts),'') IS NOT NULL "
+                    "OR NULLIF(TRIM(recommended_price),'') IS NOT NULL) LIMIT 1",
+                    (case_id,),
+                ).fetchone()
+                if row["status"] not in ("answered", "waiting") or not has_doctor_recommendation:
+                    raise APIError(
+                        409,
+                        "not_ready_to_close",
+                        "A doctor recommendation is required before confirming an appointment.",
+                    )
                 now = iso(utc_now())
                 conn.execute(
                     "UPDATE cases SET status='closed',final_grafts=?,final_price=?,finalized_at=?,appointment_at=?,"

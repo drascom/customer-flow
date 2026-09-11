@@ -258,6 +258,9 @@
     "Case details" : {
 
     },
+    "Case outcome" : {
+
+    },
     "Change & Sign Out" : {
 
     },
@@ -300,16 +303,28 @@
     "Close" : {
 
     },
+    "Close case" : {
+
+    },
     "Close case details" : {
 
     },
     "Close conversation" : {
 
     },
-    "Close it when no further patient follow-up is needed." : {
+    "Close the case when no further follow-up is needed." : {
+
+    },
+    "Close this confirmed case?" : {
 
     },
     "Close this consultation when no more patient follow-up is needed. A new message will reopen it automatically." : {
+
+    },
+    "Close without an appointment?" : {
+
+    },
+    "Close without appointment" : {
 
     },
     "Closed" : {
@@ -322,6 +337,9 @@
 
     },
     "Confirm" : {
+
+    },
+    "Confirm a booking, or close the consultation without one." : {
 
     },
     "Confirm appointment" : {
@@ -343,9 +361,6 @@
 
     },
     "Consultation already exists" : {
-
-    },
-    "Consultation finished?" : {
 
     },
     "Continue" : {
@@ -472,6 +487,9 @@
     "Enlarge" : {
 
     },
+    "Enter a valid appointment date and time." : {
+
+    },
     "Enter a valid email address, for example name@example.com." : {
 
     },
@@ -544,6 +562,9 @@
     "Help" : {
 
     },
+    "HH:MM" : {
+
+    },
     "Hide password" : {
 
     },
@@ -578,12 +599,6 @@
 
     },
     "Managers can view all records and add operational notes. Clinical and case data remain read-only." : {
-
-    },
-    "Mark as closed" : {
-
-    },
-    "Mark this case as closed?" : {
 
     },
     "MCP connected" : {
@@ -844,9 +859,6 @@
 
     },
     "Reply to agent" : {
-
-    },
-    "Required" : {
 
     },
     "Reset password" : {
