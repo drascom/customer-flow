@@ -55,6 +55,10 @@ class DashboardTestCase(unittest.TestCase):
         html = self.request("GET", "/")
         self.assertIn(b'id="loginForm"', html)
         self.assertNotIn(b"data-direct-admin", html)
+        self.assertEqual(2, html.count(b'class="product-footer'))
+        self.assertIn(b"Version 0.4.0", html)
+        self.assertIn(b"Developed by Drascom @ 2026", html)
+        self.assertIn(b"https://github.com/drascom/customer-flow", html)
         for username in ("admin", "manager", "user1", "doctor1"):
             token = self.login(username)
             me = self.request("GET", "/api/v1/auth/me", token=token)

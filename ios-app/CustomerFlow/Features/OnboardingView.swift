@@ -19,6 +19,7 @@ struct OnboardingView: View {
                 VStack(spacing: 26) {
                     brand
                     content
+                    productFooter
                 }
                 .frame(maxWidth: 480)
                 .padding(.horizontal, 22)
@@ -183,15 +184,26 @@ struct OnboardingView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
 
-                Text("Version \(AppVersionInfo.current)")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.muted)
-                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
         case .authenticated:
             EmptyView()
         }
+    }
+
+    private var productFooter: some View {
+        HStack(spacing: 7) {
+            Text("Version \(AppVersionInfo.current)")
+            Text("·")
+            Text("Developed by Drascom @ 2026")
+            Text("·")
+            Link("GitHub ↗", destination: URL(string: "https://github.com/drascom/customer-flow")!)
+                .foregroundStyle(AppTheme.brand)
+        }
+        .font(.caption2)
+        .foregroundStyle(AppTheme.muted)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {

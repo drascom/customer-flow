@@ -336,6 +336,9 @@
     "CONVERSATION" : {
 
     },
+    "Developed by Drascom @ 2026" : {
+
+    },
     "Copy this token now. It will not be shown again." : {
 
     },
@@ -502,6 +505,9 @@
     "Give this endpoint and token only to the agency's approved system administrator. The token can access this agency's patient data." : {
 
     },
+    "GitHub ↗" : {
+
+    },
     "Grafts (optional)" : {
 
     },
@@ -518,6 +524,9 @@
 
     },
     "Inactive" : {
+
+    },
+    "Keep me signed in" : {
 
     },
     "Later" : {
