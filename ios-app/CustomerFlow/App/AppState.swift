@@ -20,6 +20,12 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshingAfterForeground = false
     @Published private(set) var updateRequirement: AppUpdateRequirement?
     @Published private(set) var previousServerAddress: String?
+    @Published private(set) var rememberedUsername = UserDefaults.standard.string(
+        forKey: "customerFlow.rememberedUsername"
+    ) ?? ""
+    @Published private(set) var keepsUserSignedIn = UserDefaults.standard.object(
+        forKey: "customerFlow.keepsUserSignedIn"
+    ) as? Bool ?? true
     @Published var errorMessage: String?
     @Published var isWorking = false
 
@@ -28,7 +34,7 @@ final class AppState: ObservableObject {
     var currentDoctorName: String { role == .doctor ? currentUser?.displayName ?? "Doctor" : "Doctor" }
     var currentAgentName: String { role == .agent ? currentUser?.displayName ?? "Agent" : "Agent" }
     var savedServerAddress: String {
-        UserDefaults.standard.string(forKey: serverAddressKey) ?? "https://flow-demo.drascom.uk"
+        UserDefaults.standard.string(forKey: serverAddressKey) ?? ""
     }
 
     private(set) var patientMatcher: any PatientMatchingService = MockPatientMatchingService()
@@ -42,6 +48,8 @@ final class AppState: ObservableObject {
     private var deviceTokenHex: String?
     private let photoCache = NSCache<NSString, NSData>()
     private let serverAddressKey = "customerFlow.serverAddress"
+    private let rememberedUsernameKey = "customerFlow.rememberedUsername"
+    private let keepsUserSignedInKey = "customerFlow.keepsUserSignedIn"
     private var dismissedRecommendedVersion: String?
 
     init(notificationService: any NotificationService = NoopNotificationService()) {
@@ -55,7 +63,8 @@ final class AppState: ObservableObject {
         }
         do {
             let baseURL = try ServerAddress.normalize(savedServerAddress)
-            let token = SecureTokenStore.load()
+            let token = keepsUserSignedIn ? SecureTokenStore.load() : nil
+            if !keepsUserSignedIn { SecureTokenStore.clear() }
             let client = RemoteAPIClient(baseURL: baseURL, accessToken: token)
             let health = try await client.health()
             remoteClient = client
@@ -67,6 +76,7 @@ final class AppState: ObservableObject {
             }
             do {
                 let user = try await client.restoreSession()
+                rememberUsername(user.username)
                 activate(client: client, user: user)
                 phase = .authenticated
                 if !user.requiresPasswordChange {
@@ -106,7 +116,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func login(username: String, password: String) async -> Bool {
+    func login(username: String, password: String, keepSignedIn: Bool) async -> Bool {
         guard let remoteClient else {
             phase = .serverSetup
             return false
@@ -114,8 +124,18 @@ final class AppState: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            let session = try await remoteClient.login(username: username, password: password)
-            try SecureTokenStore.save(session.token)
+            let normalizedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            let session = try await remoteClient.login(username: normalizedUsername, password: password)
+            keepsUserSignedIn = keepSignedIn
+            UserDefaults.standard.set(keepSignedIn, forKey: keepsUserSignedInKey)
+            if keepSignedIn {
+                try SecureTokenStore.save(session.token)
+                rememberUsername(normalizedUsername)
+            } else {
+                SecureTokenStore.clear()
+                rememberedUsername = ""
+                UserDefaults.standard.removeObject(forKey: rememberedUsernameKey)
+            }
             activate(client: remoteClient, user: session.user)
             phase = .authenticated
             if !session.user.requiresPasswordChange {
@@ -147,6 +167,12 @@ final class AppState: ObservableObject {
         patientMatcher = MockPatientMatchingService()
         phase = .login
         isWorking = false
+    }
+
+    private func rememberUsername(_ username: String) {
+        guard keepsUserSignedIn else { return }
+        rememberedUsername = username
+        UserDefaults.standard.set(username, forKey: rememberedUsernameKey)
     }
 
     func updateProfile(displayName: String, email: String, phone: String) async -> Bool {

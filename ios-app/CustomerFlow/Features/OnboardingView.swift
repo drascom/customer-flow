@@ -4,7 +4,8 @@ struct OnboardingView: View {
     @EnvironmentObject private var state: AppState
     @State private var serverAddress = ""
     @State private var username = ""
-    @State private var password = "demo123"
+    @State private var password = ""
+    @State private var keepSignedIn = true
     @State private var showsPasswordReset = false
     @FocusState private var focusedField: Field?
 
@@ -29,6 +30,13 @@ struct OnboardingView: View {
         }
         .onAppear {
             if serverAddress.isEmpty { serverAddress = state.savedServerAddress }
+            if username.isEmpty { username = state.rememberedUsername }
+            keepSignedIn = state.keepsUserSignedIn
+        }
+        .onChange(of: state.phase) { _, phase in
+            guard phase == .login else { return }
+            if username.isEmpty { username = state.rememberedUsername }
+            password = ""
         }
         .animation(.easeInOut(duration: 0.2), value: state.phase)
         .sheet(isPresented: $showsPasswordReset) {
@@ -148,6 +156,10 @@ struct OnboardingView: View {
                 .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
 
+                Toggle("Keep me signed in", isOn: $keepSignedIn)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+
                 Button(action: signIn) {
                     actionLabel("Sign in", systemImage: "arrow.right", loading: state.isWorking)
                 }
@@ -211,7 +223,11 @@ struct OnboardingView: View {
         guard !state.isWorking else { return }
         focusedField = nil
         Task {
-            _ = await state.login(username: username, password: password)
+            _ = await state.login(
+                username: username,
+                password: password,
+                keepSignedIn: keepSignedIn
+            )
         }
     }
 }

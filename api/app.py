@@ -2721,8 +2721,11 @@ class Database:
 
     @staticmethod
     def _assert_owner(case: sqlite3.Row, user: sqlite3.Row) -> None:
-        if case["agent_id"] != user["id"]:
-            raise APIError(403, "forbidden", "You cannot change another agent's case.")
+        if case["agent_id"] == user["id"]:
+            return
+        if user["agency_id"] and case["case_agency_id"] == user["agency_id"]:
+            return
+        raise APIError(403, "forbidden", "This case belongs to another agency.")
 
     @staticmethod
     def _assert_case_visible(case: sqlite3.Row, user: sqlite3.Row) -> None:

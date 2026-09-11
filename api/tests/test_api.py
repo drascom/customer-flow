@@ -332,11 +332,12 @@ class APITestCase(unittest.TestCase):
             denied = self.request(method, path, payload, token=mcp_token, expected=403)
             self.assertEqual("mcp_scope_forbidden", denied["error"]["code"])
 
+        employee_username = "mcp-owner-" + uuid.uuid4().hex[:8]
         employee = self.request(
             "POST",
             "/admin/users",
             {
-                "username": "mcp-owner-" + uuid.uuid4().hex[:8],
+                "username": employee_username,
                 "displayName": "Agency Employee",
                 "role": "agent",
                 "agencyID": agency["id"],
@@ -345,6 +346,7 @@ class APITestCase(unittest.TestCase):
             token=admin,
             expected=201,
         )["user"]
+        employee_token = self.activate_temporary_password(employee_username, "Temporary!123")
         with self.server.database.connect() as conn:
             employee_row = conn.execute("SELECT * FROM users WHERE id=?", (employee["id"],)).fetchone()
             other_agency_case_id = conn.execute(
@@ -470,6 +472,25 @@ class APITestCase(unittest.TestCase):
         )
         event = self.request("GET", f"/events?since={revision}", token=admin)
         self.assertEqual("photo.created", event["event"]["kind"])
+
+        employee_edit = self.request(
+            "PATCH", f"/cases/{created['id']}/agent-values", {
+                "patientName": created["patient"]["name"],
+                "grafts": "2250", "currency": "GBP", "price": "2150",
+                "note": "Updated by an agency employee after MCP creation",
+            }, token=employee_token,
+        )["case"]
+        self.assertEqual(identity["id"], employee_edit["agentID"])
+        self.assertEqual("2250", employee_edit["agentGrafts"])
+        employee_update = self.request(
+            "POST", f"/cases/{created['id']}/agent-updates",
+            {"text": "Follow-up from an agency employee"}, token=employee_token,
+        )["case"]
+        employee_message = next(
+            message for message in employee_update["messages"]
+            if message["text"] == "Follow-up from an agency employee"
+        )
+        self.assertEqual(employee["id"], employee_message["authorID"])
 
         denied = self.request(
             "POST", f"/cases/{created['id']}/close", {}, token=mcp_token, expected=403
@@ -1306,7 +1327,7 @@ class APITestCase(unittest.TestCase):
                               token=agent, expected=403)
         self.assertEqual("forbidden", result["error"]["code"])
 
-    def test_agents_can_view_but_not_edit_cases_from_their_agency(self):
+    def test_agents_can_collaborate_on_cases_from_their_agency(self):
         admin = self.login("admin", "demo123")
         owner = self.login("user1", "demo123")
         agency = next(item for item in self.request("GET", "/admin/agencies", token=admin)["agencies"]
@@ -1331,10 +1352,36 @@ class APITestCase(unittest.TestCase):
             "GET", f"/cases/{created['id']}", token=peer_token,
         )["case"]["id"])
 
-        blocked = self.request("PATCH", f"/cases/{created['id']}/agent-values", {
-            "patientName": created["patient"]["name"], "grafts": "1", "currency": "GBP", "price": "1",
-        }, token=peer_token, expected=403)
-        self.assertEqual("forbidden", blocked["error"]["code"])
+        edited = self.request("PATCH", f"/cases/{created['id']}/agent-values", {
+            "patientName": created["patient"]["name"], "grafts": "2450",
+            "currency": "GBP", "price": "2350",
+        }, token=peer_token)["case"]
+        self.assertEqual("2450", edited["agentGrafts"])
+        self.assertEqual("2350", edited["agentPrice"])
+
+        messaged = self.request(
+            "POST", f"/cases/{created['id']}/agent-updates",
+            {"text": "Agency colleague follow-up"}, token=peer_token,
+        )["case"]
+        peer_message = next(
+            message for message in messaged["messages"]
+            if message["text"] == "Agency colleague follow-up"
+        )
+        self.assertEqual(peer["id"], peer_message["authorID"])
+        self.assertEqual("Agency Peer", peer_message["author"])
+
+        jpeg = b"\xff\xd8agency-collaboration-photo\xff\xd9"
+        uploaded_body, _ = self.raw_request(
+            "POST", f"/cases/{created['id']}/photos", body=jpeg,
+            content_type="image/jpeg", token=peer_token, expected=201,
+        )
+        uploaded = json.loads(uploaded_body)["case"]
+        self.assertEqual(1, uploaded["photoCount"])
+
+        completed = self.request(
+            "POST", f"/cases/{created['id']}/complete", {}, token=peer_token,
+        )["case"]
+        self.assertEqual(peer["id"], completed["completedBy"])
 
     def test_admin_user_lifecycle_and_role_protection(self):
         doctor = self.login("doctor1", "demo123")
