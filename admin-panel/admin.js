@@ -221,11 +221,15 @@ function updateOverview() {
     state.cases.filter((c) => Boolean(c.completedAt)).length];
   values.forEach((value, i) => { $(`overviewValue${i + 1}`).textContent = value; });
   if (state.user.role === "doctor") {
-    $("overviewLabel1").textContent = "All cases"; $("overviewLabel2").textContent = "Waiting";
+    $("overviewLabel1").textContent = "All Cases";
+    $("overviewLabel2").textContent = "In Review";
+    $("overviewLabel3").textContent = "Answered";
+    $("overviewLabel4").textContent = "Confirmed";
+    $("overviewLabel5").textContent = "Closed";
   } else if (state.user.role === "agent") {
     $("overviewLabel1").textContent = "All Cases";
     $("overviewLabel2").textContent = "In Review";
-    $("overviewLabel3").textContent = "Waiting";
+    $("overviewLabel3").textContent = "Action Needed";
     $("overviewLabel4").textContent = "Confirmed";
     $("overviewLabel5").textContent = "Closed";
   }
@@ -240,7 +244,9 @@ function renderFilterChips() {
   const agencies = state.agencies.slice().sort((a, b) => a.name.localeCompare(b.name));
   const doctors = state.users.filter((u) => u.role === "doctor").sort((a, b) => a.displayName.localeCompare(b.displayName));
   const statusFilters = state.user?.role === "agent"
-    ? [["", "All Cases"], ["waiting", "In Review"], ["answered", "Waiting"], ["closed", "Confirmed"], ["completed", "Closed"]]
+    ? [["", "All Cases"], ["waiting", "In Review"], ["answered", "Action Needed"], ["closed", "Confirmed"], ["completed", "Closed"]]
+    : state.user?.role === "doctor"
+      ? [["", "All Cases"], ["waiting", "In Review"], ["answered", "Answered"], ["closed", "Confirmed"], ["completed", "Closed"]]
     : [["", "All"], ["waiting", "Waiting"], ["answered", "Action needed"], ["closed", "Confirmed"], ["completed", "Closed"]];
   setChipGroup("caseStatusChips", statusFilters, state.filters.caseStatus, "caseStatus");
   setChipGroup("caseAssignmentChips", [["", "All"], ["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment");
@@ -419,8 +425,8 @@ function conversationForm(item) {
 
 function completionControl(item) {
   if (item.completedAt) return `<div class="completion-panel"><div><strong>✓ Closed by ${escapeHTML(item.completedByName || "a team member")}</strong><small>${formatDate(item.completedAt)}</small></div><p>A new doctor or agent message will reopen this case automatically.</p></div>`;
-  const canComplete = item.status !== "closed" && (state.user.role === "doctor" || canEditAgentCase(item));
-  return canComplete ? `<div class="completion-action"><span>Nothing else to add?</span><button class="close-case-button compact" id="completeCaseButton" type="button">✓ Mark as closed</button></div>` : "";
+  const canComplete = item.status !== "closed" && canEditAgentCase(item);
+  return canComplete ? `<div class="completion-action"><span>Consultation finished?</span><button class="close-case-button compact" id="completeCaseButton" type="button">✓ Mark as closed</button></div>` : "";
 }
 
 function closeCaseForm(item) {

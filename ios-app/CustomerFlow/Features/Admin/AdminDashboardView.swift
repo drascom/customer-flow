@@ -536,7 +536,13 @@ struct AdminDashboardView: View {
                 }
             }
         }
-        .frame(minWidth: 720, idealWidth: 900, minHeight: 680, idealHeight: 860)
+        .frame(
+            minWidth: 720,
+            idealWidth: 900,
+            minHeight: 1_000,
+            idealHeight: 1_200,
+            maxHeight: .infinity
+        )
         .presentationDetents([.fraction(0.97)])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(28)

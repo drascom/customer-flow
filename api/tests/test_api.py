@@ -14,7 +14,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from unittest.mock import patch
 
-from app import Database, create_server, hash_password
+from app import AGENT_OWNED_CLOSURE_MIGRATION, Database, create_server, hash_password
 
 
 class APITestCase(unittest.TestCase):
@@ -154,6 +154,56 @@ class APITestCase(unittest.TestCase):
                     "SELECT must_change_password FROM users WHERE id='existing-default'"
                 ).fetchone()
             self.assertEqual(1, user["must_change_password"])
+
+    def test_existing_completed_cases_are_reopened_for_agent_review_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = Database(root / "existing.sqlite3", root / "media")
+            database.initialize(seed=True)
+            with database.connect() as conn:
+                case_id = conn.execute(
+                    "SELECT id FROM cases WHERE reference='HT-240814'"
+                ).fetchone()["id"]
+                conn.execute(
+                    "UPDATE cases SET status='waiting',completed_at='2026-09-10T10:00:00Z',"
+                    "completed_by='doctor-emre',completed_by_role='doctor' WHERE id=?",
+                    (case_id,),
+                )
+                conn.execute(
+                    "DELETE FROM app_migrations WHERE name=?",
+                    (AGENT_OWNED_CLOSURE_MIGRATION,),
+                )
+
+            database.initialize(seed=False)
+
+            with database.connect() as conn:
+                reopened = conn.execute(
+                    "SELECT status,completed_at,completed_by,completed_by_role FROM cases WHERE id=?",
+                    (case_id,),
+                ).fetchone()
+                audit_count = conn.execute(
+                    "SELECT COUNT(*) AS count FROM audit_events "
+                    "WHERE action='case.reopened_for_agent_review' AND entity_id=?",
+                    (case_id,),
+                ).fetchone()["count"]
+            self.assertEqual("answered", reopened["status"])
+            self.assertIsNone(reopened["completed_at"])
+            self.assertIsNone(reopened["completed_by"])
+            self.assertIsNone(reopened["completed_by_role"])
+            self.assertEqual(1, audit_count)
+            self.assertEqual(
+                1,
+                len(list(root.glob("existing.before-agent-owned-closure-*.sqlite3"))),
+            )
+
+            database.initialize(seed=False)
+            with database.connect() as conn:
+                repeated_audit_count = conn.execute(
+                    "SELECT COUNT(*) AS count FROM audit_events "
+                    "WHERE action='case.reopened_for_agent_review' AND entity_id=?",
+                    (case_id,),
+                ).fetchone()["count"]
+            self.assertEqual(1, repeated_audit_count)
 
     def test_client_version_policy_is_public_and_only_admin_can_change_minimum(self):
         with self.server.database.connect() as conn:
@@ -1008,7 +1058,7 @@ class APITestCase(unittest.TestCase):
         )
         self.assertEqual("case_not_confirmed", repeated["error"]["code"])
 
-    def test_agent_and_doctor_can_complete_and_new_messages_reopen_case(self):
+    def test_only_agent_can_complete_and_new_doctor_message_reopens_case(self):
         doctor = self.login("doctor1", "demo123")
         agent = self.login("user1", "demo123")
         manager = self.login("manager", "demo123")
@@ -1017,37 +1067,20 @@ class APITestCase(unittest.TestCase):
             "price": "2100", "note": "Completion workflow test", "photoCount": 0,
         }, token=agent, expected=201)["case"]
 
-        completed_by_doctor = self.request(
-            "POST", f"/cases/{created['id']}/complete", {}, token=doctor
-        )["case"]
-        self.assertIsNotNone(completed_by_doctor["completedAt"])
-        self.assertEqual("doctor-emre", completed_by_doctor["completedBy"])
-        self.assertEqual("Doctor 1", completed_by_doctor["completedByName"])
-        self.assertEqual("doctor", completed_by_doctor["completedByRole"])
-        self.assertEqual("waiting", completed_by_doctor["status"])
-        completion_notifications = [
-            item for item in self.request("GET", "/notifications", token=agent)["notifications"]
-            if item["kind"] == "case.completed" and item["caseID"] == created["id"]
-        ]
-        self.assertEqual(1, len(completion_notifications))
+        denied_doctor = self.request(
+            "POST", f"/cases/{created['id']}/complete", {}, token=doctor, expected=403
+        )
+        self.assertEqual("forbidden", denied_doctor["error"]["code"])
 
-        self.request("POST", f"/cases/{created['id']}/complete", {}, token=doctor)
-        repeated_notifications = [
-            item for item in self.request("GET", "/notifications", token=agent)["notifications"]
-            if item["kind"] == "case.completed" and item["caseID"] == created["id"]
-        ]
-        self.assertEqual(1, len(repeated_notifications))
-
-        reopened_for_doctor = self.request("POST", f"/cases/{created['id']}/agent-updates", {
-            "text": "One more question before we finish.",
-        }, token=agent)["case"]
-        self.assertEqual("waiting", reopened_for_doctor["status"])
-        self.assertIsNone(reopened_for_doctor["completedAt"])
-        self.assertIsNone(reopened_for_doctor["completedBy"])
+        answered = self.request("POST", f"/cases/{created['id']}/doctor-messages", {
+            "text": "Clinical review is complete.",
+        }, token=doctor)["case"]
+        self.assertEqual("answered", answered["status"])
 
         completed_by_agent = self.request(
             "POST", f"/cases/{created['id']}/complete", {}, token=agent
         )["case"]
+        self.assertIsNotNone(completed_by_agent["completedAt"])
         self.assertEqual("agent", completed_by_agent["completedByRole"])
 
         reopened_for_agent = self.request("POST", f"/cases/{created['id']}/doctor-messages", {

@@ -15,7 +15,7 @@ private enum AgentCaseFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all: "All Cases"
         case .waiting: "In Review"
-        case .answered: "Waiting"
+        case .answered: "Action Needed"
         case .closed: "Confirmed"
         case .completed: "Closed"
         }
@@ -537,6 +537,7 @@ struct AgentCaseEditorView: View {
     @State private var createStep: CreateStep = .patient
     @State private var patientVerification: PatientVerification = .idle
     @State private var isSubmitting = false
+    @State private var isSendingUpdate = false
     @State private var showsCompletionConfirmation = false
     @FocusState private var isPatientNameFocused: Bool
     @FocusState private var isUpdateTextFocused: Bool
@@ -717,7 +718,7 @@ struct AgentCaseEditorView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Only one person needs to close it. A new doctor or agent message will reopen the case automatically.")
+            Text("Close this consultation when no more patient follow-up is needed. A new message will reopen it automatically.")
         }
     }
 
@@ -1359,34 +1360,6 @@ struct AgentCaseEditorView: View {
                 }
 
                 completionSection(editCase)
-
-                if canEditCase {
-                    VStack(alignment: .leading, spacing: 8) {
-                        labeledField(editCase.isCompleted ? "Send a message to reopen" : "Add an update or question", required: false) {
-                            TextField(editCase.isCompleted ? "Write a new message to reopen this case" : "Write a follow-up for the assigned doctor", text: $updateText, axis: .vertical)
-                                .focused($isUpdateTextFocused)
-                                .lineLimit(3...6)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        if !updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Button("Send to doctor") {
-                                Task {
-                                    if await state.sendAgentUpdate(caseID: editCase.id, text: updateText) {
-                                        isUpdateTextFocused = false
-                                        updateText = ""
-                                        returnedToDoctor = true
-                                        statusText = "Waiting for Doctor · Update sent"
-                                        await scrollToLatestMessage(caseID: editCase.id)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
             }
         }
     }
@@ -1417,14 +1390,14 @@ struct AgentCaseEditorView: View {
             .background(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.28)))
         } else if canEditCase {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Nothing else to add?")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-                    Text("One tap is enough; the other side does not need to close it too.")
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.muted)
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Consultation finished?")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("Close it when no further patient follow-up is needed.")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.muted)
                 }
                 Spacer(minLength: 6)
                 Button("Mark as closed", systemImage: "checkmark.circle") {
@@ -1604,8 +1577,10 @@ struct AgentCaseEditorView: View {
     private var actionBar: some View {
         if canEditCase {
             if isEditMode {
-                if detailsExpanded || (editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor) {
+                if detailsExpanded {
                     editActionBar
+                } else if let editCase {
+                    editCaseMessageBar(editCase)
                 }
             } else {
                 wizardActionBar
@@ -1614,37 +1589,40 @@ struct AgentCaseEditorView: View {
     }
 
     private var editActionBar: some View {
-        Group {
-            if detailsExpanded {
-                Button("Save changes") {
-                    if let editCase {
-                        Task {
-                            if await state.saveAgentValues(
-                                caseID: editCase.id, patientName: patientName, patientProfile: patientProfileInput,
-                                grafts: grafts, currency: currency, price: price
-                            ) {
-                                statusText = "Changes saved"
-                                detailsExpanded = false
-                            }
-                        }
+        Button("Save changes") {
+            if let editCase {
+                Task {
+                    if await state.saveAgentValues(
+                        caseID: editCase.id, patientName: patientName, patientProfile: patientProfileInput,
+                        grafts: grafts, currency: currency, price: price
+                    ) {
+                        statusText = "Changes saved"
+                        detailsExpanded = false
                     }
                 }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.borderedProminent)
-                .disabled(!patientProfileIsValid)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            } else if editCase?.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor {
+            }
+        }
+        .font(.subheadline.weight(.semibold))
+        .buttonStyle(.borderedProminent)
+        .disabled(!patientProfileIsValid)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(AppTheme.surfaceStrong)
+    }
+
+    private func editCaseMessageBar(_ item: ConsultationCase) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if item.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor {
                 Button("Confirm Appointment") {
-                    if let editCase {
-                        Task {
-                            if await state.confirmAndClose(
-                                caseID: editCase.id,
-                                finalGrafts: finalGrafts,
-                                finalPrice: finalPrice,
-                                appointmentAt: appointmentAt
-                            ) {
-                                statusText = "Appointment confirmed"
-                            }
+                    Task {
+                        if await state.confirmAndClose(
+                            caseID: item.id,
+                            finalGrafts: finalGrafts,
+                            finalPrice: finalPrice,
+                            appointmentAt: appointmentAt
+                        ) {
+                            statusText = "Appointment confirmed"
                         }
                     }
                 }
@@ -1653,9 +1631,47 @@ struct AgentCaseEditorView: View {
                 .disabled(!finalPlanReady)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
+
+            Text(item.isCompleted ? "Send a message to reopen" : "Add an update or question")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField(
+                    item.isCompleted
+                        ? "Write a new message to reopen this case"
+                        : "Write a follow-up for the assigned doctor",
+                    text: $updateText,
+                    axis: .vertical
+                )
+                .focused($isUpdateTextFocused)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+
+                Button {
+                    let message = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !message.isEmpty, !isSendingUpdate else { return }
+                    isSendingUpdate = true
+                    Task {
+                        defer { isSendingUpdate = false }
+                        if await state.sendAgentUpdate(caseID: item.id, text: message) {
+                            isUpdateTextFocused = false
+                            updateText = ""
+                            returnedToDoctor = true
+                            statusText = "Waiting for Doctor · Update sent"
+                            await scrollToLatestMessage(caseID: item.id)
+                        }
+                    }
+                } label: {
+                    Label(isSendingUpdate ? "Sending" : "Send", systemImage: "paperplane.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingUpdate)
+                .controlSize(.large)
+            }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .background(AppTheme.surfaceStrong)
     }
 

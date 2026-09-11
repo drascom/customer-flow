@@ -64,11 +64,12 @@ validation and idempotency paths as mobile/web writes.
 
 ## Completing a conversation
 
-An agent who owns a case or any doctor can call
-`POST /api/v1/cases/{caseID}/complete` when no further action is needed. One
-person completing the case is sufficient; approval from the other side is not
-required. This workflow state is separate from a confirmed final treatment
-plan, so the existing case status is preserved for audit and reporting.
+An agent from the case's agency can call `POST /api/v1/cases/{caseID}/complete`
+when no further patient follow-up is needed. Doctors provide their clinical
+answer but do not close the consultation; the agent decides whether to confirm
+an appointment or close the enquiry. This workflow state is separate from a
+confirmed final treatment plan, so the existing case status is preserved for
+audit and reporting.
 
 The completion response records who completed the case and when. A later doctor
 message, agent update or annotated-photo message automatically clears completion

@@ -405,8 +405,8 @@ struct DoctorQueueView: View {
 
     private func filterTitle(_ item: DoctorQueueFilter) -> String {
         switch item {
-        case .all: "All"
-        case .waiting: "Waiting"
+        case .all: "All Cases"
+        case .waiting: "In Review"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
         }
@@ -554,8 +554,8 @@ private struct DoctorWorkCard: View {
     private var statusTitle: String {
         if item.isCompleted { return "Closed" }
         return switch item.status {
-        case .waiting: isOverdue ? "Needs review · overdue" : "Needs review"
-        case .answered: "Sent · waiting for agent"
+        case .waiting: isOverdue ? "In Review · overdue" : "In Review"
+        case .answered: "Waiting for Agent"
         case .closed: "Confirmed"
         }
     }

@@ -249,6 +249,9 @@
     "Cancel" : {
 
     },
+    "Case details" : {
+
+    },
     "Change & Sign Out" : {
 
     },
@@ -336,9 +339,6 @@
     "CONVERSATION" : {
 
     },
-    "Developed by Drascom @ 2026" : {
-
-    },
     "Copy this token now. It will not be shown again." : {
 
     },
@@ -413,6 +413,9 @@
 
     },
     "Deleted by agent" : {
+
+    },
+    "Developed by Drascom @ 2026" : {
 
     },
     "Different patient confirmed." : {
@@ -502,10 +505,10 @@
     "Generated from the full name. A number is added automatically if it is already used." : {
 
     },
-    "Give this endpoint and token only to the agency's approved system administrator. The token can access this agency's patient data." : {
+    "GitHub ↗" : {
 
     },
-    "GitHub ↗" : {
+    "Give this endpoint and token only to the agency's approved system administrator. The token can access this agency's patient data." : {
 
     },
     "Grafts (optional)" : {

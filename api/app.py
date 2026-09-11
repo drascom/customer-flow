@@ -45,6 +45,7 @@ IOS_APP_ID = "6802274147"
 IOS_STORE_URL = "https://apps.apple.com/gb/app/customerflow-by-natchatt/id6802274147"
 IOS_LOOKUP_URL = f"https://itunes.apple.com/lookup?id={IOS_APP_ID}&country=gb"
 APP_STORE_CACHE_SECONDS = 15 * 60
+AGENT_OWNED_CLOSURE_MIGRATION = "2026-09-11-agent-owned-case-closure"
 
 
 def deployment_commit() -> str:
@@ -431,6 +432,10 @@ CREATE TABLE IF NOT EXISTS audit_events (
   detail_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_migrations (
+  name TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS idempotency_records (
   actor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   operation TEXT NOT NULL,
@@ -575,6 +580,7 @@ class Database:
                     conn.execute("ALTER TABLE cases ADD COLUMN deleted_at TEXT")
                 if "deleted_by" not in case_columns:
                     conn.execute("ALTER TABLE cases ADD COLUMN deleted_by TEXT REFERENCES users(id)")
+                self._migrate_agent_owned_closure(conn)
                 conn.execute("DELETE FROM photos WHERE file_path IS NULL")
                 conn.execute(
                     "UPDATE cases SET photo_count=(SELECT COUNT(*) FROM photos p "
@@ -629,6 +635,66 @@ class Database:
                             "UPDATE users SET must_change_password=1 WHERE id=?",
                             (existing_user["id"],),
                         )
+
+    def _migrate_agent_owned_closure(self, conn: sqlite3.Connection) -> int:
+        if conn.execute(
+            "SELECT 1 FROM app_migrations WHERE name=?",
+            (AGENT_OWNED_CLOSURE_MIGRATION,),
+        ).fetchone():
+            return 0
+
+        now = iso(utc_now())
+        pending = conn.execute(
+            "SELECT id FROM cases WHERE completed_at IS NOT NULL AND deleted_at IS NULL"
+        ).fetchall()
+        if pending:
+            backup_name = (
+                f"{self.path.stem}.before-agent-owned-closure-"
+                f"{utc_now().strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}{self.path.suffix}"
+            )
+            backup_path = self.path.parent / backup_name
+            with sqlite3.connect(backup_path) as backup:
+                conn.backup(backup)
+            backup_path.chmod(0o600)
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            affected = conn.execute(
+                "SELECT id,status,completed_at,completed_by,completed_by_role FROM cases "
+                "WHERE completed_at IS NOT NULL AND deleted_at IS NULL"
+            ).fetchall()
+            for row in affected:
+                conn.execute(
+                    "INSERT INTO audit_events(actor_id,action,entity_type,entity_id,detail_json,created_at) "
+                    "VALUES (NULL,?,?,?,?,?)",
+                    (
+                        "case.reopened_for_agent_review",
+                        "case",
+                        row["id"],
+                        json.dumps({
+                            "previousStatus": row["status"],
+                            "previousCompletedAt": row["completed_at"],
+                            "previousCompletedBy": row["completed_by"],
+                            "previousCompletedByRole": row["completed_by_role"],
+                            "reason": "case closure is now owned by the agency",
+                        }),
+                        now,
+                    ),
+                )
+            conn.execute(
+                "UPDATE cases SET status='answered',completed_at=NULL,completed_by=NULL,"
+                "completed_by_role=NULL,version=version+1 "
+                "WHERE completed_at IS NOT NULL AND deleted_at IS NULL"
+            )
+            conn.execute(
+                "INSERT INTO app_migrations(name,applied_at) VALUES (?,?)",
+                (AGENT_OWNED_CLOSURE_MIGRATION, now),
+            )
+            conn.execute("COMMIT")
+            return len(affected)
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
 
     def client_version_policy(self, force_refresh: bool = False) -> dict:
         with self.connect() as conn:
@@ -1802,14 +1868,13 @@ class Database:
                 raise
 
     def complete_case(self, case_id: str, user: sqlite3.Row) -> dict:
-        self._require_any_role(user, "agent", "doctor")
+        self._require_role(user, "agent")
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._case_row(conn, case_id)
                 self._assert_case_visible(row, user)
-                if user["role"] == "agent":
-                    self._assert_owner(row, user)
+                self._assert_owner(row, user)
                 if row["status"] == "closed":
                     raise APIError(409, "case_confirmed", "A confirmed case is already finished.")
                 if row["completed_at"]:
