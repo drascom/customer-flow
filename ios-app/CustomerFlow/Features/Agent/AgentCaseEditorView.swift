@@ -541,6 +541,7 @@ struct AgentCaseEditorView: View {
     @State private var isSubmitting = false
     @State private var isSendingUpdate = false
     @State private var showsCompletionConfirmation = false
+    @State private var showsAppointmentConfirmation = false
     @FocusState private var isPatientNameFocused: Bool
     @FocusState private var isUpdateTextFocused: Bool
 
@@ -596,11 +597,19 @@ struct AgentCaseEditorView: View {
     private var finalPlanReady: Bool {
         !finalGrafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !finalPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && parsedAppointmentAt.map { $0 > .now } == true
+            && scheduledAppointmentAt.map { $0 > .now } == true
     }
 
     private var parsedAppointmentAt: Date? {
         Self.appointment(dateText: appointmentDateText, timeText: appointmentTimeText)
+    }
+
+    private var scheduledAppointmentAt: Date? {
+#if targetEnvironment(macCatalyst)
+        parsedAppointmentAt
+#else
+        appointmentAt
+#endif
     }
 
     private var missingItems: [String] {
@@ -622,8 +631,7 @@ struct AgentCaseEditorView: View {
                         caseDetails
                         patientPhotos
                         conversationSection
-                        if let editCase,
-                           editCase.status == .closed || (!editCase.isCompleted && editCase.status == .answered && latestDoctorRecommendation != nil) {
+                        if let editCase, editCase.status == .closed {
                             finalPlanSection(editCase)
                         }
                     } else {
@@ -669,6 +677,11 @@ struct AgentCaseEditorView: View {
                 )
                 .presentationDetents([.fraction(0.78)])
                 .presentationDragIndicator(.visible)
+            }
+        }
+        .sheet(isPresented: $showsAppointmentConfirmation) {
+            if let editCase {
+                appointmentConfirmationSheet(editCase)
             }
         }
         .onChange(of: selectedPhotos) { _, items in
@@ -719,11 +732,11 @@ struct AgentCaseEditorView: View {
             Text("The comment will disappear from the conversation, but administrators will retain the record.")
         }
         .confirmationDialog(
-            "Mark this case as closed?",
+            editCase?.status == .closed ? "Close this confirmed case?" : "Close without an appointment?",
             isPresented: $showsCompletionConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Mark as closed") {
+            Button(editCase?.status == .closed ? "Close case" : "Close without appointment") {
                 guard let caseID = editingCaseID else { return }
                 Task { _ = await state.completeCase(caseID: caseID) }
             }
@@ -1522,27 +1535,55 @@ struct AgentCaseEditorView: View {
             .background(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.28)))
         } else if canEditCase {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Consultation finished?")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppTheme.ink)
-                        Text("Close it when no further patient follow-up is needed.")
-                            .font(.caption2)
-                            .foregroundStyle(AppTheme.muted)
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Case outcome")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(
+                        item.status == .closed
+                            ? "Close the case when no further follow-up is needed."
+                            : "Confirm a booking, or close the consultation without one."
+                    )
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.muted)
                 }
-                Spacer(minLength: 6)
-                Button("Mark as closed", systemImage: "checkmark.circle") {
-                    showsCompletionConfirmation = true
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        caseOutcomeButtons(item)
+                    }
+
+                    VStack(spacing: 8) {
+                        caseOutcomeButtons(item)
+                    }
                 }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.16, green: 0.41, blue: 0.84))
             }
             .padding(14)
             .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
         }
+    }
+
+    @ViewBuilder
+    private func caseOutcomeButtons(_ item: ConsultationCase) -> some View {
+        if item.status == .answered && latestDoctorRecommendation != nil {
+            Button("Confirm appointment", systemImage: "calendar.badge.checkmark") {
+                showsAppointmentConfirmation = true
+            }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.borderedProminent)
+            .tint(Color(red: 0.08, green: 0.52, blue: 0.32))
+            .frame(maxWidth: .infinity)
+        }
+
+        Button(item.status == .closed ? "Close case" : "Close without appointment", systemImage: "xmark.circle") {
+            showsCompletionConfirmation = true
+        }
+        .font(.caption.weight(.semibold))
+        .buttonStyle(.bordered)
+        .tint(AppTheme.muted)
+        .frame(maxWidth: .infinity)
     }
 
     private func finalPlanSection(_ item: ConsultationCase) -> some View {
@@ -1556,10 +1597,6 @@ struct AgentCaseEditorView: View {
                     Label("Confirmed", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.brandDark)
-                } else {
-                    Text("Required")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.accentInk)
                 }
             }
 
@@ -1631,11 +1668,11 @@ struct AgentCaseEditorView: View {
                     }
                 }
 
-                if parsedAppointmentAt == nil {
+                if scheduledAppointmentAt == nil {
                     Text("Enter a valid appointment date and time.")
                         .font(.caption2)
                         .foregroundStyle(.red)
-                } else if let parsedAppointmentAt, parsedAppointmentAt <= .now {
+                } else if let scheduledAppointmentAt, scheduledAppointmentAt <= .now {
                     Text("Choose a future appointment date and time.")
                         .font(.caption2)
                         .foregroundStyle(.red)
@@ -1665,6 +1702,7 @@ struct AgentCaseEditorView: View {
 
     private var appointmentDateField: some View {
         labeledField("Appointment date", required: true) {
+#if targetEnvironment(macCatalyst)
             TextField("DD/MM/YYYY", text: $appointmentDateText)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
@@ -1675,12 +1713,25 @@ struct AgentCaseEditorView: View {
                     }
                     updateAppointmentFromText(dateText: masked)
                 }
+#else
+            DatePicker(
+                "Appointment date",
+                selection: $appointmentAt,
+                in: Date()...,
+                displayedComponents: .date
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+            .tint(AppTheme.brand)
+            .frame(maxWidth: .infinity, alignment: .leading)
+#endif
         }
         .frame(minWidth: 150)
     }
 
     private var appointmentTimeField: some View {
         labeledField("Time", required: true) {
+#if targetEnvironment(macCatalyst)
             TextField("HH:MM", text: $appointmentTimeText)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
@@ -1691,21 +1742,33 @@ struct AgentCaseEditorView: View {
                     }
                     updateAppointmentFromText(timeText: masked)
                 }
+#else
+            DatePicker(
+                "Appointment time",
+                selection: $appointmentAt,
+                displayedComponents: .hourAndMinute
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+            .tint(AppTheme.brand)
+            .frame(maxWidth: .infinity, alignment: .leading)
+#endif
         }
         .frame(minWidth: 105)
     }
 
     private func confirmAppointmentButton(_ item: ConsultationCase) -> some View {
         Button("Confirm", systemImage: "checkmark") {
-            guard let parsedAppointmentAt else { return }
+            guard let scheduledAppointmentAt else { return }
             Task {
                 if await state.confirmAndClose(
                     caseID: item.id,
                     finalGrafts: finalGrafts,
                     finalPrice: finalPrice,
-                    appointmentAt: parsedAppointmentAt
+                    appointmentAt: scheduledAppointmentAt
                 ) {
                     statusText = "Appointment confirmed"
+                    showsAppointmentConfirmation = false
                 }
             }
         }
@@ -1715,6 +1778,30 @@ struct AgentCaseEditorView: View {
         .disabled(!finalPlanReady)
         .controlSize(.large)
         .frame(minWidth: 120)
+    }
+
+    @ViewBuilder
+    private func appointmentConfirmationSheet(_ item: ConsultationCase) -> some View {
+        NavigationStack {
+            ScrollView {
+                finalPlanSection(item)
+                    .padding(16)
+            }
+            .background(AppTheme.background)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showsAppointmentConfirmation = false
+                    }
+                }
+            }
+        }
+#if targetEnvironment(macCatalyst)
+        .frame(minWidth: 700, idealWidth: 760, minHeight: 520, idealHeight: 620)
+#else
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+#endif
     }
 
     private func photoDeleteAction(for photoID: String?) -> (() -> Void)? {
