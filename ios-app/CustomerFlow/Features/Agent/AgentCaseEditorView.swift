@@ -517,7 +517,7 @@ struct AgentCaseEditorView: View {
     @State private var price = ""
     @State private var finalGrafts = ""
     @State private var finalPrice = ""
-    @State private var appointmentAt = Date().addingTimeInterval(86_400)
+    @State private var appointmentAt = Self.defaultAppointmentDate()
     @State private var agentNote = ""
     @State private var updateText = ""
     @State private var photoCount: Int
@@ -590,6 +590,7 @@ struct AgentCaseEditorView: View {
     private var finalPlanReady: Bool {
         !finalGrafts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !finalPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && appointmentAt > .now
     }
 
     private var missingItems: [String] {
@@ -1127,6 +1128,12 @@ struct AgentCaseEditorView: View {
         return String(format: "%02d/%02d/%04d", components[2], components[1], components[0])
     }
 
+    private static func defaultAppointmentDate() -> Date {
+        let calendar = Calendar.current
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: .now) ?? Date().addingTimeInterval(86_400)
+        return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
+    }
+
     private static func maskedDateOfBirth(_ value: String) -> String {
         let digits = String(value.filter(\.isNumber).prefix(8))
         guard digits.count > 2 else { return digits }
@@ -1458,7 +1465,7 @@ struct AgentCaseEditorView: View {
     private func finalPlanSection(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Final agreed plan")
+                Text(item.status == .closed ? "Final agreed plan" : "Confirm appointment")
                     .font(.headline)
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
@@ -1502,7 +1509,7 @@ struct AgentCaseEditorView: View {
                     }
                 }
             } else if canEditCase {
-                Text("Using the doctor’s recommendation, enter the final plan and scheduled examination or procedure time.")
+                Text("Finalise the agreed plan and schedule in one step.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
 
@@ -1524,14 +1531,28 @@ struct AgentCaseEditorView: View {
                     }
                 }
 
-                DatePicker(
-                    "Appointment date and time",
-                    selection: $appointmentAt,
-                    in: Date()...,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-                .font(.subheadline.weight(.semibold))
-                .tint(AppTheme.accent)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .bottom, spacing: 10) {
+                        appointmentDateField
+                        appointmentTimeField
+                        confirmAppointmentButton(item)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .bottom, spacing: 10) {
+                            appointmentDateField
+                            appointmentTimeField
+                        }
+                        confirmAppointmentButton(item)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+
+                if appointmentAt <= .now {
+                    Text("Choose a future appointment date and time.")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
             } else {
                 Label("\(item.agentName) will confirm the final agreed plan.", systemImage: "lock")
                     .font(.caption)
@@ -1539,8 +1560,71 @@ struct AgentCaseEditorView: View {
             }
         }
         .padding(14)
-        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+        .background(
+            item.status == .closed
+                ? AppTheme.surface
+                : Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(
+                    item.status == .closed
+                        ? AppTheme.border
+                        : Color(red: 0.08, green: 0.52, blue: 0.32).opacity(0.3)
+                )
+        )
+    }
+
+    private var appointmentDateField: some View {
+        labeledField("Appointment date", required: true) {
+            DatePicker(
+                "Appointment date",
+                selection: $appointmentAt,
+                displayedComponents: .date
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+            .tint(AppTheme.brand)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minWidth: 150)
+    }
+
+    private var appointmentTimeField: some View {
+        labeledField("Time", required: true) {
+            DatePicker(
+                "Appointment time",
+                selection: $appointmentAt,
+                displayedComponents: .hourAndMinute
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+            .tint(AppTheme.brand)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minWidth: 105)
+    }
+
+    private func confirmAppointmentButton(_ item: ConsultationCase) -> some View {
+        Button("Confirm", systemImage: "checkmark") {
+            Task {
+                if await state.confirmAndClose(
+                    caseID: item.id,
+                    finalGrafts: finalGrafts,
+                    finalPrice: finalPrice,
+                    appointmentAt: appointmentAt
+                ) {
+                    statusText = "Appointment confirmed"
+                }
+            }
+        }
+        .font(.subheadline.weight(.semibold))
+        .buttonStyle(.borderedProminent)
+        .tint(Color(red: 0.08, green: 0.52, blue: 0.32))
+        .disabled(!finalPlanReady)
+        .controlSize(.large)
+        .frame(minWidth: 120)
     }
 
     private func photoDeleteAction(for photoID: String?) -> (() -> Void)? {
@@ -1655,25 +1739,6 @@ struct AgentCaseEditorView: View {
 
     private func editCaseMessageBar(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if item.status == .answered && latestDoctorRecommendation != nil && !returnedToDoctor {
-                Button("Confirm Appointment") {
-                    Task {
-                        if await state.confirmAndClose(
-                            caseID: item.id,
-                            finalGrafts: finalGrafts,
-                            finalPrice: finalPrice,
-                            appointmentAt: appointmentAt
-                        ) {
-                            statusText = "Appointment confirmed"
-                        }
-                    }
-                }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.borderedProminent)
-                .disabled(!finalPlanReady)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-
             Text(item.isCompleted ? "Send a message to reopen" : "Add an update or question")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.ink)
@@ -1815,7 +1880,7 @@ struct AgentCaseEditorView: View {
                     String(AppCurrency.amount(recommended).dropFirst())
                 }
                 ?? ""
-            appointmentAt = item.appointmentAt ?? Date().addingTimeInterval(86_400)
+            appointmentAt = item.appointmentAt ?? Self.defaultAppointmentDate()
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = item.status.title
@@ -1837,7 +1902,7 @@ struct AgentCaseEditorView: View {
             price = ""
             finalGrafts = ""
             finalPrice = ""
-            appointmentAt = Date().addingTimeInterval(86_400)
+            appointmentAt = Self.defaultAppointmentDate()
             agentNote = ""
             photoCount = 0
             pendingPhotos = []
@@ -1987,7 +2052,7 @@ struct AgentCaseEditorView: View {
                     String(AppCurrency.amount(recommended).dropFirst())
                 }
                 ?? ""
-            appointmentAt = item.appointmentAt ?? Date().addingTimeInterval(86_400)
+            appointmentAt = item.appointmentAt ?? Self.defaultAppointmentDate()
             agentNote = item.agentNote
             photoCount = item.photoCount
             statusText = "Existing patient · Assigned doctor preserved"
