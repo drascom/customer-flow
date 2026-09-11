@@ -30,6 +30,23 @@ struct AdminDashboardView: View {
     @FocusState private var isSearchFocused: Bool
 
     private var usesWideLayout: Bool { horizontalSizeClass == .regular }
+    private var presentsCaseDetailsAsModal: Bool {
+#if targetEnvironment(macCatalyst)
+        true
+#else
+        false
+#endif
+    }
+
+    private var modalCase: Binding<AdminCase?> {
+        Binding(
+            get: {
+                guard presentsCaseDetailsAsModal, let expandedCaseID else { return nil }
+                return model.cases.first { $0.id == expandedCaseID }
+            },
+            set: { if $0 == nil { expandedCaseID = nil } }
+        )
+    }
 
     init(
         repository: any AdminRepository,
@@ -97,6 +114,9 @@ struct AdminDashboardView: View {
                     agencyID: agencyID
                 )
             }
+        }
+        .sheet(item: modalCase) { item in
+            caseDetailModal(item)
         }
         .confirmationDialog(userActionTitle, isPresented: $showsUserConfirmation, titleVisibility: .visible) {
             if let user = pendingUser {
@@ -476,15 +496,64 @@ struct AdminDashboardView: View {
     }
 
     private func caseCard(_ item: AdminCase) -> some View {
+        configuredCaseCard(
+            item,
+            isExpanded: !presentsCaseDetailsAsModal && expandedCaseID == item.id,
+            onToggle: {
+                isSearchFocused = false
+                if presentsCaseDetailsAsModal {
+                    expandedCaseID = item.id
+                } else {
+                    withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id }
+                }
+            }
+        )
+    }
+
+    private func caseDetailModal(_ item: AdminCase) -> some View {
+        NavigationStack {
+            ScrollView {
+                configuredCaseCard(
+                    item,
+                    isExpanded: true,
+                    onToggle: { expandedCaseID = nil }
+                )
+                .frame(maxWidth: 920)
+                .padding(24)
+                .frame(maxWidth: .infinity)
+            }
+            .background(AppTheme.background)
+            .navigationTitle("Case details")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        expandedCaseID = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.subheadline.bold())
+                    }
+                    .accessibilityLabel("Close case details")
+                }
+            }
+        }
+        .frame(minWidth: 720, idealWidth: 900, minHeight: 680, idealHeight: 860)
+        .presentationDetents([.fraction(0.97)])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(28)
+        .presentationContentInteraction(.scrolls)
+    }
+
+    private func configuredCaseCard(
+        _ item: AdminCase,
+        isExpanded: Bool,
+        onToggle: @escaping () -> Void
+    ) -> some View {
         AdminCaseCard(
             item: item,
             doctors: model.activeDoctors,
             isReadOnly: isReadOnly,
-            isExpanded: expandedCaseID == item.id,
-            onToggle: {
-                isSearchFocused = false
-                withAnimation { expandedCaseID = expandedCaseID == item.id ? nil : item.id }
-            },
+            isExpanded: isExpanded,
+            onToggle: onToggle,
             onAssign: { requestAssignment(for: item, doctorID: $0) },
             onUndoConfirmation: { Task { await model.unconfirmCase(item) } },
             onDelete: {

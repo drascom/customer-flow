@@ -157,7 +157,7 @@ struct AgentCasesView: View {
     private var wideWorkspace: some View {
         HStack(spacing: 0) {
             wideSidebar
-                .frame(width: 220)
+                .frame(width: 260)
                 .background(.ultraThinMaterial)
 
             Divider()
@@ -232,7 +232,7 @@ struct AgentCasesView: View {
                                 .frame(width: 20)
                             Text(item.title)
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.75)
+                                .layoutPriority(1)
                             Spacer()
                             Text("\(count(for: item))")
                                 .font(.caption.bold())
