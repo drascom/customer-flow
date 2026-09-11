@@ -223,7 +223,11 @@ function updateOverview() {
   if (state.user.role === "doctor") {
     $("overviewLabel1").textContent = "All cases"; $("overviewLabel2").textContent = "Waiting";
   } else if (state.user.role === "agent") {
-    $("overviewLabel1").textContent = "Agency cases"; $("overviewLabel2").textContent = "Doctor review";
+    $("overviewLabel1").textContent = "All Cases";
+    $("overviewLabel2").textContent = "In Review";
+    $("overviewLabel3").textContent = "Waiting";
+    $("overviewLabel4").textContent = "Confirmed";
+    $("overviewLabel5").textContent = "Closed";
   }
 }
 
@@ -235,7 +239,10 @@ function setChipGroup(id, items, selected, key) {
 function renderFilterChips() {
   const agencies = state.agencies.slice().sort((a, b) => a.name.localeCompare(b.name));
   const doctors = state.users.filter((u) => u.role === "doctor").sort((a, b) => a.displayName.localeCompare(b.displayName));
-  setChipGroup("caseStatusChips", [["", "All"], ["waiting", state.user?.role === "doctor" ? "Waiting" : "Doctor review"], ["answered", "Action needed"], ["closed", "Confirmed"], ["completed", "Closed"]], state.filters.caseStatus, "caseStatus");
+  const statusFilters = state.user?.role === "agent"
+    ? [["", "All Cases"], ["waiting", "In Review"], ["answered", "Waiting"], ["closed", "Confirmed"], ["completed", "Closed"]]
+    : [["", "All"], ["waiting", "Waiting"], ["answered", "Action needed"], ["closed", "Confirmed"], ["completed", "Closed"]];
+  setChipGroup("caseStatusChips", statusFilters, state.filters.caseStatus, "caseStatus");
   setChipGroup("caseAssignmentChips", [["", "All"], ["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment");
   setChipGroup("caseAgencyChips", [["", "All"], ...agencies.map((a) => [a.name, a.name])], state.filters.caseAgency, "caseAgency");
   setChipGroup("caseDoctorChips", [["", "All"], ...doctors.map((d) => [d.id, d.displayName])], state.filters.caseDoctor, "caseDoctor");

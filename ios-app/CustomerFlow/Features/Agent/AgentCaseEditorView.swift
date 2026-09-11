@@ -6,18 +6,18 @@ private enum AgentCaseFilter: String, CaseIterable, Identifiable {
     case all
     case waiting
     case answered
-    case completed
     case closed
+    case completed
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .all: "All cases"
-        case .waiting: "Waiting for Doctor"
-        case .answered: "Waiting for Me"
-        case .completed: "Closed"
+        case .all: "All Cases"
+        case .waiting: "In Review"
+        case .answered: "Waiting"
         case .closed: "Confirmed"
+        case .completed: "Closed"
         }
     }
 }
