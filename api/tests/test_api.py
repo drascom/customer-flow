@@ -89,6 +89,7 @@ class APITestCase(unittest.TestCase):
     def test_health_and_login(self):
         health = self.request("GET", "/health")
         self.assertEqual("ok", health["status"])
+        self.assertRegex(health["commit"], r"^[0-9a-f]{7,12}$")
         self.assertIn("live-updates", health["capabilities"])
         self.assertIn("patient-profile", health["capabilities"])
         self.assertIn("agency-scoping", health["capabilities"])

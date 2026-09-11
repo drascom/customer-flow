@@ -52,6 +52,19 @@ async function api(path, options = {}) {
   return payload;
 }
 
+async function loadDeploymentInfo() {
+  try {
+    const health = await api("/health");
+    document.querySelectorAll("[data-deploy-commit]").forEach((node) => {
+      node.textContent = health.commit || "unknown";
+    });
+  } catch {
+    document.querySelectorAll("[data-deploy-commit]").forEach((node) => {
+      node.textContent = "unavailable";
+    });
+  }
+}
+
 async function responseError(response) {
   const payload = await response.json().catch(() => ({}));
   return new Error(payload.error?.message || `Request failed (${response.status}).`);
@@ -680,4 +693,5 @@ $("clientVersionForm").onsubmit = async (event) => {
 
 document.addEventListener("visibilitychange", () => { if (!document.hidden && state.token) loadData({ silent: true }).catch(() => {}); });
 window.addEventListener("focus", () => { if (state.token) loadData({ silent: true }).catch(() => {}); });
+loadDeploymentInfo();
 restore();

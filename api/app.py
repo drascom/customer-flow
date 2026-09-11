@@ -19,6 +19,7 @@ import re
 import secrets
 import smtplib
 import sqlite3
+import subprocess
 import threading
 import unicodedata
 import uuid
@@ -44,6 +45,29 @@ IOS_APP_ID = "6802274147"
 IOS_STORE_URL = "https://apps.apple.com/gb/app/customerflow-by-natchatt/id6802274147"
 IOS_LOOKUP_URL = f"https://itunes.apple.com/lookup?id={IOS_APP_ID}&country=gb"
 APP_STORE_CACHE_SECONDS = 15 * 60
+
+
+def deployment_commit() -> str:
+    for name in ("CF_DEPLOY_COMMIT", "GIT_COMMIT", "SOURCE_VERSION"):
+        value = os.getenv(name, "").strip()
+        if re.fullmatch(r"[0-9a-fA-F]{7,40}", value):
+            return value[:8].lower()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            cwd=Path(__file__).resolve().parents[1],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        value = result.stdout.strip()
+        return value if re.fullmatch(r"[0-9a-f]{7,12}", value) else "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+DEPLOYMENT_COMMIT = deployment_commit()
 
 
 def validate_client_version(value: object) -> str:
@@ -2893,7 +2917,7 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "GET" and (path == "/admin" or path.startswith("/admin/")):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
-                return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow",
+                return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow", "commit": DEPLOYMENT_COMMIT,
                                         "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "mandatory-password-change", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
             if method == "GET" and path == f"{API_PREFIX}/client-version/ios":
                 return self._json(200, {"policy": self.server.database.client_version_policy()})

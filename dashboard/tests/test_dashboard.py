@@ -1,6 +1,5 @@
 import importlib.util
 import json
-import re
 import sys
 import tempfile
 import threading
@@ -58,8 +57,7 @@ class DashboardTestCase(unittest.TestCase):
         self.assertNotIn(b"data-direct-admin", html)
         self.assertEqual(2, html.count(b'class="product-footer'))
         self.assertIn(b"Version 0.4.0", html)
-        self.assertNotIn(b"__CF_DEPLOY_COMMIT__", html)
-        self.assertEqual(2, len(re.findall(rb"Commit [0-9a-f]{7,12}", html)))
+        self.assertEqual(2, html.count(b"data-deploy-commit"))
         self.assertIn(b"Developed by Drascom @ 2026", html)
         self.assertIn(b"https://github.com/drascom/customer-flow", html)
         for username in ("admin", "manager", "user1", "doctor1"):
