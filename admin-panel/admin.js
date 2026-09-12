@@ -4,8 +4,10 @@ const state = {
   user: null, users: [], agencies: [], cases: [], notifications: [], unreadNotifications: 0,
   clientVersionPolicy: null,
   view: "cases", selectedCaseID: null,
-  pendingFiles: [], duplicate: { matches: [], confirmed: false, existingPatientID: null }, blobURLs: new Map(),
-  photoItems: [], photoIndex: 0, liveRevision: -1, liveGeneration: 0,
+  pendingFiles: [], duplicate: { matches: [], confirmed: false, existingPatientID: null },
+  blobURLs: new Map(), imageRequests: new Map(), imageCacheGeneration: 0,
+  photoItems: [], photoIndex: 0, photoResource: "photos", photoZoom: 1,
+  liveRevision: -1, liveGeneration: 0,
   filters: { caseStatus: "", caseAssignment: "", caseAgency: "", caseDoctor: "", userRole: "", userStatus: "", userAgency: "" }
 };
 
@@ -101,6 +103,7 @@ async function signOut(callServer = true) {
   state.liveGeneration += 1;
   if (callServer && state.token) await api("/auth/logout", { method: "POST", body: {} }).catch(() => {});
   localStorage.removeItem("cfToken"); sessionStorage.removeItem("cfToken");
+  clearImageCache();
   state.token = null; state.user = null; state.cases = []; state.notifications = [];
   if ($("requiredPasswordDialog").open) $("requiredPasswordDialog").close();
   state.unreadNotifications = 0; showLogin();
@@ -483,16 +486,47 @@ async function submitCaseEdit(event) {
 
 async function authenticatedImage(path, cacheKey = path) {
   if (state.blobURLs.has(cacheKey)) return state.blobURLs.get(cacheKey);
-  const response = await api(path, { raw: true }); const url = URL.createObjectURL(await response.blob()); state.blobURLs.set(cacheKey, url); return url;
+  if (state.imageRequests.has(cacheKey)) return state.imageRequests.get(cacheKey);
+  const generation = state.imageCacheGeneration;
+  const request = (async () => {
+    const response = await api(path, { raw: true });
+    const url = URL.createObjectURL(await response.blob());
+    if (generation !== state.imageCacheGeneration) {
+      URL.revokeObjectURL(url);
+      throw new Error("Image request cancelled.");
+    }
+    state.blobURLs.set(cacheKey, url);
+    return url;
+  })();
+  state.imageRequests.set(cacheKey, request);
+  try { return await request; }
+  finally { state.imageRequests.delete(cacheKey); }
+}
+
+function clearImageCache() {
+  state.imageCacheGeneration += 1;
+  state.blobURLs.forEach((url) => URL.revokeObjectURL(url));
+  state.blobURLs.clear();
+  state.imageRequests.clear();
 }
 
 async function loadDetailImages(item) {
   const tiles = [...$("caseDialogContent").querySelectorAll("[data-photo-id]")];
   await Promise.all(tiles.map(async (tile) => {
-    try { const url = await authenticatedImage(`/photos/${encodeURIComponent(tile.dataset.photoId)}`); tile.querySelector(".image-placeholder").outerHTML = `<img src="${url}" alt="Patient photo">`; if (!tile.classList.contains("deleted-photo")) tile.onclick = (e) => { if (!e.target.closest("button")) openPhotoViewer(item, Number(tile.dataset.photoIndex)); }; } catch { tile.querySelector(".image-placeholder").textContent = "Photo unavailable"; }
+    try { const url = await authenticatedImage(`/photos/${encodeURIComponent(tile.dataset.photoId)}/thumbnail`); tile.querySelector(".image-placeholder").outerHTML = `<img src="${url}" alt="Patient photo">`; if (!tile.classList.contains("deleted-photo")) tile.onclick = (e) => { if (!e.target.closest("button")) openPhotoViewer(item, Number(tile.dataset.photoIndex)); }; } catch { tile.querySelector(".image-placeholder").textContent = "Photo unavailable"; }
   }));
   await Promise.all([...$("caseDialogContent").querySelectorAll("[data-message-photo]")].map(async (node) => {
-    try { const url = await authenticatedImage(`/message-photos/${encodeURIComponent(node.dataset.messagePhoto)}`); node.outerHTML = `<img src="${url}" alt="Annotated patient photo">`; } catch { node.textContent = "Photo unavailable"; }
+    try {
+      const messageID = node.dataset.messagePhoto;
+      const url = await authenticatedImage(`/message-photos/${encodeURIComponent(messageID)}/thumbnail`);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "message-photo-button";
+      button.setAttribute("aria-label", "Open annotated patient photo full screen");
+      button.innerHTML = `<img src="${url}" alt="Annotated patient photo"><span aria-hidden="true">⛶</span>`;
+      button.onclick = () => openMessagePhotoViewer(messageID);
+      node.replaceWith(button);
+    } catch { node.textContent = "Photo unavailable"; }
   }));
 }
 
@@ -537,14 +571,56 @@ async function deletePhoto(event) { event.stopPropagation(); if (!confirm("Remov
 async function purgePhoto(event) { event.stopPropagation(); if (!confirm("Permanently delete this retained photo?")) return; await mutate(`/admin/photos/${event.currentTarget.dataset.purgePhoto}`, { method: "DELETE", body: {} }, "Photo permanently deleted."); }
 
 function openPhotoViewer(item, index) {
-  state.photoItems = photoIDs(item); state.photoIndex = Math.max(0, Math.min(index, state.photoItems.length - 1));
+  state.photoResource = "photos"; state.photoItems = photoIDs(item); state.photoIndex = Math.max(0, Math.min(index, state.photoItems.length - 1));
   $("editPhotoButton").hidden = !["agent", "doctor"].includes(state.user.role); $("photoDialog").showModal(); renderPhotoViewer();
 }
+
+function openMessagePhotoViewer(messageID) {
+  state.photoResource = "message-photos";
+  state.photoItems = [messageID];
+  state.photoIndex = 0;
+  $("editPhotoButton").hidden = true;
+  $("photoDialog").showModal();
+  renderPhotoViewer();
+}
+
+function applyPhotoZoom() {
+  $("photoPreviewImage").style.transform = `scale(${state.photoZoom})`;
+  $("photoZoomLevel").textContent = `${Math.round(state.photoZoom * 100)}%`;
+  $("zoomOutPhoto").disabled = state.photoZoom <= 1;
+  $("zoomInPhoto").disabled = state.photoZoom >= 5;
+}
+
+function changePhotoZoom(amount) {
+  state.photoZoom = Math.min(5, Math.max(1, state.photoZoom + amount));
+  applyPhotoZoom();
+}
+
 async function renderPhotoViewer() {
-  const id = state.photoItems[state.photoIndex]; $("photoCounter").textContent = `${state.photoIndex + 1} / ${state.photoItems.length}`;
-  $("photoPreviewImage").src = await authenticatedImage(`/photos/${encodeURIComponent(id)}`);
+  const requestedIndex = state.photoIndex;
+  const id = state.photoItems[requestedIndex];
+  const resource = state.photoResource;
+  state.photoZoom = 1;
+  applyPhotoZoom();
+  $("photoCounter").textContent = `${requestedIndex + 1} / ${state.photoItems.length}`;
+  $("previousPhoto").hidden = state.photoItems.length < 2;
+  $("nextPhoto").hidden = state.photoItems.length < 2;
+  $("photoThumbnails").hidden = state.photoItems.length < 2;
   $("photoThumbnails").innerHTML = state.photoItems.map((pid, i) => `<button class="${i === state.photoIndex ? "active" : ""}" data-view-photo="${i}"><span>${i + 1}</span></button>`).join("");
-  document.querySelectorAll("[data-view-photo]").forEach((b) => b.onclick = () => { state.photoIndex = Number(b.dataset.viewPhoto); renderPhotoViewer(); });
+  document.querySelectorAll("[data-view-photo]").forEach((button) => {
+    button.onclick = () => { state.photoIndex = Number(button.dataset.viewPhoto); renderPhotoViewer(); };
+    const photoID = state.photoItems[Number(button.dataset.viewPhoto)];
+    authenticatedImage(`/${resource}/${encodeURIComponent(photoID)}/thumbnail`).then((url) => {
+      if (button.isConnected) button.innerHTML = `<img src="${url}" alt="Patient photo ${Number(button.dataset.viewPhoto) + 1}">`;
+    }).catch(() => {});
+  });
+  const thumbnailPath = `/${resource}/${encodeURIComponent(id)}/thumbnail`;
+  authenticatedImage(thumbnailPath).then((url) => {
+    if (state.photoIndex === requestedIndex && state.photoResource === resource) $("photoPreviewImage").src = url;
+  }).catch(() => {});
+  authenticatedImage(`/${resource}/${encodeURIComponent(id)}`).then((url) => {
+    if (state.photoIndex === requestedIndex && state.photoResource === resource) $("photoPreviewImage").src = url;
+  }).catch(() => toast("The original photo could not be loaded."));
 }
 
 // Lightweight markup editor: pen drawing, undo, text, note and authenticated send.
@@ -679,6 +755,8 @@ $("clearCaseFilters").onclick = () => { Object.assign(state.filters, { caseStatu
 $("clearUserFilters").onclick = () => { Object.assign(state.filters, { userRole: "", userStatus: "", userAgency: "" }); renderFilterChips(); renderUsers(); };
 $("closeCaseDialog").onclick = () => $("caseDialog").close(); $("closeNewCase").onclick = $("cancelNewCase").onclick = () => $("newCaseDialog").close(); $("newCaseForm").onsubmit = submitNewCase; $("casePatientName").onblur = checkPatientMatch; $("casePatientName").oninput = () => { state.duplicate = { matches: [], confirmed: false, existingPatientID: null }; $("patientMatchHint").textContent = ""; }; $("casePhotos").onchange = (event) => { state.pendingFiles.push(...event.target.files); renderPendingPhotos(); event.target.value = ""; };
 $("closePhotoDialog").onclick = () => $("photoDialog").close(); $("previousPhoto").onclick = () => { state.photoIndex = (state.photoIndex + state.photoItems.length - 1) % state.photoItems.length; renderPhotoViewer(); }; $("nextPhoto").onclick = () => { state.photoIndex = (state.photoIndex + 1) % state.photoItems.length; renderPhotoViewer(); }; $("editPhotoButton").onclick = openEditor;
+$("zoomOutPhoto").onclick = () => changePhotoZoom(-0.5); $("zoomInPhoto").onclick = () => changePhotoZoom(0.5); $("resetPhotoZoom").onclick = () => { state.photoZoom = 1; applyPhotoZoom(); };
+$("photoPreviewImage").ondblclick = () => { state.photoZoom = state.photoZoom > 1 ? 1 : 2; applyPhotoZoom(); };
 $("editorClose").onclick = closeEditor; $("markupCanvas").addEventListener("pointerdown", editorPointerDown); $("markupCanvas").addEventListener("pointermove", editorPointerMove); $("markupCanvas").addEventListener("pointerup", editorPointerUp); $("markupCanvas").addEventListener("pointercancel", editorPointerUp); $("editorText").onclick = addEditorText; $("editorUndo").onclick = () => { if (editor.history.length > 1) editor.history.pop(); if (editor.history.length) editor.ctx.putImageData(editor.history.at(-1), 0, 0); }; $("sendEditedPhoto").onclick = sendEditedPhoto;
 
 // Profile.

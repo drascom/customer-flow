@@ -1,4 +1,5 @@
 import base64
+import io
 import json
 import os
 import tempfile
@@ -15,6 +16,7 @@ from urllib.request import Request, urlopen
 from unittest.mock import patch
 
 from app import AGENT_OWNED_CLOSURE_MIGRATION, Database, create_server, hash_password
+from PIL import Image as PILImage
 
 
 class APITestCase(unittest.TestCase):
@@ -1175,6 +1177,68 @@ class APITestCase(unittest.TestCase):
         self.assertEqual(jpeg, photo_body)
         self.assertEqual("image/jpeg", photo_headers.get_content_type())
         self.raw_request("GET", f"/photos/{photo_id}", expected=401)
+
+    def test_photo_thumbnails_are_smaller_cached_previews_while_originals_remain_exact(self):
+        doctor = self.login("doctor1", "demo123")
+        agent = self.login("user1", "demo123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Thumbnail Test Patient", "grafts": "2200", "currency": "GBP",
+            "price": "2100", "note": "Thumbnail and original test", "photoCount": 1,
+        }, token=agent, expected=201)["case"]
+
+        source = PILImage.effect_noise((1600, 1200), 48).convert("RGB")
+        encoded = io.BytesIO()
+        source.save(encoded, format="JPEG", quality=94)
+        original = encoded.getvalue()
+        uploaded_body, _ = self.raw_request(
+            "POST", f"/cases/{created['id']}/photos", body=original,
+            content_type="image/jpeg", token=agent, expected=201,
+        )
+        photo_id = json.loads(uploaded_body)["case"]["photoIDs"][0]
+
+        original_body, original_headers = self.raw_request(
+            "GET", f"/photos/{photo_id}", token=doctor,
+        )
+        self.assertEqual(original, original_body)
+        self.assertIn("max-age=3600", original_headers["Cache-Control"])
+        self.assertEqual("Authorization", original_headers["Vary"])
+        self.assertTrue(original_headers["ETag"])
+
+        thumbnail_body, thumbnail_headers = self.raw_request(
+            "GET", f"/photos/{photo_id}/thumbnail", token=doctor,
+        )
+        self.assertEqual("image/jpeg", thumbnail_headers.get_content_type())
+        self.assertLess(len(thumbnail_body), len(original_body))
+        with PILImage.open(io.BytesIO(thumbnail_body)) as thumbnail:
+            self.assertLessEqual(max(thumbnail.size), 640)
+
+        cached_body, cached_headers = self.raw_request(
+            "GET", f"/photos/{photo_id}/thumbnail", token=doctor, expected=304,
+            extra_headers={"If-None-Match": thumbnail_headers["ETag"]},
+        )
+        self.assertEqual(b"", cached_body)
+        self.assertEqual(thumbnail_headers["ETag"], cached_headers["ETag"])
+
+        message_body, _ = self.raw_request(
+            "POST", f"/cases/{created['id']}/message-photos", body=original,
+            content_type="image/jpeg", token=doctor, expected=201,
+        )
+        message_case = json.loads(message_body)["case"]
+        message_photo_id = next(
+            message["attachmentPhotoID"] for message in reversed(message_case["messages"])
+            if message["attachmentPhotoID"]
+        )
+        message_original, _ = self.raw_request(
+            "GET", f"/message-photos/{message_photo_id}", token=agent,
+        )
+        message_thumbnail, message_thumbnail_headers = self.raw_request(
+            "GET", f"/message-photos/{message_photo_id}/thumbnail", token=agent,
+        )
+        self.assertEqual(original, message_original)
+        self.assertEqual("image/jpeg", message_thumbnail_headers.get_content_type())
+        self.assertLess(len(message_thumbnail), len(message_original))
+        with PILImage.open(io.BytesIO(message_thumbnail)) as thumbnail:
+            self.assertLessEqual(max(thumbnail.size), 640)
 
     def test_case_edits_and_photo_uploads_accept_uppercase_uuid_paths(self):
         agent = self.login("user1", "demo123")

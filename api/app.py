@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Customer Flow local API.
 
-Dependency-free HTTP + SQLite service for the first native vertical slice.
+HTTP + SQLite service for the native and web clients.
 Production deployments must place it behind an HTTPS reverse proxy.
 """
 
@@ -31,6 +31,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
+VENDOR_PATH = Path(__file__).resolve().parent / ".vendor"
+if VENDOR_PATH.is_dir():
+    import sys
+    sys.path.insert(0, str(VENDOR_PATH))
+
+try:
+    from PIL import Image, ImageOps, UnidentifiedImageError
+except ImportError:  # The API remains usable; thumbnail requests fall back to originals.
+    Image = ImageOps = None
+    UnidentifiedImageError = OSError
+
 from apns import APNSPushDispatcher
 
 
@@ -46,6 +57,42 @@ IOS_STORE_URL = "https://apps.apple.com/gb/app/customerflow-by-natchatt/id680227
 IOS_LOOKUP_URL = f"https://itunes.apple.com/lookup?id={IOS_APP_ID}&country=gb"
 APP_STORE_CACHE_SECONDS = 15 * 60
 AGENT_OWNED_CLOSURE_MIGRATION = "2026-09-11-agent-owned-case-closure"
+PHOTO_THUMBNAIL_SIZE = (640, 640)
+PHOTO_THUMBNAIL_QUALITY = 80
+
+
+def thumbnail_path(file_path: Path) -> Path:
+    return file_path.with_name(f"{file_path.stem}.thumb.jpg")
+
+
+def ensure_thumbnail(file_path: Path) -> Path | None:
+    """Create a bounded JPEG preview beside an immutable uploaded image."""
+    if Image is None or ImageOps is None:
+        return None
+    destination = thumbnail_path(file_path)
+    if destination.is_file():
+        return destination
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with Image.open(file_path) as source:
+            preview = ImageOps.exif_transpose(source)
+            preview.thumbnail(PHOTO_THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+            if preview.mode in {"RGBA", "LA"} or "transparency" in preview.info:
+                rgba = preview.convert("RGBA")
+                flattened = Image.new("RGB", rgba.size, "white")
+                flattened.paste(rgba, mask=rgba.getchannel("A"))
+                preview = flattened
+            elif preview.mode != "RGB":
+                preview = preview.convert("RGB")
+            preview.save(temporary, format="JPEG", quality=PHOTO_THUMBNAIL_QUALITY, optimize=True)
+        temporary.replace(destination)
+        return destination
+    except (OSError, UnidentifiedImageError, ValueError):
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
 
 
 def deployment_commit() -> str:
@@ -1950,6 +1997,7 @@ class Database:
                 case_dir.mkdir(parents=True, exist_ok=True)
                 path = case_dir / f"{photo_id}{extension}"
                 path.write_bytes(body)
+                ensure_thumbnail(path)
                 now = iso(utc_now())
                 relative_path = str(path.relative_to(self.media_root))
                 position = conn.execute(
@@ -2039,6 +2087,7 @@ class Database:
                 if file_path and file_path.is_file():
                     try:
                         file_path.unlink()
+                        thumbnail_path(file_path).unlink(missing_ok=True)
                     except OSError:
                         pass
                 return {"id": photo_id, "purged": True}
@@ -2099,7 +2148,9 @@ class Database:
             "messageCount": message_count,
         }
 
-    def get_photo(self, photo_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
+    def get_photo(
+        self, photo_id: str, user: sqlite3.Row, thumbnail: bool = False
+    ) -> tuple[bytes, str]:
         with self.connect() as conn:
             photo = conn.execute(
                 "SELECT p.*,c.agent_id,c.assigned_doctor_id,u.agency_id case_agency_id FROM photos p "
@@ -2118,6 +2169,10 @@ class Database:
             file_path = (media_root / photo["file_path"]).resolve()
             if media_root not in file_path.parents or not file_path.is_file():
                 raise APIError(404, "photo_unavailable", "The uploaded photo file is unavailable.")
+            if thumbnail:
+                preview_path = ensure_thumbnail(file_path)
+                if preview_path:
+                    return preview_path.read_bytes(), "image/jpeg"
             return file_path.read_bytes(), photo["content_type"]
 
     def add_message_photo(
@@ -2144,6 +2199,7 @@ class Database:
                 message_dir.mkdir(parents=True, exist_ok=True)
                 path = message_dir / f"{message_id}{extension}"
                 path.write_bytes(body)
+                ensure_thumbnail(path)
                 relative_path = str(path.relative_to(self.media_root))
                 now = iso(utc_now())
                 conn.execute(
@@ -2233,7 +2289,9 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
-    def get_message_photo(self, message_id: str, user: sqlite3.Row) -> tuple[bytes, str]:
+    def get_message_photo(
+        self, message_id: str, user: sqlite3.Row, thumbnail: bool = False
+    ) -> tuple[bytes, str]:
         with self.connect() as conn:
             message = conn.execute(
                 "SELECT m.attachment_path,m.attachment_content_type,m.deleted_at,c.agent_id,c.assigned_doctor_id,"
@@ -2250,6 +2308,10 @@ class Database:
             file_path = (media_root / message["attachment_path"]).resolve()
             if media_root not in file_path.parents or not file_path.is_file():
                 raise APIError(404, "message_photo_unavailable", "The message photo file is unavailable.")
+            if thumbnail:
+                preview_path = ensure_thumbnail(file_path)
+                if preview_path:
+                    return preview_path.read_bytes(), "image/jpeg"
             return file_path.read_bytes(), message["attachment_content_type"]
 
     def admin_users(self, user: sqlite3.Row) -> list[dict]:
@@ -2994,7 +3056,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow", "commit": DEPLOYMENT_COMMIT,
-                                        "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-messages", "role-auth", "profile", "password-reset", "mandatory-password-change", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
+                                        "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-thumbnails", "photo-messages", "role-auth", "profile", "password-reset", "mandatory-password-change", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
             if method == "GET" and path == f"{API_PREFIX}/client-version/ios":
                 return self._json(200, {"policy": self.server.database.client_version_policy()})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
@@ -3147,16 +3209,24 @@ class APIHandler(BaseHTTPRequestHandler):
                 name = parse_qs(parsed.query).get("name", [""])[0]
                 return self._json(200, {"matches": self.server.database.find_matches(name, user)})
             if method == "GET" and path.startswith(f"{API_PREFIX}/photos/"):
-                photo_id = path.removeprefix(f"{API_PREFIX}/photos/")
-                if not photo_id or "/" in photo_id:
+                photo_parts = path.removeprefix(f"{API_PREFIX}/photos/").split("/")
+                if not photo_parts[0] or len(photo_parts) > 2 or (
+                    len(photo_parts) == 2 and photo_parts[1] != "thumbnail"
+                ):
                     raise APIError(404, "photo_not_found", "The photo could not be found.")
-                body, content_type = self.server.database.get_photo(photo_id, user)
+                body, content_type = self.server.database.get_photo(
+                    photo_parts[0], user, thumbnail=len(photo_parts) == 2
+                )
                 return self._binary(200, body, content_type)
             if method == "GET" and path.startswith(f"{API_PREFIX}/message-photos/"):
-                message_id = path.removeprefix(f"{API_PREFIX}/message-photos/")
-                if not message_id or "/" in message_id:
+                message_parts = path.removeprefix(f"{API_PREFIX}/message-photos/").split("/")
+                if not message_parts[0] or len(message_parts) > 2 or (
+                    len(message_parts) == 2 and message_parts[1] != "thumbnail"
+                ):
                     raise APIError(404, "message_photo_not_found", "The message photo could not be found.")
-                body, content_type = self.server.database.get_message_photo(message_id, user)
+                body, content_type = self.server.database.get_message_photo(
+                    message_parts[0], user, thumbnail=len(message_parts) == 2
+                )
                 return self._binary(200, body, content_type)
             parts = path.removeprefix(f"{API_PREFIX}/cases/").split("/")
             if not path.startswith(f"{API_PREFIX}/cases/") or not parts[0]:
@@ -3420,10 +3490,21 @@ class APIHandler(BaseHTTPRequestHandler):
         self._json(status, payload)
 
     def _binary(self, status: int, body: bytes, content_type: str) -> None:
+        etag = f'"{hashlib.sha256(body).hexdigest()}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "private, max-age=3600, must-revalidate")
+            self.send_header("Vary", "Authorization")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            return
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "private, max-age=3600, must-revalidate")
+        self.send_header("Vary", "Authorization")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)

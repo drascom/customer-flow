@@ -47,6 +47,7 @@ final class AppState: ObservableObject {
     private var caseReloadRequested = false
     private var deviceTokenHex: String?
     private let photoCache = NSCache<NSString, NSData>()
+    private let photoThumbnailCache = NSCache<NSString, NSData>()
     private let serverAddressKey = "customerFlow.serverAddress"
     private let rememberedUsernameKey = "customerFlow.rememberedUsername"
     private let keepsUserSignedInKey = "customerFlow.keepsUserSignedIn"
@@ -86,6 +87,7 @@ final class AppState: ObservableObject {
             } catch {
                 SecureTokenStore.clear()
                 await client.setAccessToken(nil)
+                await client.clearImageCache()
                 phase = .login
             }
         } catch {
@@ -126,6 +128,9 @@ final class AppState: ObservableObject {
         do {
             let normalizedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
             let session = try await remoteClient.login(username: normalizedUsername, password: password)
+            photoCache.removeAllObjects()
+            photoThumbnailCache.removeAllObjects()
+            await remoteClient.clearImageCache()
             keepsUserSignedIn = keepSignedIn
             UserDefaults.standard.set(keepSignedIn, forKey: keepsUserSignedInKey)
             if keepSignedIn {
@@ -162,6 +167,8 @@ final class AppState: ObservableObject {
         unreadNotificationCount = 0
         pendingNotificationCaseID = nil
         photoCache.removeAllObjects()
+        photoThumbnailCache.removeAllObjects()
+        await remoteClient?.clearImageCache()
         adminRepository = nil
         repository = MockCaseRepository()
         patientMatcher = MockPatientMatchingService()
@@ -248,6 +255,8 @@ final class AppState: ObservableObject {
         unreadNotificationCount = 0
         pendingNotificationCaseID = nil
         photoCache.removeAllObjects()
+        photoThumbnailCache.removeAllObjects()
+        await remoteClient?.clearImageCache()
         adminRepository = nil
         connectedServerName = "Customer Flow Server"
         updateRequirement = nil
@@ -393,6 +402,7 @@ final class AppState: ObservableObject {
         do {
             let updated = try await repository.deletePhoto(caseID: caseID, photoID: photoID)
             photoCache.removeObject(forKey: photoID as NSString)
+            photoThumbnailCache.removeObject(forKey: photoID as NSString)
             replace(updated)
             await load()
             return true
@@ -409,6 +419,15 @@ final class AppState: ObservableObject {
         }
         let data = try await repository.fetchPhoto(photoID: photoID)
         photoCache.setObject(data as NSData, forKey: photoID as NSString)
+        return data
+    }
+
+    func photoThumbnailData(photoID: String) async throws -> Data {
+        if let cached = photoThumbnailCache.object(forKey: photoID as NSString) {
+            return cached as Data
+        }
+        let data = try await repository.fetchPhotoThumbnail(photoID: photoID)
+        photoThumbnailCache.setObject(data as NSData, forKey: photoID as NSString)
         return data
     }
 
@@ -441,6 +460,15 @@ final class AppState: ObservableObject {
         }
         let data = try await repository.fetchMessagePhoto(messageID: messageID)
         photoCache.setObject(data as NSData, forKey: messageID as NSString)
+        return data
+    }
+
+    func messagePhotoThumbnailData(messageID: String) async throws -> Data {
+        if let cached = photoThumbnailCache.object(forKey: messageID as NSString) {
+            return cached as Data
+        }
+        let data = try await repository.fetchMessagePhotoThumbnail(messageID: messageID)
+        photoThumbnailCache.setObject(data as NSData, forKey: messageID as NSString)
         return data
     }
 

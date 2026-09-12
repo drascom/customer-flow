@@ -5,12 +5,13 @@ The API contains the versioned HTTP endpoints, authentication, SQLite database l
 ## Requirements
 
 - Python 3.9 or newer
-- No third-party Python packages are required
+- Pillow 11 or newer for fast photo thumbnails
 
 ## Simple local setup
 
 ```bash
 cd api
+python3 -m pip install --target .vendor -r requirements.txt
 export CF_ADMIN_PASSWORD='change-this-admin-password'
 export CF_DOCTOR_PASSWORD='change-this-doctor-password'
 export CF_AGENT_PASSWORD='change-this-agent-password'

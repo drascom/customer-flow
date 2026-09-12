@@ -58,6 +58,10 @@ final class MockCaseRepository: CaseRepository {
         throw MockError.notFound
     }
 
+    func fetchPhotoThumbnail(photoID: String) async throws -> Data {
+        try await fetchPhoto(photoID: photoID)
+    }
+
     func sendPhotoMessage(
         caseID: UUID, data: Data, contentType: String, text: String
     ) async throws -> ConsultationCase {
@@ -79,6 +83,10 @@ final class MockCaseRepository: CaseRepository {
 
     func fetchMessagePhoto(messageID: String) async throws -> Data {
         throw MockError.notFound
+    }
+
+    func fetchMessagePhotoThumbnail(messageID: String) async throws -> Data {
+        try await fetchMessagePhoto(messageID: messageID)
     }
 
     func deleteMessage(caseID: UUID, messageID: UUID) async throws -> ConsultationCase {

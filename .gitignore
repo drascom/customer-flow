@@ -15,6 +15,7 @@ __pycache__/
 mcp-server/build/
 api/data/*.sqlite3*
 api/media/*
+api/.vendor/
 !api/media/.gitkeep
 
 # Xcode

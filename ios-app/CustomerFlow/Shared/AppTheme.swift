@@ -276,7 +276,7 @@ struct CasePhotoView: View {
                 isLoading = false
                 return
             }
-            guard let data = try? await state.photoData(photoID: photoID),
+            guard let data = try? await state.photoThumbnailData(photoID: photoID),
                   let loaded = UIImage(data: data) else {
                 isLoading = false
                 return
@@ -293,6 +293,16 @@ struct NativePhotoPreviewRequest: Identifiable {
     let fileURLs: [URL]
     let initialIndex: Int
     let allowsEditing: Bool
+
+    static func makeSingle(photoID: String, data: Data) throws -> NativePhotoPreviewRequest {
+        try make(
+            caseID: UUID(),
+            photoIDs: [photoID],
+            photoData: [photoID: data],
+            initialIndex: 0,
+            allowsEditing: false
+        )
+    }
 
     static func make(
         caseID: UUID,
@@ -1202,24 +1212,71 @@ struct MessagePhotoView: View {
     let messageID: String
 
     @State private var image: UIImage?
+    @State private var previewRequest: NativePhotoPreviewRequest?
+    @State private var isLoadingOriginal = false
 
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                ProgressView()
+        Button {
+            openFullScreenPhoto()
+        } label: {
+            ZStack(alignment: .bottomTrailing) {
+                Group {
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        ProgressView()
+                    }
+                }
+
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(.black.opacity(0.66), in: Circle())
+                    .padding(9)
+
+                if isLoadingOriginal {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black.opacity(0.28))
+                }
             }
         }
+        .buttonStyle(.plain)
+        .disabled(image == nil || isLoadingOriginal)
         .frame(maxWidth: 280, minHeight: 120, maxHeight: 240)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .task(id: messageID) {
-            guard let data = try? await state.messagePhotoData(messageID: messageID) else { return }
+            guard let data = try? await state.messagePhotoThumbnailData(messageID: messageID) else { return }
             image = UIImage(data: data)
         }
         .accessibilityLabel("Annotated patient photo")
+        .accessibilityHint("Opens the original photo full screen")
+        .fullScreenCover(item: $previewRequest) { request in
+            NativePhotoPreview(request: request) { _, _, _ in false } onClose: {
+                previewRequest = nil
+            }
+        }
+    }
+
+    private func openFullScreenPhoto() {
+        guard !isLoadingOriginal else { return }
+        isLoadingOriginal = true
+        Task {
+            do {
+                let data = try await state.messagePhotoData(messageID: messageID)
+                previewRequest = try NativePhotoPreviewRequest.makeSingle(
+                    photoID: messageID,
+                    data: data
+                )
+            } catch {
+                state.errorMessage = "The original photo could not be opened."
+            }
+            isLoadingOriginal = false
+        }
     }
 }
 

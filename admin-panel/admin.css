@@ -301,7 +301,11 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .message-head { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .message-head time { margin-left: auto; color: var(--muted); }
 .message p { color: var(--ink); white-space: pre-wrap; }
-.message img { width: min(100%, 420px); max-height: 360px; object-fit: contain; border-radius: 10px; background: black; cursor: zoom-in; }
+.message img { width: min(100%, 420px); max-height: 360px; object-fit: contain; border-radius: 10px; background: black; }
+.message-photo-button { position: relative; justify-self: start; overflow: hidden; max-width: min(100%, 420px); padding: 0; border: 0; border-radius: 10px; background: black; cursor: zoom-in; }
+.message-photo-button img { display: block; width: 100%; }
+.message-photo-button > span { position: absolute; right: 9px; bottom: 9px; display: grid; place-items: center; width: 34px; height: 34px; color: white; border-radius: 50%; background: rgba(0,0,0,.66); font-size: 18px; }
+.message-photo-button:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
 .message.deleted { opacity: .68; border: 1px dashed var(--red); }
 .message-photo { min-height: 180px; border-radius: 10px; }
 .inline-form { display: grid; gap: 10px; }
@@ -319,14 +323,19 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .pending-photo img { width: 100%; height: 100%; object-fit: cover; }
 .pending-photo button { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; padding: 0; color: white; border: 0; border-radius: 50%; background: #f04444; }
 
-.photo-dialog { width: min(1100px, 100%); max-width: 100%; height: min(900px, 100vh); max-height: 100vh; border-radius: 0; background: #050505; }
-.photo-viewer { position: relative; display: grid; grid-template-rows: auto 1fr auto; height: 100%; color: white; }
-.photo-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #111; }
+.photo-dialog { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; background: #050505; }
+.photo-viewer { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; height: 100%; color: white; }
+.photo-toolbar { position: relative; z-index: 4; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #111; }
 .photo-toolbar > div { display: flex; align-items: center; gap: 8px; }
-.photo-viewer > img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.photo-zoom-controls { color: white; }
+.photo-zoom-controls button { min-width: 36px; color: white; border-color: #555; background: #252525; }
+.photo-zoom-controls button:disabled { opacity: .35; }
+.photo-zoom-controls span { min-width: 48px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+.photo-stage { display: grid; place-items: center; overflow: auto; min-height: 0; }
+.photo-stage > img { width: 100%; height: 100%; min-height: 0; object-fit: contain; transition: transform .18s ease; transform-origin: center; }
 .photo-arrow { position: absolute; z-index: 3; top: 50%; width: 46px; height: 58px; color: white; border: 0; border-radius: 13px; background: rgba(0,0,0,.52); font-size: 38px; }
 .photo-arrow.previous { left: 14px; }.photo-arrow.next { right: 14px; }
-.photo-thumbnails { display: flex; gap: 8px; overflow-x: auto; padding: 10px 14px; background: #111; }
+.photo-thumbnails { position: relative; z-index: 4; display: flex; gap: 8px; overflow-x: auto; padding: 10px 14px; background: #111; }
 .photo-thumbnails button { flex: none; overflow: hidden; width: 70px; height: 54px; padding: 0; border: 2px solid transparent; border-radius: 8px; background: #222; }
 .photo-thumbnails button.active { border-color: var(--amber); }
 .photo-thumbnails img { width: 100%; height: 100%; object-fit: cover; }
@@ -349,6 +358,9 @@ hr { width: 100%; border: 0; border-top: 1px solid var(--border); }
 .loading { display: grid; place-items: center; min-height: 180px; color: var(--muted); }
 
 @media (max-width: 800px) {
+  .photo-toolbar { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; }
+  .photo-zoom-controls { justify-self: center; }
+  #resetPhotoZoom { display: none; }
   .topbar { grid-template-columns: 1fr auto; gap: 8px 12px; }
   .topbar-search { grid-column: 1 / -1; grid-row: 2; }
   .content { width: min(100% - 20px, 1460px); margin-top: 16px; }

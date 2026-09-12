@@ -6,6 +6,7 @@ readonly branch="main"
 readonly api_service="customer-flow-api.service"
 readonly mcp_service="customer-flow-mcp.service"
 readonly mcp_python="${repo}/mcp-server/.venv/bin/python"
+readonly api_python="/usr/bin/python3"
 readonly health_url="http://127.0.0.1:8080/api/v1/health"
 readonly runtime_root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 readonly lock_path="${runtime_root}/customer-flow-auto-deploy.lock"
@@ -33,6 +34,10 @@ if ! git -C "${repo}" merge-base --is-ancestor \
 fi
 
 git -C "${repo}" merge --quiet --ff-only "${target_revision}"
+"${api_python}" -m pip install --quiet --upgrade --target "${repo}/api/.vendor" \
+    -r "${repo}/api/requirements.txt" \
+    || logger -t customer-flow-auto-deploy \
+        "Thumbnail dependency install failed; API will temporarily serve original images."
 "${mcp_python}" -m pip install --quiet --no-deps --force-reinstall "${repo}/mcp-server"
 systemctl --user restart "${api_service}" "${mcp_service}"
 
@@ -49,6 +54,10 @@ done
 logger -t customer-flow-auto-deploy \
     "Health check failed for ${target_revision}; rolling back to ${previous_revision}."
 git -C "${repo}" reset --hard "${previous_revision}"
+"${api_python}" -m pip install --quiet --upgrade --target "${repo}/api/.vendor" \
+    -r "${repo}/api/requirements.txt" \
+    || logger -t customer-flow-auto-deploy \
+        "Thumbnail dependency reinstall failed after rollback."
 "${mcp_python}" -m pip install --quiet --no-deps --force-reinstall "${repo}/mcp-server"
 systemctl --user restart "${api_service}" "${mcp_service}"
 

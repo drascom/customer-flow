@@ -8,8 +8,10 @@ protocol CaseRepository: AnyObject {
     func uploadPhoto(caseID: UUID, data: Data, contentType: String) async throws -> ConsultationCase
     func deletePhoto(caseID: UUID, photoID: String) async throws -> ConsultationCase
     func fetchPhoto(photoID: String) async throws -> Data
+    func fetchPhotoThumbnail(photoID: String) async throws -> Data
     func sendPhotoMessage(caseID: UUID, data: Data, contentType: String, text: String) async throws -> ConsultationCase
     func fetchMessagePhoto(messageID: String) async throws -> Data
+    func fetchMessagePhotoThumbnail(messageID: String) async throws -> Data
     func deleteMessage(caseID: UUID, messageID: UUID) async throws -> ConsultationCase
     func sendRecommendation(caseID: UUID, doctorID: String, recommendation: DoctorRecommendation) async throws -> ConsultationCase
     func saveAgentValues(caseID: UUID, patientName: String, patientProfile: PatientProfileInput, grafts: String, currency: String, price: String) async throws

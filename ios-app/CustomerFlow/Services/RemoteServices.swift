@@ -61,14 +61,31 @@ enum RemoteServiceError: LocalizedError {
 actor RemoteAPIClient {
     let baseURL: URL
     private var accessToken: String?
+    private let imageCache: URLCache
+    private let imageSession: URLSession
 
     init(baseURL: URL, accessToken: String? = nil) {
         self.baseURL = baseURL
         self.accessToken = accessToken
+        let cache = URLCache(
+            memoryCapacity: 64 * 1024 * 1024,
+            diskCapacity: 256 * 1024 * 1024,
+            directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+                .appendingPathComponent("CustomerFlowImages", isDirectory: true)
+        )
+        let configuration = URLSessionConfiguration.default
+        configuration.urlCache = cache
+        configuration.requestCachePolicy = .useProtocolCachePolicy
+        imageCache = cache
+        imageSession = URLSession(configuration: configuration)
     }
 
     func setAccessToken(_ token: String?) {
         accessToken = token
+    }
+
+    func clearImageCache() {
+        imageCache.removeAllCachedResponses()
     }
 
     func health() async throws -> ServerHealth {
@@ -230,7 +247,7 @@ actor RemoteAPIClient {
         request.setValue("image/*", forHTTPHeaderField: "Accept")
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await imageSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw RemoteServiceError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
@@ -334,6 +351,10 @@ final class RemoteCaseRepository: CaseRepository {
         try await client.download("photos/\(photoID)")
     }
 
+    func fetchPhotoThumbnail(photoID: String) async throws -> Data {
+        try await client.download("photos/\(photoID)/thumbnail")
+    }
+
     func sendPhotoMessage(
         caseID: UUID, data: Data, contentType: String, text: String
     ) async throws -> ConsultationCase {
@@ -350,6 +371,10 @@ final class RemoteCaseRepository: CaseRepository {
 
     func fetchMessagePhoto(messageID: String) async throws -> Data {
         try await client.download("message-photos/\(messageID)")
+    }
+
+    func fetchMessagePhotoThumbnail(messageID: String) async throws -> Data {
+        try await client.download("message-photos/\(messageID)/thumbnail")
     }
 
     func deleteMessage(caseID: UUID, messageID: UUID) async throws -> ConsultationCase {
