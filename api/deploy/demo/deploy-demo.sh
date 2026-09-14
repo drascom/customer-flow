@@ -5,6 +5,8 @@ readonly repo="/home/ubuntu/customer-flow-demo"
 readonly branch="main"
 readonly service_name="customer-flow-demo.service"
 readonly api_python="/usr/bin/python3"
+readonly database_path="/var/lib/customer-flow-demo/customer-flow.sqlite3"
+readonly media_root="/var/lib/customer-flow-demo/media"
 readonly health_url="http://127.0.0.1:8080/api/v1/health"
 readonly lock_path="/run/lock/customer-flow-demo-maintenance.lock"
 
@@ -39,6 +41,10 @@ as_deploy_user "${api_python}" -m pip install --quiet --upgrade --target "${repo
     -r "${repo}/api/requirements.txt" \
     || logger -t customer-flow-demo-deploy \
         "Thumbnail dependency install failed; API will temporarily serve original images."
+as_deploy_user "${api_python}" "${repo}/api/backfill_thumbnails.py" \
+    --db "${database_path}" --media "${media_root}" \
+    || logger -t customer-flow-demo-deploy \
+        "Historical thumbnail backfill was incomplete; clients will use original images."
 systemctl restart "${service_name}"
 
 for _ in {1..30}; do

@@ -1205,7 +1205,7 @@ class APITestCase(unittest.TestCase):
         self.assertTrue(original_headers["ETag"])
 
         thumbnail_body, thumbnail_headers = self.raw_request(
-            "GET", f"/photos/{photo_id}/thumbnail", token=doctor,
+            "GET", f"/photos/{photo_id}/thumbnail?v=2", token=doctor,
         )
         self.assertEqual("image/jpeg", thumbnail_headers.get_content_type())
         self.assertLess(len(thumbnail_body), len(original_body))
@@ -1232,7 +1232,7 @@ class APITestCase(unittest.TestCase):
             "GET", f"/message-photos/{message_photo_id}", token=agent,
         )
         message_thumbnail, message_thumbnail_headers = self.raw_request(
-            "GET", f"/message-photos/{message_photo_id}/thumbnail", token=agent,
+            "GET", f"/message-photos/{message_photo_id}/thumbnail?v=2", token=agent,
         )
         self.assertEqual(original, message_original)
         self.assertEqual("image/jpeg", message_thumbnail_headers.get_content_type())

@@ -7,6 +7,8 @@ readonly api_service="customer-flow-api.service"
 readonly mcp_service="customer-flow-mcp.service"
 readonly mcp_python="${repo}/mcp-server/.venv/bin/python"
 readonly api_python="/usr/bin/python3"
+readonly database_path="/var/lib/customer-flow/customer-flow.sqlite3"
+readonly media_root="/var/lib/customer-flow/media"
 readonly health_url="http://127.0.0.1:8080/api/v1/health"
 readonly runtime_root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 readonly lock_path="${runtime_root}/customer-flow-auto-deploy.lock"
@@ -38,6 +40,10 @@ git -C "${repo}" merge --quiet --ff-only "${target_revision}"
     -r "${repo}/api/requirements.txt" \
     || logger -t customer-flow-auto-deploy \
         "Thumbnail dependency install failed; API will temporarily serve original images."
+"${api_python}" "${repo}/api/backfill_thumbnails.py" \
+    --db "${database_path}" --media "${media_root}" \
+    || logger -t customer-flow-auto-deploy \
+        "Historical thumbnail backfill was incomplete; clients will use original images."
 "${mcp_python}" -m pip install --quiet --no-deps --force-reinstall "${repo}/mcp-server"
 systemctl --user restart "${api_service}" "${mcp_service}"
 

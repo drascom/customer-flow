@@ -5,7 +5,7 @@ The API contains the versioned HTTP endpoints, authentication, SQLite database l
 ## Requirements
 
 - Python 3.9 or newer
-- Pillow 11 or newer for fast photo thumbnails
+- Pillow 11 or newer with pillow-heif for fast JPEG, PNG and HEIC photo thumbnails
 
 ## Simple local setup
 
@@ -176,6 +176,22 @@ Implicit TLS is used by default. Set `CF_SMTP_SSL=0` to use STARTTLS. Firebase i
 - Back up `data/` and `media/` securely.
 - Never commit the SQLite database, uploaded patient media or SMTP credentials.
 - The optional systemd unit in `deploy/` is an example and may need path changes for your server.
+
+### Historical photo thumbnails
+
+The managed deploy scripts run a one-time, idempotent backfill for case photos
+and annotated conversation photos uploaded before thumbnail support. The command
+can also be run manually (or retried with `--force`):
+
+```bash
+python3 backfill_thumbnails.py \
+  --db /var/lib/customer-flow/customer-flow.sqlite3 \
+  --media /var/lib/customer-flow/media
+```
+
+The summary reports created and existing thumbnails, missing original files and
+conversion failures. A completion marker in the media folder prevents repeated
+full scans; new uploads create their thumbnail immediately.
 
 ### Automatic deployment
 

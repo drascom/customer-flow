@@ -1,6 +1,8 @@
 import Foundation
 import Security
 
+private let photoThumbnailVersion = "2"
+
 struct AuthenticatedUser: Codable, Sendable {
     let id: String
     let username: String
@@ -352,7 +354,11 @@ final class RemoteCaseRepository: CaseRepository {
     }
 
     func fetchPhotoThumbnail(photoID: String) async throws -> Data {
-        try await client.download("photos/\(photoID)/thumbnail")
+        do {
+            return try await client.download("photos/\(photoID)/thumbnail?v=\(photoThumbnailVersion)")
+        } catch {
+            return try await fetchPhoto(photoID: photoID)
+        }
     }
 
     func sendPhotoMessage(
@@ -374,7 +380,13 @@ final class RemoteCaseRepository: CaseRepository {
     }
 
     func fetchMessagePhotoThumbnail(messageID: String) async throws -> Data {
-        try await client.download("message-photos/\(messageID)/thumbnail")
+        do {
+            return try await client.download(
+                "message-photos/\(messageID)/thumbnail?v=\(photoThumbnailVersion)"
+            )
+        } catch {
+            return try await fetchMessagePhoto(messageID: messageID)
+        }
     }
 
     func deleteMessage(caseID: UUID, messageID: UUID) async throws -> ConsultationCase {

@@ -42,6 +42,14 @@ except ImportError:  # The API remains usable; thumbnail requests fall back to o
     Image = ImageOps = None
     UnidentifiedImageError = OSError
 
+try:
+    from pillow_heif import register_heif_opener
+except ImportError:  # JPEG and PNG thumbnails remain available without HEIC support.
+    register_heif_opener = None
+
+if register_heif_opener is not None:
+    register_heif_opener(thumbnails=False)
+
 from apns import APNSPushDispatcher
 
 

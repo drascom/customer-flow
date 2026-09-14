@@ -1,4 +1,5 @@
 const API = "/api/v1";
+const PHOTO_THUMBNAIL_VERSION = "2";
 const state = {
   token: localStorage.getItem("cfToken") || sessionStorage.getItem("cfToken"),
   user: null, users: [], agencies: [], cases: [], notifications: [], unreadNotifications: 0,
@@ -503,6 +504,17 @@ async function authenticatedImage(path, cacheKey = path) {
   finally { state.imageRequests.delete(cacheKey); }
 }
 
+async function authenticatedThumbnail(resource, id) {
+  const encodedID = encodeURIComponent(id);
+  try {
+    return await authenticatedImage(
+      `/${resource}/${encodedID}/thumbnail?v=${PHOTO_THUMBNAIL_VERSION}`
+    );
+  } catch {
+    return authenticatedImage(`/${resource}/${encodedID}`);
+  }
+}
+
 function clearImageCache() {
   state.imageCacheGeneration += 1;
   state.blobURLs.forEach((url) => URL.revokeObjectURL(url));
@@ -513,12 +525,12 @@ function clearImageCache() {
 async function loadDetailImages(item) {
   const tiles = [...$("caseDialogContent").querySelectorAll("[data-photo-id]")];
   await Promise.all(tiles.map(async (tile) => {
-    try { const url = await authenticatedImage(`/photos/${encodeURIComponent(tile.dataset.photoId)}/thumbnail`); tile.querySelector(".image-placeholder").outerHTML = `<img src="${url}" alt="Patient photo">`; if (!tile.classList.contains("deleted-photo")) tile.onclick = (e) => { if (!e.target.closest("button")) openPhotoViewer(item, Number(tile.dataset.photoIndex)); }; } catch { tile.querySelector(".image-placeholder").textContent = "Photo unavailable"; }
+    try { const url = await authenticatedThumbnail("photos", tile.dataset.photoId); tile.querySelector(".image-placeholder").outerHTML = `<img src="${url}" alt="Patient photo">`; if (!tile.classList.contains("deleted-photo")) tile.onclick = (e) => { if (!e.target.closest("button")) openPhotoViewer(item, Number(tile.dataset.photoIndex)); }; } catch { tile.querySelector(".image-placeholder").textContent = "Photo unavailable"; }
   }));
   await Promise.all([...$("caseDialogContent").querySelectorAll("[data-message-photo]")].map(async (node) => {
     try {
       const messageID = node.dataset.messagePhoto;
-      const url = await authenticatedImage(`/message-photos/${encodeURIComponent(messageID)}/thumbnail`);
+      const url = await authenticatedThumbnail("message-photos", messageID);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "message-photo-button";
@@ -610,12 +622,11 @@ async function renderPhotoViewer() {
   document.querySelectorAll("[data-view-photo]").forEach((button) => {
     button.onclick = () => { state.photoIndex = Number(button.dataset.viewPhoto); renderPhotoViewer(); };
     const photoID = state.photoItems[Number(button.dataset.viewPhoto)];
-    authenticatedImage(`/${resource}/${encodeURIComponent(photoID)}/thumbnail`).then((url) => {
+    authenticatedThumbnail(resource, photoID).then((url) => {
       if (button.isConnected) button.innerHTML = `<img src="${url}" alt="Patient photo ${Number(button.dataset.viewPhoto) + 1}">`;
     }).catch(() => {});
   });
-  const thumbnailPath = `/${resource}/${encodeURIComponent(id)}/thumbnail`;
-  authenticatedImage(thumbnailPath).then((url) => {
+  authenticatedThumbnail(resource, id).then((url) => {
     if (state.photoIndex === requestedIndex && state.photoResource === resource) $("photoPreviewImage").src = url;
   }).catch(() => {});
   authenticatedImage(`/${resource}/${encodeURIComponent(id)}`).then((url) => {
