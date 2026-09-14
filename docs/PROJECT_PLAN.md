@@ -1,3 +1,215 @@
+# Hair Transplant Consultation App — Project Plan
+
+> This document is available in both English and Turkish. The English version appears first, followed by the original Turkish version.
+>
+> Bu doküman İngilizce ve Türkçe olarak hazırlanmıştır. Önce İngilizce sürüm, ardından özgün Türkçe sürüm yer alır.
+
+# English
+
+## 1. Purpose and scope
+
+The app manages hair-transplant consultation cases through a structured, traceable, role-based workflow between agents and doctors. The supplied HTML page is only a UX mock-up/prototype; the final product is intended to be a native mobile application, not a web app.
+
+## 2. Roles and permissions
+
+After sign-in, each user is sent to a role-specific workspace: **Doctor → case queue**, **Agent → case workspace**, **Admin → system management**. The roles do not share one main screen.
+
+### Agent
+
+- Creates a new case/post, uploads patient photos and adds the case note.
+- Sets and locks the case **Graft Number** and **Price**; doctors cannot alter these agent values.
+- Views the doctor's response and may add follow-up questions, information or photos.
+- Closes a satisfactory response using **Confirm & Close**.
+- Sees only their own name/**You** in uploader information, or no uploader field; other agents' identities are never shown.
+
+### Doctor
+
+- Sees cases assigned to their patients and new unassigned cases; doctors are the only role that replies to posts.
+- Every response includes free text, **Approx. Graft Number**, and **Recommended Price**.
+- Reviews unanswered cases FIFO by default (oldest first).
+- A reply changes the case to **Waiting for Agent Confirmation / Answered**.
+- Can see who uploaded each case.
+
+### Admin
+
+- Does not reply to posts or intervene in doctor-agent correspondence.
+- Manages system settings, operations, users, roles and reporting.
+- May see the uploader for audit/reporting, without gaining reply permission.
+- Can assign a patient before a reply and reassign them with a required reason when needed.
+
+### Simple web Admin Panel
+
+- Available at `/admin` on the same server and accepts only server accounts with the **Admin** role.
+- The user list shows Doctor, Agent and Admin accounts, username, display name, role, agency, active state, and related case/patient counts.
+- An admin creates users with a display name, unique username, role and temporary password. Agents must be assigned to an existing agency; a new agency may be created in the same form. There is no public registration.
+- **Deactivate** removes access and revokes active sessions; **Reactivate** restores access. Permanent **Delete** is permitted only for already-deactivated, unused accounts with no case, patient, message or photo history. Accounts with clinical history remain inactive to preserve audit integrity.
+- The patient/case table tracks patient name and Patient ID, case reference, status, agent, assigned doctor, photo/message counts, graft/price values and upload time.
+- Case lists can be filtered by status, doctor assignment, agency and doctor; user lists by role, access state and agency. Search works with active filter chips and filters can be cleared in one action.
+- Admins can assign an active doctor from the table. Changing an existing doctor requires a reason and all assignments/reassignments are written to the audit trail.
+- The panel is responsive: the page does not overflow on mobile, and wide case tables scroll horizontally inside their own area.
+
+### Native mobile Admin area
+
+- Admin users see only the admin management area in the iOS app, not the Doctor or Agent screens.
+- The web panel's case tracking, user/agency management, doctor assignment and filtering are available through the same server API in the native client.
+- Small screens use **Cases / Users** tabs, compact counters, one search field and a collapsible filter panel rather than a desktop table.
+- Cases and users appear as summary cards; management actions are shown only when the relevant card is opened.
+- Cases support status, assignment, agency and doctor filters; Users support role, active state and agency filters. Search combines with filters and all can be cleared at once.
+- Admins can create users/agencies; creating an Agent requires an active agency.
+- Changing or removing a doctor assignment requires a short reason. Deactivation and permanent deletion require clear confirmation.
+- Lists support pull-to-refresh; all data is loaded from the server rather than copied into the app.
+
+## 3. Case-state workflow
+
+1. Agent uploads the case and photos → **Waiting for Doctor**.
+2. Doctor replies → **Waiting for Agent Confirmation / Answered**.
+3. Agent adds a question or photo → back to **Waiting for Doctor** and the case returns to the doctor's unanswered queue.
+4. Agent chooses **Confirm & Close** → **Closed**.
+
+Only the agent can close a case; a doctor reply alone does not close it.
+
+### Patient-doctor assignment
+
+- Every patient has a persistent server-side **Patient ID**; the displayed **HT-...** value is a separate case/post reference.
+- Admin may assign a patient in advance. If there is no assignment, the first valid doctor to answer becomes the responsible doctor.
+- The responsible-doctor relationship remains after closing; later photos, questions or updates from the same patient go directly to that doctor's queue.
+- Other doctors do not see that patient in their default queues. Admin sees all patients and can transfer ownership.
+- The server atomically applies **Waiting + Unassigned → Answered + Assigned Doctor**. The first reply is accepted; stale replies are rejected and the doctor sees the current state.
+- Assignments, reassignments, first replies and rejected conflicts are recorded in the audit trail.
+
+### Multiple agents and duplicate-patient checks
+
+- Different agents may submit the same patient. Before saving, the server searches likely records using normalized patient name and, where permitted, secondary identifiers such as date of birth and phone/email.
+- A name match never merges records automatically; an agent must make the final confirmation.
+- On a possible match, the agent sees only that the patient may already have been recorded and consulted. The originating agent or company is never disclosed.
+- A small verification flow displays privacy-banded photos only; it does not expose Patient ID, agent identity or other organization information.
+- **Yes — Same Patient** stops the new record. The agent cannot open, edit or copy the existing record.
+- **Different Patient** requires a second explicit confirmation after reviewing the profile photo; a new Patient ID is created and the decision is audited.
+- The server repeats the check at creation time and uses transaction/unique-identity/revalidation safeguards against concurrent creation by two agents.
+- MVP does not use automatic facial recognition; profile photos are shown for human verification only.
+
+## 4. Doctor home screen
+
+- Instant search by patient name, agent name, case reference or note, with **Oldest First / Newest First** ordering.
+- **My Waiting / Unassigned / Answered / Closed** filters with counts below the search row.
+- Search and sorting stay fixed below navigation while scrolling; filters remain in normal flow to preserve space.
+- FIFO is the default: oldest waiting case first.
+- The case list uses two columns on desktop and one on tablet/mobile while keeping the same card order.
+- Cards show upload time, reference, one large photo preview, patient name, **Assigned to you / Unassigned**, note summary, locked **Graft Number / Price**, status and a compact uploader label.
+- Selecting the uploader filters all posts from that agent; the active filter can be cleared by chip.
+- Opening a waiting card reveals a detail area/modal with large and additional photos, full note, conversation and response form.
+- Approximate graft number, recommended price and explanation are all mandatory in a doctor response and are stored/displayed together.
+- Cards show one main photo; additional photos are available with swipe/arrows before opening, with a current/total chip.
+- Full-screen viewing supports touch swipe, left/right controls and keyboard arrows.
+- Doctors can draw and add text notes separately on every full-screen photo using Draw, Text, Undo, Clear and Done.
+- On reply, the UI changes the case to Answered and updates counters. An unassigned-case reply is labelled **Respond & Take Patient** and creates the permanent assignment.
+- In waiting-case detail, there is no duplicate Respond shortcut: **Doctor Response** is open at the end of the page, and the photo action is named **View & Annotate**.
+
+## 5. Agent case-creation screen
+
+- Available only to Agents as a separate native screen; the HTML file is only a mock-up.
+- **New Case** opens it from the agent workspace and completion returns to **My Cases**.
+- Desktop shows **Case Details** left and **Patient Photos** right; narrow screens retain that vertical order.
+- Case Details is always open in create mode. In mobile edit mode it is collapsed by default and offers **Expand / Collapse**; desktop stays open.
+- Agents can select multiple photos, receive shared photos, add/delete/reorder them.
+- The system generates/retrieves a unique **Case Reference** for each post; agents cannot edit it. Persistent Patient ID is separate.
+- The reference appears at the top right of Case Details as **Reference: HT-...**, shortened to **Ref:** on narrow mobile layouts.
+- Required fields are **Patient Name**, agent note, **Graft Number**, currency and **Price**.
+- Typing a patient name triggers duplicate checks. A match requires the agent to choose updating the existing patient or creating a same-name, different patient before proceeding.
+- Required-field guidance appears as a small note below fields; the graft/price guidance appears full width immediately below Patient Name.
+- A case cannot be sent until all required fields and at least two photos are present.
+- Agent-set Graft Number and Price are locked at submit time; doctors enter their own estimates separately.
+- **Save Draft** keeps only a draft. **Submit to Doctor** creates the case and sets **Waiting for Doctor**.
+- There is no separate ready-information box: the button is disabled as **Not Ready** until complete, then becomes green **Ready to Submit**.
+- The success screen clearly shows reference and new state.
+- One shared form component supports both **New Case** and **Edit Case**.
+- Edit mode loads patient information/photos and shows historical agent/doctor comments chronologically below photos, preserving doctor estimate values.
+- Patient name and the first agent note are read-only in edit mode. Only **Graft Number**, currency and **Price** may be changed.
+- **Save Graft & Price** saves only those values; adding/removing photos is written to the server immediately.
+- New photos or follow-up comments/questions return the case to the responsible doctor as **Waiting for Doctor**.
+- When a doctor reply is pending, **Confirm & Close** is a separate primary agent action.
+- Comments remain comfortably readable on mobile, and the Case Details reference/edit controls stay responsively within card bounds.
+
+## 6. App Store distribution model
+
+- Publish a general-purpose, clinic-independent client that anyone can download from the App Store.
+- The app bundle contains no clinic name/logo, live server address, patient data, access key or clinic-specific information.
+- Store copy explains that authorized users connect to their organization's compatible server and require a valid server and account.
+- On first launch, users enter their **Server Address**. QR code or secure-link setup may be added later.
+- Each clinic connects by entering its real server address and manages its own data, users and settings in its own server environment.
+- Apple review receives a separate continuously available **demo server** and active demo Doctor account, with address, credentials and core test steps in review notes.
+- Demo uses only synthetic data, can be safely reset and remains available throughout review.
+- A **Try Demo** option can securely fill the demo address; **Connect to Your Server** accepts a user's own address.
+- Apple's Custom Apps and Unlisted Apps remain alternatives, but the chosen model is public App Store distribution.
+
+### First connection and sign-in
+
+- First launch requests only Server Address and validates availability, API version and capabilities through `/api/v1/health`.
+- After connection, a separate Username/Password screen opens. There is no registration, invitation acceptance or public membership flow.
+- Server-side admins create all users and determine roles/permissions.
+- After their first successful sign-in on a server, Doctor and Agent users receive a role-specific **Quick Tour**; Admin does not.
+- The Doctor tour covers queue search/filter/sort, cards, photos/full screen/annotation, Doctor Response and patient ownership. The Agent tour covers My Cases, **+ New**, duplicate checks, follow-up photo/message and **Confirm & Close**.
+- The four-step tour clearly identifies each control, is skippable and does not repeat at every sign-in. Completion is stored on-device by server address, user, role and tour version; it can be reopened from Profile with **Show app tour again**.
+- Users can update display name, email and phone from Profile; username and role remain server-managed.
+- Signed-in users can change password after confirming the existing password; this ends other active sessions.
+- **Forgot Password** requests a six-digit code valid for 10 minutes by username or registered email. Successful reset revokes older sessions, does not reveal account existence and rate-limits failed attempts.
+- Codes are sent only via SMTP email; Firebase/OTP is not used. Passwords are never stored on-device; the server's time-limited session token is kept in iOS Keychain and deleted on logout.
+- Users can log out or change server; changing server ends the session and returns to connection.
+- Local development may permit LAN HTTP; App Store/production builds require HTTPS.
+
+## 7. Modular client-server architecture
+
+### Server
+
+- Manages authentication, roles/permissions, durable patient-doctor assignment, duplicate checks, case states, atomic response transitions, messages, media, annotations, audit trail, reporting and notifications.
+- The primary database for patients, cases, comments, assignments, prices and audit records is local **SQLite** running on the server.
+- Only the server accesses SQLite; iOS/Android clients use a versioned HTTPS API and never connect to the database directly.
+- Authentication uses username/password and time-limited session tokens. Password recovery uses SMTP, not Firebase; push notifications use an independent notification adapter and APNs on iOS.
+- Clinic-specific settings (name, logo, support, timezone, feature flags and legal links) belong in server environment configuration. Secrets remain in environment/secret management and are never sent to clients.
+- Safe branding/feature information is exposed through a versioned public configuration/capabilities endpoint. Clients validate health, API compatibility and supported features before connecting.
+
+### Clients
+
+- iOS and Android handle UI, server setup, photo upload/sharing, gallery, full-screen viewing and drawing/text annotations.
+- Server address and session information use each platform's secure storage; users can log out or change server.
+- HTTPS is mandatory for production/demo. Clients accept only the expected API contract and never load executable code from a remote server.
+- Native clients and server can evolve separately through a common API contract. Recommended modules: **server**, **ios-client**, **android-client**, **shared-api-contract**.
+
+### Environment separation and security
+
+- Demo and production use fully separate domains, databases, media stores and access credentials.
+- Every server must provide role-based access, tenant/clinic isolation, audit logging, rate limiting, secure media access and session revocation.
+- A supplied server address is validated for format, HTTPS, certificate, API version and capabilities before sign-in/data transfer starts.
+- Because addresses may change, use standard secure TLS validation rather than fixed single-domain pinning; organization-specific policies may be set server-side.
+
+## 8. Mobile sharing target
+
+- WhatsApp automation is not planned.
+- Use an iOS **Share Extension** and Android **Share Intent**.
+- Intended flow: select photos → **Share** → choose the app → add to a new or existing case.
+
+## 9. Design principles
+
+- Simple, professional, medical visual language.
+- Light theme, high legibility and clear status indicators.
+- Task-focused UI that avoids a social-media feel.
+- Responsive across desktop, tablet and mobile.
+- Patient privacy and role-based access are fundamental product requirements.
+
+## 10. Post-prototype decisions
+
+- Test usability of doctor cards and detail screens.
+- Design the Agent case-creation and Confirm & Close flows.
+- Finalize notification, authentication, audit-trail and data-retention requirements.
+- Design first connection, server validation, demo selection and server-change screens.
+- Finalize the shared API contract, compatibility policy and server capabilities model.
+- Prepare demo-server lifecycle, review accounts and synthetic-data reset procedure for Apple review.
+- After mock-up approval, detail the technical architecture and API/data model for native iOS/Android clients and the independent server.
+
+---
+
+# Türkçe
+
 # Saç Ekimi Danışmanlık Uygulaması — Kısa Proje Planı
 
 ## 1. Amaç ve kapsam
