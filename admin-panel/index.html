@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0b7772">
   <title>Customer Flow by NatChatt</title>
-  <link rel="stylesheet" href="/admin/admin.css?v=20260908-case-notifications">
-  <script src="/admin/admin.js?v=20260908-case-notifications" defer></script>
+  <link rel="stylesheet" href="/admin/admin.css?v=20260915-filter-dropdowns">
+  <script src="/admin/admin.js?v=20260915-filter-dropdowns" defer></script>
 </head>
 <body>
   <main id="loginView" class="login-shell">
@@ -86,9 +86,9 @@
         <div class="filter-bar" aria-label="Case filters">
           <div class="filter-groups">
             <div class="filter-group"><span class="filter-label">Status</span><div id="caseStatusChips" class="filter-chips"></div></div>
-            <div id="caseAssignmentGroup" class="filter-group management-only"><span class="filter-label">Assignment</span><div id="caseAssignmentChips" class="filter-chips"></div></div>
-            <div id="caseAgencyGroup" class="filter-group management-only"><span class="filter-label">Agency</span><div id="caseAgencyChips" class="filter-chips"></div></div>
-            <div id="caseDoctorGroup" class="filter-group management-only"><span class="filter-label">Doctor</span><div id="caseDoctorChips" class="filter-chips"></div></div>
+            <div id="caseAssignmentGroup" class="filter-group management-only"><label class="filter-label" for="caseAssignmentFilter">Assignment</label><select id="caseAssignmentFilter" class="filter-select" aria-label="Assignment filter"></select></div>
+            <div id="caseAgencyGroup" class="filter-group management-only"><label class="filter-label" for="caseAgencyFilter">Agency</label><select id="caseAgencyFilter" class="filter-select" aria-label="Agency filter"></select></div>
+            <div id="caseDoctorGroup" class="filter-group management-only"><label class="filter-label" for="caseDoctorFilter">Doctor</label><select id="caseDoctorFilter" class="filter-select" aria-label="Doctor filter"></select></div>
           </div>
           <button id="clearCaseFilters" class="clear-filters" type="button" hidden>Clear filters</button>
         </div>
@@ -106,9 +106,9 @@
         <div class="panel-heading"><div><h2>Users</h2><p>Create accounts and control access without deleting audit history.</p></div></div>
         <div class="filter-bar" aria-label="User filters">
           <div class="filter-groups">
-            <div class="filter-group"><span class="filter-label">Role</span><div id="userRoleChips" class="filter-chips"></div></div>
-            <div class="filter-group"><span class="filter-label">Access</span><div id="userStatusChips" class="filter-chips"></div></div>
-            <div class="filter-group"><span class="filter-label">Agency</span><div id="userAgencyChips" class="filter-chips"></div></div>
+            <div class="filter-group"><label class="filter-label" for="userRoleFilter">Role</label><select id="userRoleFilter" class="filter-select" aria-label="Role filter"></select></div>
+            <div class="filter-group"><label class="filter-label" for="userStatusFilter">Access</label><select id="userStatusFilter" class="filter-select" aria-label="Access filter"></select></div>
+            <div class="filter-group"><label class="filter-label" for="userAgencyFilter">Agency</label><select id="userAgencyFilter" class="filter-select" aria-label="Agency filter"></select></div>
           </div>
           <button id="clearUserFilters" class="clear-filters" type="button" hidden>Clear filters</button>
         </div>
