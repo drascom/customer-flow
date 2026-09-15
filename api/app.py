@@ -1349,12 +1349,18 @@ class Database:
         salt, digest = hash_password(new_password)
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         with self.connect() as conn:
-            conn.execute(
-                "UPDATE users SET password_salt=?, password_hash=?, must_change_password=0 WHERE id=?",
-                (salt, digest, user["id"]),
-            )
-            conn.execute("DELETE FROM sessions WHERE user_id=? AND token_hash<>?", (user["id"], token_hash))
-            self._audit(conn, user["id"], "password.changed", "user", user["id"], {})
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    "UPDATE users SET password_salt=?, password_hash=?, must_change_password=0 WHERE id=?",
+                    (salt, digest, user["id"]),
+                )
+                conn.execute("DELETE FROM sessions WHERE user_id=? AND token_hash<>?", (user["id"], token_hash))
+                self._audit(conn, user["id"], "password.changed", "user", user["id"], {})
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
         return {"ok": True}
 
     @staticmethod

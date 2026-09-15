@@ -5,7 +5,6 @@ import os
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
 import uuid
 from datetime import date
 from http.client import HTTPConnection
@@ -844,6 +843,25 @@ class APITestCase(unittest.TestCase):
         self.request("GET", "/cases", token=changed_token, expected=401)
         self.assertIsNotNone(self.login(username, reset_password))
         self.assertEqual(created["id"], profile["id"])
+
+    def test_password_change_rolls_back_when_audit_write_fails(self):
+        admin = self.login("admin", "demo123")
+        username = "password-atomic-" + uuid.uuid4().hex[:8]
+        self.request("POST", "/admin/users", {
+            "username": username, "displayName": "Password Atomicity Test", "role": "agent",
+            "agencyID": "agency-drascom", "password": "Temporary!123",
+        }, token=admin, expected=201)
+        token = self.activate_temporary_password(username, "Temporary!123")
+
+        with patch.object(Database, "_audit", side_effect=RuntimeError("audit storage unavailable")):
+            self.request("POST", "/auth/change-password", {
+                "currentPassword": "Ready1!", "newPassword": "Changed!456",
+            }, token=token, expected=500)
+
+        self.assertTrue(self.login(username, "Ready1!"))
+        self.request("POST", "/auth/login", {
+            "username": username, "password": "Changed!456",
+        }, expected=401)
 
     def test_admin_alias_redirects_to_panel(self):
         root = self.base.removesuffix("/api/v1")
