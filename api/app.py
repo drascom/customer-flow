@@ -95,7 +95,9 @@ def ensure_thumbnail(file_path: Path) -> Path | None:
             preview.save(temporary, format="JPEG", quality=PHOTO_THUMBNAIL_QUALITY, optimize=True)
         temporary.replace(destination)
         return destination
-    except (OSError, UnidentifiedImageError, ValueError):
+    except Exception:
+        # Thumbnailing is an optimization. A decoder or encoder failure must
+        # never reject an otherwise valid upload; clients can use the original.
         try:
             temporary.unlink(missing_ok=True)
         except OSError:

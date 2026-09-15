@@ -5,6 +5,7 @@ import os
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 import uuid
 from datetime import date
 from http.client import HTTPConnection
@@ -1239,6 +1240,27 @@ class APITestCase(unittest.TestCase):
         self.assertLess(len(message_thumbnail), len(message_original))
         with PILImage.open(io.BytesIO(message_thumbnail)) as thumbnail:
             self.assertLessEqual(max(thumbnail.size), 640)
+
+    def test_photo_upload_succeeds_when_thumbnail_generation_unexpectedly_fails(self):
+        agent = self.login("user1", "demo123")
+        created = self.request("POST", "/cases", {
+            "patientName": "Thumbnail Fallback Patient", "grafts": "2200", "currency": "GBP",
+            "price": "2100", "note": "Original must remain available", "photoCount": 1,
+        }, token=agent, expected=201)["case"]
+        source = PILImage.new("RGB", (800, 600), "teal")
+        encoded = io.BytesIO()
+        source.save(encoded, format="JPEG")
+        original = encoded.getvalue()
+
+        with patch("app.Image.open", side_effect=RuntimeError("thumbnail encoder unavailable")):
+            body, _ = self.raw_request(
+                "POST", f"/cases/{created['id']}/photos", body=original,
+                content_type="image/jpeg", token=agent, expected=201,
+            )
+
+        photo_id = json.loads(body)["case"]["photoIDs"][0]
+        downloaded, _ = self.raw_request("GET", f"/photos/{photo_id}", token=agent)
+        self.assertEqual(original, downloaded)
 
     def test_case_edits_and_photo_uploads_accept_uppercase_uuid_paths(self):
         agent = self.login("user1", "demo123")
