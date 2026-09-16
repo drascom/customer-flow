@@ -24,6 +24,11 @@ const caseGrafts = (item) => item.finalGrafts || item.agentGrafts || item.grafts
 const casePrice = (item) => item.finalPrice || item.agentPrice || item.price || "—";
 const photoIDs = (item) => item.photoIDs || (item.photos || []).filter((p) => !p.deleted && p.available !== false).map((p) => p.id);
 const latestMessage = (item) => item.latestMessage || [...(item.messages || [])].reverse().find((m) => !m.deletedAt && m.role !== "system");
+const caseActivityTime = (item) => Math.max(
+  Date.parse(item.latestMessageAt || "") || 0,
+  Date.parse(latestMessage(item)?.createdAt || "") || 0,
+  Date.parse(item.uploadedAt || "") || 0,
+);
 const validPermanentPassword = (value) => value.length >= 6 && /\d/.test(value) && /[^\p{L}\p{N}\s]/u.test(value);
 const unreadCaseNotifications = (caseID) => state.notifications.filter((item) =>
   !item.readAt && item.caseID && String(item.caseID).toLowerCase() === String(caseID).toLowerCase());
@@ -294,6 +299,8 @@ function filteredCases() {
     return (!query || haystack.includes(query)) && statusOK && assignmentOK
       && (!state.filters.caseAgency || item.agencyName === state.filters.caseAgency) && (!state.filters.caseDoctor || doctorID(item) === state.filters.caseDoctor);
   }).sort((left, right) => {
+    const activityDifference = caseActivityTime(right) - caseActivityTime(left);
+    if (activityDifference) return activityDifference;
     const leftActivity = unreadActivityByCase.get(String(left.id).toLowerCase());
     const rightActivity = unreadActivityByCase.get(String(right.id).toLowerCase());
     if (leftActivity === undefined && rightActivity === undefined) return 0;
