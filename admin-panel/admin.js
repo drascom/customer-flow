@@ -99,6 +99,9 @@ function showApp() {
   $("accountName").textContent = state.user.displayName;
   $("accountRole").textContent = state.user.role === "manager" ? "Manager · Read only" : state.user.role;
   $("accountAvatar").textContent = initials(state.user.displayName);
+  if (state.user.role === "doctor" && !["waiting", "answered", "closed"].includes(state.filters.caseStatus)) {
+    state.filters.caseStatus = "waiting";
+  }
   applyRoleVisibility();
   switchView(isManagement() ? state.view : "cases");
 }
@@ -265,7 +268,7 @@ function renderFilterChips() {
   const statusFilters = state.user?.role === "agent"
     ? [["", "All Cases"], ["waiting", "In Review"], ["answered", "Action Needed"], ["closed", "Confirmed"], ["completed", "Closed"]]
     : state.user?.role === "doctor"
-      ? [["", "All Cases"], ["waiting", "In Review"], ["answered", "Answered"], ["closed", "Confirmed"], ["completed", "Closed"]]
+      ? [["waiting", "In Review"], ["answered", "Answered"], ["closed", "Confirmed"]]
     : [["", "All"], ["waiting", "Waiting"], ["answered", "Action needed"], ["closed", "Confirmed"], ["completed", "Closed"]];
   setChipGroup("caseStatusChips", statusFilters, state.filters.caseStatus, "caseStatus");
   setSelectFilter("caseAssignmentFilter", [["", "All assignments"], ["assigned", "Assigned"], ["unassigned", "Unassigned"]], state.filters.caseAssignment, "caseAssignment");
@@ -277,7 +280,7 @@ function renderFilterChips() {
   document.querySelectorAll("[data-filter-key]").forEach((button) => button.onclick = () => {
     state.filters[button.dataset.filterKey] = button.dataset.filterValue; renderFilterChips(); renderCurrentView();
   });
-  $("clearCaseFilters").hidden = !["caseStatus", "caseAssignment", "caseAgency", "caseDoctor"].some((k) => state.filters[k]);
+  $("clearCaseFilters").hidden = state.user?.role === "doctor" || !["caseStatus", "caseAssignment", "caseAgency", "caseDoctor"].some((k) => state.filters[k]);
   $("clearUserFilters").hidden = !["userRole", "userStatus", "userAgency"].some((k) => state.filters[k]);
 }
 
@@ -779,7 +782,7 @@ document.addEventListener("click", (event) => { if (!$("accountMenu").contains(e
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") { if (!$("accountDropdown").hidden) { setAccountMenu(false); $("accountMenuButton").focus(); } if (!$("notificationDropdown").hidden) { setNotificationMenu(false); $("notificationButton").focus(); } } });
 $("logoutButton").onclick = () => { setAccountMenu(false); signOut(true); }; $("refreshButton").onclick = () => loadData(); $("searchInput").oninput = renderCurrentView; $("newCaseButton").onclick = openNewCase;
 document.querySelectorAll(".tab").forEach((b) => b.onclick = () => switchView(b.dataset.view)); document.querySelectorAll("[data-overview-filter]").forEach((node) => node.onclick = () => { state.filters.caseStatus = node.dataset.overviewFilter === "all" ? "" : node.dataset.overviewFilter; renderFilterChips(); switchView("cases"); });
-$("clearCaseFilters").onclick = () => { Object.assign(state.filters, { caseStatus: "", caseAssignment: "", caseAgency: "", caseDoctor: "" }); renderFilterChips(); renderCases(); };
+$("clearCaseFilters").onclick = () => { Object.assign(state.filters, { caseStatus: state.user?.role === "doctor" ? "waiting" : "", caseAssignment: "", caseAgency: "", caseDoctor: "" }); renderFilterChips(); renderCases(); };
 $("clearUserFilters").onclick = () => { Object.assign(state.filters, { userRole: "", userStatus: "", userAgency: "" }); renderFilterChips(); renderUsers(); };
 $("closeCaseDialog").onclick = () => $("caseDialog").close(); $("closeNewCase").onclick = $("cancelNewCase").onclick = () => $("newCaseDialog").close(); $("newCaseForm").onsubmit = submitNewCase; $("casePatientName").onblur = checkPatientMatch; $("casePatientName").oninput = () => { state.duplicate = { matches: [], confirmed: false, existingPatientID: null }; $("patientMatchHint").textContent = ""; }; $("casePhotos").onchange = (event) => { state.pendingFiles.push(...event.target.files); renderPendingPhotos(); event.target.value = ""; };
 $("closePhotoDialog").onclick = () => $("photoDialog").close(); $("previousPhoto").onclick = () => { state.photoIndex = (state.photoIndex + state.photoItems.length - 1) % state.photoItems.length; renderPhotoViewer(); }; $("nextPhoto").onclick = () => { state.photoIndex = (state.photoIndex + 1) % state.photoItems.length; renderPhotoViewer(); }; $("editPhotoButton").onclick = openEditor;
