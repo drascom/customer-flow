@@ -67,23 +67,7 @@ struct CaseDetailView: View {
                                 }
                             }
 
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("CONVERSATION")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(AppTheme.muted)
-                                    .padding(.horizontal, 4)
-
-                                ForEach(item.messages) { message in
-                                    ConversationMessageBubble(
-                                        message: message,
-                                        canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
-                                        onDelete: { pendingMessageDeletion = message }
-                                    )
-                                    .id(message.id)
-                                }
-
-                                completionSection(item)
-                            }
+                            conversationSection(item)
 
                             if item.status != .closed {
                                 Text(item.isCompleted
@@ -293,6 +277,34 @@ struct CaseDetailView: View {
         }
     }
 
+    private func conversationSection(_ item: ConsultationCase) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("CONVERSATION", systemImage: "bubble.left.and.bubble.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.muted)
+                Spacer()
+                Text("\(item.messages.count) updates")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.muted)
+            }
+
+            ForEach(item.messages) { message in
+                ConversationMessageBubble(
+                    message: message,
+                    canDelete: message.role == .doctor && message.authorID == state.currentUser?.id,
+                    onDelete: { pendingMessageDeletion = message }
+                )
+                .id(message.id)
+            }
+
+            completionSection(item)
+        }
+        .padding(12)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border.opacity(0.85)))
+    }
+
     private func agentEstimate(_ item: ConsultationCase) -> some View {
         detailSection("Agent estimate") {
             VStack(alignment: .leading, spacing: 10) {
@@ -420,8 +432,16 @@ struct CaseDetailView: View {
             }
         }
         .padding(12)
+        .background(AppTheme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent, lineWidth: 2))
-        .shadow(color: AppTheme.accent.opacity(0.18), radius: 12, y: 5)
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(AppTheme.accent)
+                .frame(width: 4)
+                .padding(.vertical, 16)
+                .padding(.leading, 8)
+        }
+        .shadow(color: AppTheme.ink.opacity(0.12), radius: 10, y: 4)
     }
 
     @MainActor

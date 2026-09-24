@@ -1281,11 +1281,20 @@ struct MessagePhotoView: View {
 }
 
 struct ConversationMessageBubble: View {
+    @EnvironmentObject private var state: AppState
     let message: ConsultationMessage
     let canDelete: Bool
     let onDelete: () -> Void
 
     var body: some View {
+        HStack {
+            if isOwnMessage { Spacer(minLength: 48) }
+            messageContent
+            if !isOwnMessage { Spacer(minLength: 48) }
+        }
+    }
+
+    private var messageContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
                 Text(message.author)
@@ -1342,15 +1351,22 @@ struct ConversationMessageBubble: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 11)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: 620, alignment: .leading)
         .background(bubbleColor, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
-                .stroke(AppTheme.border.opacity(0.65))
+                .stroke(bubbleBorder)
         }
     }
 
+    private var isOwnMessage: Bool {
+        guard let user = state.currentUser else { return false }
+        return message.authorID == user.id
+            || (message.author == user.displayName && message.role.rawValue == user.role.rawValue)
+    }
+
     private var bubbleColor: Color {
+        if isOwnMessage { return AppTheme.brand.opacity(0.14) }
         switch message.role {
         case .doctor:
             AppTheme.brand.opacity(0.1)
@@ -1359,6 +1375,10 @@ struct ConversationMessageBubble: View {
         case .agent, .system:
             AppTheme.accent.opacity(0.1)
         }
+    }
+
+    private var bubbleBorder: Color {
+        isOwnMessage ? AppTheme.brand.opacity(0.32) : AppTheme.border.opacity(0.65)
     }
 }
 
