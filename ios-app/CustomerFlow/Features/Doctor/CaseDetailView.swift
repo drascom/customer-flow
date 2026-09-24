@@ -420,7 +420,8 @@ struct CaseDetailView: View {
             }
         }
         .padding(12)
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent, lineWidth: 1.5))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent, lineWidth: 2))
+        .shadow(color: AppTheme.accent.opacity(0.18), radius: 12, y: 5)
     }
 
     @MainActor
