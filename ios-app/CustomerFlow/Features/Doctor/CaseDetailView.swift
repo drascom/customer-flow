@@ -343,7 +343,8 @@ struct CaseDetailView: View {
                         .font(.caption)
                         .padding(.horizontal, 10)
                         .frame(minHeight: 34)
-                        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 10))
+                        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.border))
                     HStack(spacing: 6) {
                         Text(AppCurrency.symbol)
                             .font(.caption.bold())
@@ -354,7 +355,8 @@ struct CaseDetailView: View {
                     }
                     .padding(.horizontal, 10)
                     .frame(minHeight: 34)
-                    .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 10))
+                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.border))
                 }
 
                 HStack(alignment: .bottom, spacing: 8) {
@@ -418,9 +420,7 @@ struct CaseDetailView: View {
             }
         }
         .padding(12)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border))
-        .shadow(color: AppTheme.ink.opacity(0.08), radius: 12, y: -2)
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent, lineWidth: 1.5))
     }
 
     @MainActor

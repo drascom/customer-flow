@@ -580,6 +580,9 @@
     "Later" : {
 
     },
+    "Latest activity" : {
+
+    },
     "Leave blank to keep current password" : {
 
     },
@@ -632,9 +635,6 @@
 
     },
     "New user" : {
-
-    },
-    "Newest first" : {
 
     },
     "Next" : {
@@ -729,7 +729,7 @@
     "OK" : {
 
     },
-    "Oldest first" : {
+    "Oldest activity" : {
 
     },
     "Only inactive users without consultation history can be permanently deleted." : {
