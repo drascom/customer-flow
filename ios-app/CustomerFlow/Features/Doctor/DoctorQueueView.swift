@@ -210,7 +210,6 @@ struct DoctorQueueView: View {
         case .waiting: "clock"
         case .answered: "bubble.left.and.bubble.right"
         case .confirmed: "checkmark.seal"
-        case .completed: "checkmark.circle"
         }
     }
 
@@ -410,17 +409,15 @@ struct DoctorQueueView: View {
         case .waiting: "In Review"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
-        case .completed: "Closed"
         }
     }
 
     private func matchesQueue(_ item: ConsultationCase) -> Bool {
         switch filter {
-        case .all: true
+        case .all: !item.isCompleted
         case .waiting: item.status == .waiting && !item.isCompleted
         case .answered: item.status == .answered && !item.isCompleted
         case .confirmed: item.status == .closed && !item.isCompleted
-        case .completed: item.isCompleted
         }
     }
 
@@ -430,11 +427,10 @@ struct DoctorQueueView: View {
             return item.agencyName == selectedAgencyName
         }.filter { item in
             switch filter {
-            case .all: true
+            case .all: !item.isCompleted
             case .waiting: item.status == .waiting && !item.isCompleted
             case .answered: item.status == .answered && !item.isCompleted
             case .confirmed: item.status == .closed && !item.isCompleted
-            case .completed: item.isCompleted
             }
         }.count
     }
