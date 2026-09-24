@@ -1369,11 +1369,11 @@ struct ConversationMessageBubble: View {
         if isOwnMessage { return AppTheme.brand.opacity(0.14) }
         switch message.role {
         case .doctor:
-            AppTheme.brand.opacity(0.1)
+            return AppTheme.brand.opacity(0.1)
         case .admin:
-            AppTheme.brand.opacity(0.06)
+            return AppTheme.brand.opacity(0.06)
         case .agent, .system:
-            AppTheme.accent.opacity(0.1)
+            return AppTheme.accent.opacity(0.1)
         }
     }
 
