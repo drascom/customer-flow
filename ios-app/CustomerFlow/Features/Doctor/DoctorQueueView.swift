@@ -3,7 +3,7 @@ import SwiftUI
 struct DoctorQueueView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var filter: DoctorQueueFilter = .all
+    @State private var filter: DoctorQueueFilter = .waiting
     @State private var selectedAgencyName: String?
     @State private var searchText = ""
     @State private var oldestFirst = true
@@ -78,11 +78,11 @@ struct DoctorQueueView: View {
 
     private func reconcileSelectedCase() {
         guard let selectedCase else { return }
-        guard filteredCases.contains(where: { $0.id == selectedCase.id }) else {
+        guard let updatedCase = state.cases.first(where: { $0.id == selectedCase.id }) else {
             self.selectedCase = nil
             return
         }
-        self.selectedCase = state.cases.first(where: { $0.id == selectedCase.id })
+        self.selectedCase = updatedCase
     }
 
     private var compactWorkspace: some View {
@@ -206,7 +206,6 @@ struct DoctorQueueView: View {
 
     private func sidebarSymbol(for item: DoctorQueueFilter) -> String {
         switch item {
-        case .all: "tray.full"
         case .waiting: "clock"
         case .answered: "bubble.left.and.bubble.right"
         case .confirmed: "checkmark.seal"
@@ -405,7 +404,6 @@ struct DoctorQueueView: View {
 
     private func filterTitle(_ item: DoctorQueueFilter) -> String {
         switch item {
-        case .all: "All Cases"
         case .waiting: "In Review"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
@@ -414,7 +412,6 @@ struct DoctorQueueView: View {
 
     private func matchesQueue(_ item: ConsultationCase) -> Bool {
         switch filter {
-        case .all: !item.isCompleted
         case .waiting: item.status == .waiting && !item.isCompleted
         case .answered: item.status == .answered && !item.isCompleted
         case .confirmed: item.status == .closed && !item.isCompleted
@@ -427,7 +424,6 @@ struct DoctorQueueView: View {
             return item.agencyName == selectedAgencyName
         }.filter { item in
             switch filter {
-            case .all: !item.isCompleted
             case .waiting: item.status == .waiting && !item.isCompleted
             case .answered: item.status == .answered && !item.isCompleted
             case .confirmed: item.status == .closed && !item.isCompleted
