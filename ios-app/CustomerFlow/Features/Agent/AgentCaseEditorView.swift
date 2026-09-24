@@ -662,7 +662,18 @@ struct AgentCaseEditorView: View {
         .background(AppTheme.background)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) { actionBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if canEditCase {
+                actionBar
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+                    .background(.ultraThinMaterial)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(AppTheme.border).frame(height: 1)
+                    }
+            }
+        }
         .onAppear(perform: configureForm)
         .task {
             guard !isEditMode else { return }
@@ -1497,10 +1508,15 @@ struct AgentCaseEditorView: View {
     private var conversationSection: some View {
         if let editCase {
             VStack(alignment: .leading, spacing: 10) {
-                Text("CONVERSATION")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.muted)
-                    .padding(.horizontal, 4)
+                HStack {
+                    Label("CONVERSATION", systemImage: "bubble.left.and.bubble.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.muted)
+                    Spacer()
+                    Text("\(editCase.messages.count) updates")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.muted)
+                }
 
                 ForEach(editCase.messages) { message in
                     ConversationMessageBubble(
@@ -1513,6 +1529,9 @@ struct AgentCaseEditorView: View {
 
                 completionSection(editCase)
             }
+            .padding(12)
+            .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border.opacity(0.85)))
         }
     }
 
@@ -1923,47 +1942,66 @@ struct AgentCaseEditorView: View {
 
     private func editCaseMessageBar(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(item.isCompleted ? "Send a message to reopen" : "Add an update or question")
+            Label(
+                item.isCompleted ? "Send a message to reopen" : "Add an update or question",
+                systemImage: "arrowshape.turn.up.left.fill"
+            )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.ink)
+                .foregroundStyle(AppTheme.accentInk)
 
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField(
-                    item.isCompleted
-                        ? "Write a new message to reopen this case"
-                        : "Write a follow-up for the assigned doctor",
-                    text: $updateText,
-                    axis: .vertical
-                )
-                .focused($isUpdateTextFocused)
-                .lineLimit(2...4)
-                .textFieldStyle(.roundedBorder)
-
-                Button {
-                    let message = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !message.isEmpty, !isSendingUpdate else { return }
-                    isSendingUpdate = true
-                    Task {
-                        defer { isSendingUpdate = false }
-                        if await state.sendAgentUpdate(caseID: item.id, text: message) {
-                            isUpdateTextFocused = false
-                            updateText = ""
-                            returnedToDoctor = true
-                            statusText = "Waiting for Doctor · Update sent"
-                            await scrollToLatestMessage(caseID: item.id)
+            TextField(
+                item.isCompleted
+                    ? "Write a new message to reopen this case"
+                    : "Write a follow-up for the assigned doctor",
+                text: $updateText,
+                axis: .vertical
+            )
+            .focused($isUpdateTextFocused)
+            .lineLimit(2...4)
+            .padding(.horizontal, 11)
+            .padding(.trailing, 52)
+            .padding(.vertical, 9)
+            .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border.opacity(0.9)))
+            .overlay(alignment: .trailing) {
+                if isSendingUpdate {
+                    ProgressView()
+                        .frame(width: 42, height: 42)
+                        .padding(.trailing, 4)
+                } else {
+                    Button {
+                        let message = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !message.isEmpty else { return }
+                        isSendingUpdate = true
+                        Task {
+                            defer { isSendingUpdate = false }
+                            if await state.sendAgentUpdate(caseID: item.id, text: message) {
+                                isUpdateTextFocused = false
+                                updateText = ""
+                                returnedToDoctor = true
+                                statusText = "Waiting for Doctor · Update sent"
+                                await scrollToLatestMessage(caseID: item.id)
+                            }
                         }
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.headline.bold())
+                            .foregroundStyle(.white)
+                            .frame(width: 42, height: 42)
+                            .background(AppTheme.accent, in: Circle())
                     }
-                } label: {
-                    Label(isSendingUpdate ? "Sending" : "Send", systemImage: "paperplane.fill")
+                    .buttonStyle(.plain)
+                    .disabled(updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                    .accessibilityLabel("Send update")
+                    .padding(.trailing, 4)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingUpdate)
-                .controlSize(.large)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(AppTheme.surfaceStrong)
+        .padding(12)
+        .background(AppTheme.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent.opacity(0.55)))
+        .shadow(color: AppTheme.ink.opacity(0.1), radius: 12, y: 5)
     }
 
     private var wizardActionBar: some View {

@@ -154,9 +154,11 @@ struct AdminDashboardView: View {
             Text(model.errorMessage ?? "")
         }
         .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { isSearchFocused = false }
+            if isSearchFocused {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isSearchFocused = false }
+                }
             }
         }
     }

@@ -358,8 +358,8 @@ struct CaseDetailView: View {
                         .font(.caption)
                         .padding(.horizontal, 10)
                         .frame(minHeight: 34)
-                        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.border))
+                        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border))
                     HStack(spacing: 6) {
                         Text(AppCurrency.symbol)
                             .font(.caption.bold())
@@ -370,38 +370,41 @@ struct CaseDetailView: View {
                     }
                     .padding(.horizontal, 10)
                     .frame(minHeight: 34)
-                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.border))
+                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border))
                 }
 
-                HStack(alignment: .bottom, spacing: 8) {
-                    TextField("Write your assessment or question", text: $response, axis: .vertical)
-                        .focused($focusedComposerField, equals: .response)
-                        .lineLimit(1...4)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 9)
-                        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13))
-                        .overlay(RoundedRectangle(cornerRadius: 13).stroke(AppTheme.border))
-
-                    if isSending {
-                        ProgressView()
-                            .frame(width: 42, height: 42)
-                    } else {
-                        Button {
-                            Task { await sendResponse(for: item) }
-                        } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.headline.bold())
-                                .foregroundStyle(.white)
+                TextField("Write your assessment or question", text: $response, axis: .vertical)
+                    .focused($focusedComposerField, equals: .response)
+                    .lineLimit(1...4)
+                    .padding(.horizontal, 11)
+                    .padding(.trailing, 52)
+                    .padding(.vertical, 9)
+                    .frame(minHeight: 42)
+                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border))
+                    .overlay(alignment: .trailing) {
+                        if isSending {
+                            ProgressView()
                                 .frame(width: 42, height: 42)
-                                .background(AppTheme.accent, in: Circle())
+                                .padding(.trailing, 4)
+                        } else {
+                            Button {
+                                Task { await sendResponse(for: item) }
+                            } label: {
+                                Image(systemName: "arrow.up")
+                                    .font(.headline.bold())
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 42)
+                                    .background(AppTheme.accent, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!responseReady)
+                            .opacity(responseReady ? 1 : 0.45)
+                            .accessibilityLabel(item.assignedDoctorID == nil ? "Send and take patient" : "Send message")
+                            .padding(.trailing, 4)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!responseReady)
-                        .opacity(responseReady ? 1 : 0.45)
-                        .accessibilityLabel(item.assignedDoctorID == nil ? "Send and take patient" : "Send message")
                     }
-                }
 
                 if item.assignedDoctorID == nil {
                     Label("Sending your first message assigns the patient to you.", systemImage: "person.badge.plus")

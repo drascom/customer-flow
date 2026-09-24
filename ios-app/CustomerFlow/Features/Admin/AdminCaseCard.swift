@@ -512,6 +512,16 @@ private struct AdminConversationSheet: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label("CONVERSATION", systemImage: "bubble.left.and.bubble.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.muted)
+                        Spacer()
+                        Text("\(item.messages.count) updates")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.muted)
+                    }
+
                     if item.messages.isEmpty {
                         ContentUnavailableView(
                             "No conversation yet",
@@ -525,42 +535,78 @@ private struct AdminConversationSheet: View {
                     }
                 }
                 .padding(16)
+                .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.border.opacity(0.85)))
+                .padding(16)
             }
 
             Divider()
 
             VStack(alignment: .leading, spacing: 9) {
-                Text("Operational note")
+                Label("Operational note", systemImage: "note.text")
                     .font(.headline)
-                    .foregroundStyle(AppTheme.ink)
+                    .foregroundStyle(AppTheme.accentInk)
                 TextField("Write an operational note", text: $draft, axis: .vertical)
                     .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 11)
+                    .padding(.trailing, 52)
+                    .padding(.vertical, 9)
+                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border.opacity(0.9)))
+                    .overlay(alignment: .trailing) {
+                        if isSending {
+                            ProgressView()
+                                .frame(width: 42, height: 42)
+                                .padding(.trailing, 4)
+                        } else {
+                            Button {
+                                Task { await sendOperationalNote() }
+                            } label: {
+                                Image(systemName: "arrow.up")
+                                    .font(.headline.bold())
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 42)
+                                    .background(AppTheme.accent, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                            .accessibilityLabel("Send note")
+                            .padding(.trailing, 4)
+                        }
+                    }
                 Text("This does not change the case status or medical assessment.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.muted)
-                Button {
-                    Task { await sendOperationalNote() }
-                } label: {
-                    if isSending {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Label("Send note", systemImage: "paperplane.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppTheme.brand)
-                .disabled(isSending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding(16)
-            .background(AppTheme.surfaceStrong)
+            .padding(12)
+            .background(AppTheme.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent.opacity(0.55)))
+            .shadow(color: AppTheme.ink.opacity(0.1), radius: 12, y: 5)
+            .padding(12)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .top) {
+                Rectangle().fill(AppTheme.border).frame(height: 1)
+            }
         }
         .background(AppTheme.background)
     }
 
     private func messageRow(_ message: AdminCaseMessage) -> some View {
+        HStack {
+            if message.role == .admin {
+                Spacer(minLength: 48)
+            }
+
+            messageBubble(message)
+
+            if message.role != .admin {
+                Spacer(minLength: 48)
+            }
+        }
+    }
+
+    private func messageBubble(_ message: AdminCaseMessage) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Text(message.author)
@@ -602,11 +648,18 @@ private struct AdminConversationSheet: View {
         }
         .foregroundStyle(message.deletedAt == nil ? AppTheme.ink : AppTheme.muted)
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14))
+        .frame(maxWidth: 620, alignment: .leading)
+        .background(
+            message.role == .admin ? AppTheme.brand.opacity(0.14) : AppTheme.surfaceStrong,
+            in: RoundedRectangle(cornerRadius: 14)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 14)
-                .stroke(message.deletedAt == nil ? AppTheme.border : .red.opacity(0.35))
+                .stroke(
+                    message.deletedAt == nil
+                        ? (message.role == .admin ? AppTheme.brand.opacity(0.32) : AppTheme.border)
+                        : .red.opacity(0.35)
+                )
         }
     }
 
