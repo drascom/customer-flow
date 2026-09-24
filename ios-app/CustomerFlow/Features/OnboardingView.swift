@@ -141,6 +141,11 @@ struct OnboardingView: View {
                     .focused($focusedField, equals: .username)
                     .submitLabel(.next)
                     .onSubmit { focusedField = .password }
+                    .onKeyPress(.tab) { keyPress in
+                        guard !keyPress.modifiers.contains(.shift) else { return .ignored }
+                        focusedField = .password
+                        return .handled
+                    }
                     .textFieldStyle(.roundedBorder)
 
                 RevealablePasswordField(
