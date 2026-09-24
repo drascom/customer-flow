@@ -52,6 +52,8 @@ final class AdminDashboardModel {
                 && assignmentMatches
                 && (caseAgency.isEmpty || item.agencyName == caseAgency)
                 && (caseDoctorID.isEmpty || item.doctorID == caseDoctorID)
+        }.sorted { left, right in
+            (left.latestMessageAt ?? left.uploadedAt) > (right.latestMessageAt ?? right.uploadedAt)
         }
     }
 

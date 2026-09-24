@@ -50,7 +50,14 @@ struct AgentCasesView: View {
                     .joined(separator: " ")
                     .localizedCaseInsensitiveContains(query)
             }
-            .sorted { $0.uploadedAt > $1.uploadedAt }
+            .sorted { latestActivity(for: $0) > latestActivity(for: $1) }
+    }
+
+    private func latestActivity(for item: ConsultationCase) -> Date {
+        item.messages
+            .filter { $0.role != .system }
+            .map(\.createdAt)
+            .max() ?? item.uploadedAt
     }
 
     var body: some View {
