@@ -210,6 +210,7 @@ struct DoctorQueueView: View {
         case .waiting: "clock"
         case .answered: "bubble.left.and.bubble.right"
         case .confirmed: "checkmark.seal"
+        case .completed: "checkmark.circle"
         }
     }
 
@@ -409,6 +410,7 @@ struct DoctorQueueView: View {
         case .waiting: "In Review"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
+        case .completed: "Closed"
         }
     }
 
@@ -418,6 +420,7 @@ struct DoctorQueueView: View {
         case .waiting: item.status == .waiting && !item.isCompleted
         case .answered: item.status == .answered && !item.isCompleted
         case .confirmed: item.status == .closed && !item.isCompleted
+        case .completed: item.isCompleted
         }
     }
 
@@ -431,6 +434,7 @@ struct DoctorQueueView: View {
             case .waiting: item.status == .waiting && !item.isCompleted
             case .answered: item.status == .answered && !item.isCompleted
             case .confirmed: item.status == .closed && !item.isCompleted
+            case .completed: item.isCompleted
             }
         }.count
     }

@@ -53,6 +53,7 @@ enum DoctorQueueFilter: String, CaseIterable, Identifiable {
     case waiting
     case answered
     case confirmed
+    case completed
 
     var id: String { rawValue }
 
@@ -62,6 +63,7 @@ enum DoctorQueueFilter: String, CaseIterable, Identifiable {
         case .waiting: "Waiting"
         case .answered: "Answered"
         case .confirmed: "Confirmed"
+        case .completed: "Closed"
         }
     }
 }
