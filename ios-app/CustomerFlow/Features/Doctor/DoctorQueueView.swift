@@ -6,7 +6,7 @@ struct DoctorQueueView: View {
     @State private var filter: DoctorQueueFilter = .waiting
     @State private var selectedAgencyName: String?
     @State private var searchText = ""
-    @State private var oldestFirst = true
+    @State private var oldestActivityFirst = false
     @State private var selectedCase: ConsultationCase?
     @FocusState private var isSearchFocused: Bool
 
@@ -27,7 +27,11 @@ struct DoctorQueueView: View {
                     .joined(separator: " ")
                     .localizedCaseInsensitiveContains(query)
             }
-            .sorted { oldestFirst ? $0.uploadedAt < $1.uploadedAt : $0.uploadedAt > $1.uploadedAt }
+            .sorted {
+                let leftActivity = latestActivity(for: $0)
+                let rightActivity = latestActivity(for: $1)
+                return oldestActivityFirst ? leftActivity < rightActivity : leftActivity > rightActivity
+            }
     }
 
     private var agencyOptions: [String] {
@@ -36,6 +40,13 @@ struct DoctorQueueView: View {
             return name?.isEmpty == false ? name : nil
         }))
         .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private func latestActivity(for item: ConsultationCase) -> Date {
+        item.messages
+            .filter { $0.role != .system }
+            .map(\.createdAt)
+            .max() ?? item.uploadedAt
     }
 
     var body: some View {
@@ -193,9 +204,9 @@ struct DoctorQueueView: View {
             Spacer()
 
             Button {
-                oldestFirst.toggle()
+                oldestActivityFirst.toggle()
             } label: {
-                Label(oldestFirst ? "Oldest first" : "Newest first", systemImage: oldestFirst ? "arrow.up" : "arrow.down")
+                Label(oldestActivityFirst ? "Oldest activity" : "Latest activity", systemImage: oldestActivityFirst ? "arrow.up" : "arrow.down")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -293,9 +304,9 @@ struct DoctorQueueView: View {
                 Spacer()
                 Button {
                     isSearchFocused = false
-                    oldestFirst.toggle()
+                    oldestActivityFirst.toggle()
                 } label: {
-                    Label(oldestFirst ? "Oldest first" : "Newest first", systemImage: oldestFirst ? "arrow.up" : "arrow.down")
+                    Label(oldestActivityFirst ? "Oldest activity" : "Latest activity", systemImage: oldestActivityFirst ? "arrow.up" : "arrow.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
                 }
