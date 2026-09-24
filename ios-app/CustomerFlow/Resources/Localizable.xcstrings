@@ -107,6 +107,9 @@
     "%lld unread notifications" : {
 
     },
+    "%lld updates" : {
+
+    },
     "%lld visible cases" : {
 
     },
