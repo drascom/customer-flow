@@ -344,9 +344,12 @@ struct CaseDetailView: View {
     private func responseComposer(_ item: ConsultationCase) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             if isComposerExpanded {
-                Text(item.isCompleted ? "Send a message to reopen" : "Reply to agent")
+                Label(
+                    item.isCompleted ? "Send a message to reopen" : "Reply to agent",
+                    systemImage: "arrowshape.turn.up.left.fill"
+                )
                     .font(.subheadline.bold())
-                    .foregroundStyle(AppTheme.ink)
+                    .foregroundStyle(AppTheme.accentInk)
 
                 HStack(spacing: 8) {
                     TextField("Grafts (optional)", text: $grafts)
@@ -432,16 +435,9 @@ struct CaseDetailView: View {
             }
         }
         .padding(12)
-        .background(AppTheme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent, lineWidth: 2))
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(AppTheme.accent)
-                .frame(width: 4)
-                .padding(.vertical, 16)
-                .padding(.leading, 8)
-        }
-        .shadow(color: AppTheme.ink.opacity(0.12), radius: 10, y: 4)
+        .background(AppTheme.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.accent.opacity(0.55)))
+        .shadow(color: AppTheme.ink.opacity(0.1), radius: 12, y: 5)
     }
 
     @MainActor
