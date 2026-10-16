@@ -1730,6 +1730,7 @@ class APITestCase(unittest.TestCase):
             "name": agency_name
         }, token=admin)["agency"]
         self.assertEqual(agency_name, agency["name"])
+
         username = "test-" + uuid.uuid4().hex[:8]
         created = self.request("POST", "/admin/users", {
             "username": username, "displayName": "Test Agent", "role": "agent",
@@ -1781,6 +1782,32 @@ class APITestCase(unittest.TestCase):
         self.request("PATCH", f"/admin/users/{history_user['id']}", {"active": False}, token=admin)
         protected = self.request("DELETE", f"/admin/users/{history_user['id']}", token=admin, expected=409)
         self.assertEqual("user_has_history", protected["error"]["code"])
+
+    def test_agency_creation_provisions_one_ready_made_patient_form(self):
+        admin = self.login("admin", "demo123")
+        agency_name = "Website Agency " + uuid.uuid4().hex[:8]
+        created = self.request("POST", "/admin/agencies", {
+            "name": agency_name,
+            "websiteURL": "livhairandskinclinic.co.uk",
+        }, token=admin, expected=201)["agency"]
+
+        default_form = created["defaultIntakeForm"]
+        self.assertEqual(created["id"], default_form["agencyID"])
+        self.assertEqual("Hair transplant assessment", default_form["label"])
+        self.assertEqual(
+            ["https://livhairandskinclinic.co.uk"],
+            default_form["allowedOrigins"],
+        )
+        self.assertIn("/apply/", default_form["directURL"])
+        self.assertIn("embed.js", default_form["javascriptCode"])
+
+        self.server.database.initialize(seed=False)
+        agency_forms = [
+            form for form in self.request("GET", "/intake/forms", token=admin)["forms"]
+            if form["agencyID"] == created["id"]
+        ]
+        self.assertEqual(1, len(agency_forms))
+        self.assertEqual(default_form["id"], agency_forms[0]["id"])
 
     def test_admin_case_table_and_doctor_assignment(self):
         admin = self.login("admin", "demo123")

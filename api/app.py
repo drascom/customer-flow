@@ -811,6 +811,7 @@ class Database:
                             "UPDATE users SET must_change_password=1 WHERE id=?",
                             (existing_user["id"],),
                         )
+            self.ensure_default_intake_forms()
 
     def _migrate_agent_owned_closure(self, conn: sqlite3.Connection) -> int:
         if conn.execute(
@@ -2859,6 +2860,57 @@ class Database:
         )
         return conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
 
+    def _ensure_default_intake_form(
+        self,
+        conn: sqlite3.Connection,
+        agency_id: str,
+        agency_name: str,
+        created_by: str,
+        allowed_origins: list[str] | None = None,
+    ) -> dict:
+        row = conn.execute(
+            "SELECT f.*,ag.name agency_name,d.display_name doctor_name FROM intake_forms f "
+            "JOIN agencies ag ON ag.id=f.agency_id LEFT JOIN users d ON d.id=f.doctor_id "
+            "WHERE f.agency_id=? ORDER BY f.created_at LIMIT 1",
+            (agency_id,),
+        ).fetchone()
+        if row:
+            return self._intake_form_json(row, include_embed=True)
+        self._intake_service_user(conn, agency_id)
+        form_id = str(uuid.uuid4())
+        now = iso(utc_now())
+        origins = allowed_origins or []
+        conn.execute(
+            "INSERT INTO intake_forms(id,public_key,agency_id,doctor_id,label,active,allowed_origins_json,"
+            "created_by,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?,?,?)",
+            (form_id, secrets.token_urlsafe(32), agency_id, None, "Hair transplant assessment",
+             json.dumps(origins, separators=(",", ":")), created_by, now, now),
+        )
+        self._audit(conn, created_by, "intake_form.created", "intake_form", form_id,
+                    {"agencyID": agency_id, "agencyName": agency_name,
+                     "doctorID": None, "template": "default"})
+        row = conn.execute(
+            "SELECT f.*,ag.name agency_name,d.display_name doctor_name FROM intake_forms f "
+            "JOIN agencies ag ON ag.id=f.agency_id LEFT JOIN users d ON d.id=f.doctor_id WHERE f.id=?",
+            (form_id,),
+        ).fetchone()
+        return self._intake_form_json(row, include_embed=True)
+
+    def ensure_default_intake_forms(self) -> None:
+        """Give every existing agency one ready-to-share patient application form."""
+        with self.connect() as conn:
+            creator = conn.execute(
+                "SELECT id FROM users WHERE role='admin' ORDER BY active DESC,created_at LIMIT 1"
+            ).fetchone()
+            if not creator:
+                return
+            for agency in conn.execute(
+                "SELECT id,name FROM agencies WHERE active=1 ORDER BY created_at"
+            ).fetchall():
+                self._ensure_default_intake_form(
+                    conn, agency["id"], agency["name"], creator["id"]
+                )
+
     def intake_forms(self, user: sqlite3.Row) -> list[dict]:
         self._require_any_role(user, "agent", "admin", "manager")
         where = "WHERE f.agency_id=?" if user["role"] == "agent" else ""
@@ -3386,15 +3438,23 @@ class Database:
         name = str(payload.get("name", "")).strip()
         if len(name) < 2:
             raise APIError(422, "invalid_agency", "Enter an agency name.")
+        website_origin = str(payload.get("websiteURL", "")).strip().rstrip("/")
+        if website_origin and "://" not in website_origin:
+            website_origin = "https://" + website_origin
+        allowed_origins = self._validate_allowed_origins([website_origin] if website_origin else [])
         agency_id = "agency-" + uuid.uuid4().hex[:12]
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute("INSERT INTO agencies VALUES (?,?,1,?)", (agency_id, name, iso(utc_now())))
                 self._audit(conn, user["id"], "agency.created", "agency", agency_id, {"name": name})
+                intake_form = self._ensure_default_intake_form(
+                    conn, agency_id, name, user["id"], allowed_origins
+                )
                 conn.execute("COMMIT")
                 return {"id": agency_id, "name": name, "active": True, "userCount": 0,
-                        "mcpConfigured": False, "mcpRotatedAt": None}
+                        "mcpConfigured": False, "mcpRotatedAt": None,
+                        "defaultIntakeForm": intake_form}
             except sqlite3.IntegrityError:
                 conn.execute("ROLLBACK")
                 raise APIError(409, "agency_exists", "An agency with this name already exists.")
