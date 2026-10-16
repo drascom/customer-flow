@@ -748,7 +748,7 @@ function renderUsers() {
   $("usersBody").innerHTML = rows.map((u) => `<tr><td><div class="identity"><strong>${escapeHTML(u.displayName)}</strong><small>${escapeHTML(u.id)}</small></div></td><td>${escapeHTML(u.username)}</td><td class="role">${escapeHTML(u.role)}</td><td>${escapeHTML(u.agencyName || "—")}</td><td>${u.role === "doctor" ? `${u.patientCount} patients` : u.role === "agent" ? `${u.caseCount} cases` : "System access"}</td><td><span class="${u.active ? "active-dot" : "inactive-dot"}">${u.active ? "Active" : "Inactive"}</span></td><td>${canMutateAdmin() && u.id !== state.user.id ? `<div class="row-actions"><button class="row-action" data-reset-password="${escapeHTML(u.id)}">Reset password</button><button class="row-action ${u.active ? "danger" : ""}" data-toggle-user="${escapeHTML(u.id)}">${u.active ? "Deactivate" : "Reactivate"}</button></div>` : ""}</td></tr>`).join("");
   $("usersEmpty").hidden = rows.length > 0; document.querySelectorAll("[data-toggle-user]").forEach((b) => b.onclick = toggleUser); document.querySelectorAll("[data-reset-password]").forEach((b) => b.onclick = resetUserPassword);
 }
-function renderAgencies() { const q = $("searchInput").value.trim().toLocaleLowerCase(); const rows = state.agencies.filter((a) => a.name.toLocaleLowerCase().includes(q)); $("agenciesBody").innerHTML = rows.map((a) => `<tr><td><strong>${escapeHTML(a.name)}</strong></td><td>${a.userCount}</td><td><span class="${a.mcpConfigured ? "active-dot" : "inactive-dot"}">${a.mcpConfigured ? "Connected" : "Not configured"}</span></td><td>${a.mcpRotatedAt ? formatDate(a.mcpRotatedAt) : "—"}</td><td>${canMutateAdmin() ? `<button class="row-action" data-agency-settings="${escapeHTML(a.id)}">Manage</button>` : ""}</td></tr>`).join(""); $("agenciesEmpty").hidden = rows.length > 0; document.querySelectorAll("[data-agency-settings]").forEach((b) => b.onclick = openAgencySettings); }
+function renderAgencies() { const q = $("searchInput").value.trim().toLocaleLowerCase(); const rows = state.agencies.filter((a) => a.name.toLocaleLowerCase().includes(q)); $("agenciesBody").innerHTML = rows.map((a) => `<tr><td><strong>${escapeHTML(a.name)}</strong><br><span class="${a.active ? "active-dot" : "inactive-dot"}">${a.active ? "Active" : "Inactive"}</span></td><td>${a.userCount}</td><td><span class="${a.mcpConfigured ? "active-dot" : "inactive-dot"}">${a.mcpConfigured ? "Connected" : "Not configured"}</span></td><td>${a.mcpRotatedAt ? formatDate(a.mcpRotatedAt) : "—"}</td><td>${canMutateAdmin() ? `<button class="row-action" data-agency-settings="${escapeHTML(a.id)}">Manage</button>` : ""}</td></tr>`).join(""); $("agenciesEmpty").hidden = rows.length > 0; document.querySelectorAll("[data-agency-settings]").forEach((b) => b.onclick = openAgencySettings); }
 
 function renderIntakeForms() {
   const query = $("searchInput").value.trim().toLocaleLowerCase();
@@ -893,6 +893,24 @@ $("closeAgencyDialog").onclick = $("cancelAgency").onclick = () => $("agencyDial
 $("copyAgencyIntakeLink").onclick = async () => { await navigator.clipboard.writeText($("agencyIntakeDirectURL").value); toast("Patient form link copied."); };
 $("copyAgencyIntakeEmbed").onclick = async () => { await navigator.clipboard.writeText($("agencyIntakeEmbed").value); toast("Website embed copied."); };
 $("rotateMCPToken").onclick = async () => { const id = $("agencyDialog").dataset.agencyID, agency = state.agencies.find((a) => a.id === id); if (!confirm(agency.mcpConfigured ? "Rotate this token? The current token will stop working immediately." : "Generate an MCP token for this agency?")) return; try { const result = await api(`/admin/agencies/${id}/mcp/rotate`, { method: "POST", body: {} }); updateMCPDialog(result.connection); $("mcpToken").textContent = result.connection.accessToken; $("mcpTokenBox").hidden = false; await loadData({ silent: true }); } catch (error) { $("agencyFormError").textContent = error.message; } };
+$("deleteAgency").onclick = async () => {
+  const agencyID = $("agencyDialog").dataset.agencyID;
+  const agency = state.agencies.find((item) => item.id === agencyID);
+  if (!agency || !confirm(`Delete ${agency.name}? If it has users or patient history, it will be deactivated and retained for audit purposes.`)) return;
+  const button = $("deleteAgency");
+  button.disabled = true;
+  $("agencyFormError").textContent = "";
+  try {
+    const result = (await api(`/admin/agencies/${agencyID}`, { method: "DELETE" })).agency;
+    $("agencyDialog").close();
+    await loadData({ silent: true });
+    toast(result.mode === "deleted" ? "Agency deleted." : "Agency has history and was deactivated.");
+  } catch (error) {
+    $("agencyFormError").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
 $("agencyForm").onsubmit = async (event) => {
   event.preventDefault();
   const submit = $("saveAgency");

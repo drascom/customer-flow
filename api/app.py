@@ -3511,6 +3511,70 @@ class Database:
                 conn.execute("ROLLBACK")
                 raise
 
+    def admin_delete_agency(self, agency_id: str, user: sqlite3.Row) -> dict:
+        """Delete an unused agency, or archive it when business history must be retained."""
+        self._require_role(user, "admin")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                agency = conn.execute("SELECT * FROM agencies WHERE id=?", (agency_id,)).fetchone()
+                if not agency:
+                    raise APIError(404, "agency_not_found", "The agency could not be found.")
+                human_users = conn.execute(
+                    "SELECT COUNT(*) FROM users u WHERE u.agency_id=? AND NOT EXISTS "
+                    "(SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id) AND NOT EXISTS "
+                    "(SELECT 1 FROM agency_intake_service_users isu WHERE isu.user_id=u.id)",
+                    (agency_id,),
+                ).fetchone()[0]
+                case_count = conn.execute(
+                    "SELECT COUNT(*) FROM cases c JOIN users u ON u.id=c.agent_id WHERE u.agency_id=?",
+                    (agency_id,),
+                ).fetchone()[0]
+                submission_count = conn.execute(
+                    "SELECT COUNT(*) FROM intake_submissions WHERE source_agency_id=? OR owner_agency_id=?",
+                    (agency_id, agency_id),
+                ).fetchone()[0]
+                transfer_count = conn.execute(
+                    "SELECT COUNT(*) FROM intake_ownership_transfers WHERE from_agency_id=? OR to_agency_id=?",
+                    (agency_id, agency_id),
+                ).fetchone()[0]
+                history = {
+                    "users": human_users,
+                    "cases": case_count,
+                    "submissions": submission_count,
+                    "transfers": transfer_count,
+                }
+                if any(history.values()):
+                    conn.execute("UPDATE agencies SET active=0 WHERE id=?", (agency_id,))
+                    conn.execute("UPDATE users SET active=0 WHERE agency_id=?", (agency_id,))
+                    conn.execute("UPDATE intake_forms SET active=0,updated_at=? WHERE agency_id=?",
+                                 (iso(utc_now()), agency_id))
+                    self._audit(conn, user["id"], "agency.deactivated", "agency", agency_id,
+                                {"name": agency["name"], "retainedHistory": history})
+                    conn.execute("COMMIT")
+                    return {"id": agency_id, "name": agency["name"], "active": False,
+                            "mode": "deactivated", "retainedHistory": history}
+
+                service_users = conn.execute(
+                    "SELECT service_user_id user_id FROM agency_mcp_credentials WHERE agency_id=? "
+                    "UNION SELECT user_id FROM agency_intake_service_users WHERE agency_id=?",
+                    (agency_id, agency_id),
+                ).fetchall()
+                conn.execute("DELETE FROM intake_forms WHERE agency_id=?", (agency_id,))
+                conn.execute("DELETE FROM agency_mcp_credentials WHERE agency_id=?", (agency_id,))
+                conn.execute("DELETE FROM agency_intake_service_users WHERE agency_id=?", (agency_id,))
+                for service_user in service_users:
+                    conn.execute("DELETE FROM users WHERE id=?", (service_user["user_id"],))
+                conn.execute("DELETE FROM agencies WHERE id=?", (agency_id,))
+                self._audit(conn, user["id"], "agency.deleted", "agency", agency_id,
+                            {"name": agency["name"]})
+                conn.execute("COMMIT")
+                return {"id": agency_id, "name": agency["name"], "active": False,
+                        "mode": "deleted"}
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     @staticmethod
     def _mcp_connection_json(agency: sqlite3.Row, credential: sqlite3.Row | None) -> dict:
         return {
@@ -4244,6 +4308,10 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._read_json()
                 deleted = self.server.database.admin_delete_user(admin_parts[1], user)
                 return self._changed(200, {"user": deleted}, "user.deleted", admin_parts[1], user)
+            if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "agencies":
+                result = self.server.database.admin_delete_agency(admin_parts[1], user)
+                event = "agency.deleted" if result["mode"] == "deleted" else "agency.deactivated"
+                return self._changed(200, {"agency": result}, event, admin_parts[1], user)
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "photos":
                 self._read_json()
                 purged = self.server.database.admin_purge_photo(admin_parts[1], user)

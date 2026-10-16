@@ -1817,6 +1817,54 @@ class APITestCase(unittest.TestCase):
         self.assertEqual(1, len(agency_forms))
         self.assertEqual(default_form["id"], agency_forms[0]["id"])
 
+        deletion = self.request(
+            "DELETE", f"/admin/agencies/{created['id']}", token=admin
+        )["agency"]
+        self.assertEqual("deleted", deletion["mode"])
+        self.assertNotIn(
+            created["id"],
+            [agency["id"] for agency in self.request("GET", "/admin/agencies", token=admin)["agencies"]],
+        )
+        self.assertFalse(any(
+            form["agencyID"] == created["id"]
+            for form in self.request("GET", "/intake/forms", token=admin)["forms"]
+        ))
+
+    def test_agency_with_users_is_deactivated_instead_of_deleted(self):
+        admin = self.login("admin", "demo123")
+        created = self.request("POST", "/admin/agencies", {
+            "name": "Archive Agency " + uuid.uuid4().hex[:8],
+        }, token=admin, expected=201)["agency"]
+        agent_username = "archive-" + uuid.uuid4().hex[:8]
+        self.request("POST", "/admin/users", {
+            "username": agent_username,
+            "displayName": "Archive Agent",
+            "role": "agent",
+            "agencyID": created["id"],
+            "password": "Temporary!456",
+        }, token=admin, expected=201)
+
+        result = self.request(
+            "DELETE", f"/admin/agencies/{created['id']}", token=admin
+        )["agency"]
+        self.assertEqual("deactivated", result["mode"])
+        archived = next(
+            agency for agency in self.request("GET", "/admin/agencies", token=admin)["agencies"]
+            if agency["id"] == created["id"]
+        )
+        self.assertFalse(archived["active"])
+        self.request("POST", "/auth/login", {
+            "username": agent_username,
+            "password": "Temporary!456",
+        }, expected=401)
+        self.request("POST", "/admin/users", {
+            "username": "blocked-" + uuid.uuid4().hex[:8],
+            "displayName": "Blocked Agent",
+            "role": "agent",
+            "agencyID": created["id"],
+            "password": "Temporary!456",
+        }, token=admin, expected=422)
+
     def test_admin_case_table_and_doctor_assignment(self):
         admin = self.login("admin", "demo123")
         cases = self.request("GET", "/admin/cases", token=admin)["cases"]

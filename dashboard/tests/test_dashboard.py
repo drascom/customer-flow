@@ -75,6 +75,7 @@ class DashboardTestCase(unittest.TestCase):
         self.assertIn(b"function caseCardHTML", javascript)
         self.assertIn(b'submit.textContent = "Saving', javascript)
         self.assertIn(b'$("agencyDialog").close();', javascript)
+        self.assertIn(b'$("deleteAgency").onclick', javascript)
 
     def test_dashboard_health_reports_deployed_commit(self):
         health = self.request("GET", "/dashboard/health")
