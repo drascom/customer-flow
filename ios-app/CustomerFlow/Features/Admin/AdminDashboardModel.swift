@@ -359,6 +359,17 @@ final class AdminDashboardModel {
         }
     }
 
+    func completeCase(_ item: AdminCase) async -> Bool {
+        do {
+            try await repository.completeCase(caseID: item.id)
+            cases = try await repository.fetchCases()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func deleteCase(_ item: AdminCase) async {
         do {
             try await repository.deleteCase(caseID: item.id)

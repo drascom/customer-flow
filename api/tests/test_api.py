@@ -1310,7 +1310,7 @@ class APITestCase(unittest.TestCase):
         )
         self.assertEqual("case_not_confirmed", repeated["error"]["code"])
 
-    def test_only_agent_can_complete_and_new_doctor_message_reopens_case(self):
+    def test_agent_and_admin_can_complete_and_new_doctor_message_reopens_case(self):
         doctor = self.login("doctor1", "demo123")
         agent = self.login("user1", "demo123")
         manager = self.login("manager", "demo123")
@@ -1340,6 +1340,17 @@ class APITestCase(unittest.TestCase):
         }, token=doctor)["case"]
         self.assertEqual("answered", reopened_for_agent["status"])
         self.assertIsNone(reopened_for_agent["completedAt"])
+
+        admin = self.login("admin", "demo123")
+        completed_by_admin = self.request(
+            "POST", f"/cases/{created['id']}/complete", {}, token=admin
+        )["case"]
+        self.assertIsNotNone(completed_by_admin["completedAt"])
+        self.assertEqual("admin", completed_by_admin["completedByRole"])
+        self.assertTrue(any(
+            message["role"] == "admin" and message["text"] == "Admin closed this case."
+            for message in completed_by_admin["messages"]
+        ))
 
         denied = self.request(
             "POST", f"/cases/{created['id']}/complete", {}, token=manager, expected=403

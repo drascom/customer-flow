@@ -2570,13 +2570,14 @@ class Database:
                 raise
 
     def complete_case(self, case_id: str, user: sqlite3.Row) -> dict:
-        self._require_role(user, "agent")
+        self._require_any_role(user, "agent", "admin")
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._case_row(conn, case_id)
-                self._assert_case_visible(row, user)
-                self._assert_owner(row, user)
+                if user["role"] == "agent":
+                    self._assert_case_visible(row, user)
+                    self._assert_owner(row, user)
                 if row["status"] == "closed":
                     raise APIError(409, "case_confirmed", "A confirmed case is already finished.")
                 if row["completed_at"]:
@@ -2589,6 +2590,15 @@ class Database:
                     "version=version+1 WHERE id=?",
                     (now, user["id"], user["role"], case_id),
                 )
+                if user["role"] == "admin":
+                    conn.execute(
+                        "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text) "
+                        "VALUES (?,?,?,?,?,?,?)",
+                        (
+                            str(uuid.uuid4()), case_id, user["id"], user["display_name"],
+                            "admin", now, "Admin closed this case.",
+                        ),
+                    )
                 self._audit(
                     conn, user["id"], "case.completed", "case", case_id,
                     {"completedByRole": user["role"]},

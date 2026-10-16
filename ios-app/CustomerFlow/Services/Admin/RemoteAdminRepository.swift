@@ -196,6 +196,15 @@ actor RemoteAdminRepository: AdminRepository {
         )
     }
 
+    func completeCase(caseID: String) async throws {
+        struct Empty: Codable, Sendable {}
+        let _: Empty = try await client.send(
+            "POST",
+            path: "cases/\(caseID)/complete",
+            body: Empty()
+        )
+    }
+
     func deleteCase(caseID: String) async throws {
         struct Empty: Encodable, Sendable {}
         struct Mutation: Decodable, Sendable { let id: String; let deleted: Bool }

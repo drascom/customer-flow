@@ -12,6 +12,7 @@ struct AdminCaseCard: View {
     let onAssign: (String?) -> Void
     let onTransferAgency: (String, String) async -> Bool
     let onUndoConfirmation: () -> Void
+    let onComplete: () async -> Bool
     let onDelete: () -> Void
     let onPurgePhoto: (String) -> Void
     let onSendOperationalNote: (String) async -> AdminCase?
@@ -20,6 +21,8 @@ struct AdminCaseCard: View {
     @State private var pendingPurgePhotoID: String?
     @State private var showsConversation = false
     @State private var showsUndoConfirmation = false
+    @State private var showsCompleteConfirmation = false
+    @State private var isCompleting = false
     @State private var showsDeleteConfirmation = false
     @State private var showsAgencyTransfer = false
 
@@ -147,6 +150,20 @@ struct AdminCaseCard: View {
                     .padding(.top, 10)
                 }
 
+                if item.status != .closed && !item.isCompleted && !isReadOnly {
+                    Button {
+                        showsCompleteConfirmation = true
+                    } label: {
+                        Label(isCompleting ? "Closing…" : "Close case", systemImage: "checkmark.circle")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 42)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.brand)
+                    .disabled(isCompleting)
+                    .padding(.top, 10)
+                }
+
                 if !item.photos.isEmpty {
                     adminPhotos
                         .padding(.top, 12)
@@ -230,6 +247,22 @@ struct AdminCaseCard: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The final grafts, price and appointment will be cleared. The case will return to Answered.")
+        }
+        .confirmationDialog(
+            "Close this case?",
+            isPresented: $showsCompleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Close case", role: .destructive) {
+                isCompleting = true
+                Task {
+                    _ = await onComplete()
+                    isCompleting = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The conversation will record that an administrator closed this case. A new doctor or agent message will reopen it automatically.")
         }
         .confirmationDialog(
             "Delete this case?",

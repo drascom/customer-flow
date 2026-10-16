@@ -580,6 +580,7 @@ struct AdminDashboardView: View {
                 await model.transferPatientAgency(item, agencyID: agencyID, reason: reason)
             },
             onUndoConfirmation: { Task { await model.unconfirmCase(item) } },
+            onComplete: { await model.completeCase(item) },
             onDelete: {
                 Task {
                     await model.deleteCase(item)

@@ -470,7 +470,7 @@ function conversationForm(item) {
 
 function completionControl(item) {
   if (item.completedAt) return `<div class="completion-panel"><div><strong>✓ Closed by ${escapeHTML(item.completedByName || "a team member")}</strong><small>${formatDate(item.completedAt)}</small></div><p>A new doctor or agent message will reopen this case automatically.</p></div>`;
-  const canComplete = item.status !== "closed" && canEditAgentCase(item);
+  const canComplete = item.status !== "closed" && (canEditAgentCase(item) || canMutateAdmin());
   return canComplete ? `<div class="completion-action"><span>Consultation finished?</span><button class="close-case-button compact" id="completeCaseButton" type="button">✓ Mark as closed</button></div>` : "";
 }
 
@@ -618,7 +618,8 @@ async function submitDoctorReply(event) {
 async function submitAgentReply(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/agent-updates`, { method: "POST", body: { text: $("replyText").value.trim() } }, "Update sent."); }
 async function submitManagementReply(event) { event.preventDefault(); await mutate(`/cases/${state.selectedCaseID}/management-messages`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: { text: $("replyText").value.trim() } }, "Operational note sent."); }
 async function submitCompleteCase() {
-  if (!window.confirm("Mark this case as closed? A new doctor or agent message will reopen it automatically.")) return;
+  const adminNote = state.user?.role === "admin" ? " The conversation will record that an administrator closed it." : "";
+  if (!window.confirm(`Mark this case as closed?${adminNote} A new doctor or agent message will reopen it automatically.`)) return;
   await mutate(`/cases/${state.selectedCaseID}/complete`, { method: "POST", body: {} }, "Case marked as closed.");
 }
 async function submitCloseCase(event) {

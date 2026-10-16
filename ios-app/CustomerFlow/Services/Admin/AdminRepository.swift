@@ -20,6 +20,7 @@ protocol AdminRepository: Sendable {
     func transferPatientAgency(patientID: String, agencyID: String, reason: String) async throws
     func assignDoctor(patientID: String, doctorID: String?, reason: String) async throws
     func unconfirmCase(caseID: String) async throws
+    func completeCase(caseID: String) async throws
     func deleteCase(caseID: String) async throws
     func purgePhoto(id: String) async throws
     func addOperationalNote(caseID: String, text: String) async throws
