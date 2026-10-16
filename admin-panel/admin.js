@@ -431,10 +431,19 @@ function patientDetailCard(item, patient, details, editable) {
 
 function transferAgencyControl(item) {
   if (state.user?.role !== "admin" || !item.intakePatient) return "";
+  const canTransfer = state.agencies.some((agency) => agency.active && agency.id !== item.ownerAgencyID);
+  return `<section class="detail-section agency-ownership-summary"><div class="agency-owner-copy"><span>Agency:</span><strong>${escapeHTML(item.ownerAgencyName || item.agencyName || "Unknown")}</strong></div><button id="openAgencyTransfer" class="quiet compact" type="button" ${canTransfer ? "" : "disabled"}>Change</button></section>`;
+}
+
+function openAgencyTransferDialog() {
+  const item = state.cases.find((entry) => entry.id === state.selectedCaseID);
+  if (!item) return;
   const options = state.agencies.filter((agency) => agency.active && agency.id !== item.ownerAgencyID)
     .map((agency) => `<option value="${escapeHTML(agency.id)}">${escapeHTML(agency.name)}</option>`).join("");
-  return `<section class="detail-section"><div class="section-heading"><div><h3>Agency ownership</h3><p>Current owner: ${escapeHTML(item.ownerAgencyName || item.agencyName || "Unknown")}</p></div></div>
-    <form id="transferAgencyForm" class="inline-form"><label>Transfer to<select id="transferAgencyID" required><option value="">Select agency</option>${options}</select></label><label>Reason<textarea id="transferAgencyReason" rows="2" minlength="5" maxlength="1000" placeholder="Why is this patient being transferred?" required></textarea></label><div class="section-actions"><button class="quiet" type="submit" ${options ? "" : "disabled"}>Transfer patient</button></div></form></section>`;
+  $("transferAgencyID").innerHTML = `<option value="">Select agency</option>${options}`;
+  $("transferAgencyReason").value = "";
+  $("transferAgencyError").textContent = "";
+  $("transferAgencyDialog").showModal();
 }
 
 function prettyGender(value) { return value ? String(value).replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()) : ""; }
@@ -498,7 +507,7 @@ function bindDetailActions(item) {
   $("unconfirmCaseButton")?.addEventListener("click", submitUnconfirmCase);
   $("completeCaseButton")?.addEventListener("click", submitCompleteCase);
   $("editCaseForm")?.addEventListener("submit", submitCaseEdit);
-  $("transferAgencyForm")?.addEventListener("submit", submitAgencyTransfer);
+  $("openAgencyTransfer")?.addEventListener("click", openAgencyTransferDialog);
   document.querySelectorAll("[data-delete-message]").forEach((b) => b.onclick = deleteMessage);
   document.querySelectorAll("[data-delete-photo]").forEach((b) => b.onclick = deletePhoto);
   document.querySelectorAll("[data-purge-photo]").forEach((b) => b.onclick = purgePhoto);
@@ -527,10 +536,21 @@ async function submitAgencyTransfer(event) {
   const agencyID = $("transferAgencyID").value;
   const reason = $("transferAgencyReason").value.trim();
   const agency = state.agencies.find((entry) => entry.id === agencyID);
-  if (!item || !agency || !window.confirm(`Transfer ${patientName(item)} to ${agency.name}?`)) return;
-  await mutate(`/admin/patients/${encodeURIComponent(patientID(item))}/transfer-agency`, {
-    method: "POST", body: { agencyID, reason }
-  }, `Patient transferred to ${agency.name}.`);
+  if (!item || !agency) return;
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  $("transferAgencyError").textContent = "";
+  try {
+    await api(`/admin/patients/${encodeURIComponent(patientID(item))}/transfer-agency`, {
+      method: "POST", body: { agencyID, reason }
+    });
+    $("transferAgencyDialog").close();
+    await reloadSelected(`Patient transferred to ${agency.name}.`);
+  } catch (error) {
+    $("transferAgencyError").textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
 }
 
 async function authenticatedImage(path, cacheKey = path) {
@@ -846,6 +866,8 @@ document.querySelectorAll(".tab").forEach((b) => b.onclick = () => switchView(b.
 $("clearCaseFilters").onclick = () => { Object.assign(state.filters, { caseStatus: state.user?.role === "doctor" ? "waiting" : "", caseAssignment: "", caseAgency: "", caseDoctor: "" }); renderFilterChips(); renderCases(); };
 $("clearUserFilters").onclick = () => { Object.assign(state.filters, { userRole: "", userStatus: "", userAgency: "" }); renderFilterChips(); renderUsers(); };
 $("closeCaseDialog").onclick = () => $("caseDialog").close(); $("closeNewCase").onclick = $("cancelNewCase").onclick = () => $("newCaseDialog").close(); $("newCaseForm").onsubmit = submitNewCase; $("casePatientName").onblur = checkPatientMatch; $("casePatientName").oninput = () => { state.duplicate = { matches: [], confirmed: false, existingPatientID: null }; $("patientMatchHint").textContent = ""; }; $("casePhotos").onchange = (event) => { state.pendingFiles.push(...event.target.files); renderPendingPhotos(); event.target.value = ""; };
+$("closeTransferAgency").onclick = $("cancelTransferAgency").onclick = () => $("transferAgencyDialog").close();
+$("transferAgencyForm").onsubmit = submitAgencyTransfer;
 $("closePhotoDialog").onclick = () => $("photoDialog").close(); $("previousPhoto").onclick = () => { state.photoIndex = (state.photoIndex + state.photoItems.length - 1) % state.photoItems.length; renderPhotoViewer(); }; $("nextPhoto").onclick = () => { state.photoIndex = (state.photoIndex + 1) % state.photoItems.length; renderPhotoViewer(); }; $("editPhotoButton").onclick = openEditor;
 $("zoomOutPhoto").onclick = () => changePhotoZoom(-0.5); $("zoomInPhoto").onclick = () => changePhotoZoom(0.5); $("resetPhotoZoom").onclick = () => { state.photoZoom = 1; applyPhotoZoom(); };
 $("photoPreviewImage").ondblclick = () => { state.photoZoom = state.photoZoom > 1 ? 1 : 2; applyPhotoZoom(); };

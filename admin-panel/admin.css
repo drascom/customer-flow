@@ -257,6 +257,11 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .detail-section h3 { margin: 0; font-size: 17px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .section-heading span { color: var(--muted); font-size: 12px; }
+.agency-ownership-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-block: 12px; }
+.agency-owner-copy { display: flex; align-items: baseline; min-width: 0; gap: 6px; }
+.agency-owner-copy span { color: var(--muted); font-size: 13px; font-weight: 700; }
+.agency-owner-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-dialog { width: min(520px, calc(100% - 24px)); }
 #conversationSection { grid-column: 2; grid-row: 2 / span 4; }
 .confirmation-section { grid-column: 1 / -1; grid-row: 2; padding: 14px 16px; border-color: color-mix(in srgb, var(--green), transparent 58%); background: color-mix(in srgb, var(--green), var(--surface) 91%); }
 .confirmation-section ~ #conversationSection { grid-row: 3 / span 4; }

@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0b7772">
   <title>Customer Flow by NatChatt</title>
-  <link rel="stylesheet" href="/admin/admin.css?v=20261016-agency-actions">
-  <script src="/admin/admin.js?v=20261016-agency-delete" defer></script>
+  <link rel="stylesheet" href="/admin/admin.css?v=20261016-compact-agency-transfer">
+  <script src="/admin/admin.js?v=20261016-compact-agency-transfer" defer></script>
 </head>
 <body>
   <main id="loginView" class="login-shell">
@@ -158,6 +158,8 @@
   </div>
 
   <dialog id="caseDialog" class="wide-dialog"><div class="case-dialog-shell"><div class="sticky-dialog-heading"><div><span id="caseDialogEyebrow" class="eyebrow"></span><h2 id="caseDialogTitle">Patient</h2></div><button id="closeCaseDialog" class="icon-button" type="button" aria-label="Close">×</button></div><div id="caseDialogContent" class="case-dialog-content"></div></div></dialog>
+
+  <dialog id="transferAgencyDialog" class="compact-dialog"><form id="transferAgencyForm" class="dialog-card"><div class="dialog-heading"><div><h2>Change agency</h2><p>Select the new owner and record why the patient is being transferred.</p></div><button id="closeTransferAgency" class="icon-button" type="button" aria-label="Close">×</button></div><label>Transfer to<select id="transferAgencyID" required></select></label><label>Reason<textarea id="transferAgencyReason" rows="3" minlength="5" maxlength="1000" placeholder="Why is this patient being transferred?" required></textarea></label><p id="transferAgencyError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelTransferAgency" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Transfer patient</button></div></form></dialog>
 
   <dialog id="newCaseDialog" class="form-dialog">
     <form id="newCaseForm" class="dialog-card case-form">
