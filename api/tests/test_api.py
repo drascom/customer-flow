@@ -548,6 +548,33 @@ class APITestCase(unittest.TestCase):
         info = self.request("GET", f"/admin/agencies/{agency['id']}/mcp", token=admin)["connection"]
         self.assertNotIn("accessToken", info)
 
+    def test_admin_can_export_agency_integration_pdf_with_current_one_time_token(self):
+        admin = self.login("admin", "demo123")
+        agency = self.request(
+            "POST", "/admin/agencies", {
+                "name": "PDF Agency " + uuid.uuid4().hex[:8],
+                "websiteURL": "https://agency-pdf.example",
+            }, token=admin, expected=201,
+        )["agency"]
+        connection = self.request(
+            "POST", f"/admin/agencies/{agency['id']}/mcp/rotate", {}, token=admin
+        )["connection"]
+        body, headers = self.raw_request(
+            "POST", f"/admin/agencies/{agency['id']}/integration-guide",
+            json.dumps({"accessToken": connection["accessToken"]}).encode(),
+            "application/json", token=admin,
+        )
+        self.assertTrue(body.startswith(b"%PDF-"))
+        self.assertEqual("application/pdf", headers.get_content_type())
+        self.assertIn("attachment;", headers["Content-Disposition"])
+
+        invalid, _ = self.raw_request(
+            "POST", f"/admin/agencies/{agency['id']}/integration-guide",
+            json.dumps({"accessToken": "cfmcp_" + "x" * 64}).encode(),
+            "application/json", token=admin, expected=422,
+        )
+        self.assertEqual("invalid_mcp_token", json.loads(invalid)["error"]["code"])
+
     def test_mcp_bearer_has_narrow_api_scope_and_writes_publish_live_events(self):
         admin = self.login("admin", "demo123")
         agency = self.request(

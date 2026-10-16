@@ -177,6 +177,8 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 #deleteAgency { margin-right: auto; color: var(--red); border-color: color-mix(in srgb, var(--red), transparent 58%); }
 .mcp-settings { display: grid; gap: 12px; padding: 15px; border: 1px solid var(--border); border-radius: 15px; background: var(--inset); }
 .mcp-settings p { margin-top: 3px; font-size: 13px; }
+.integration-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.integration-actions a[aria-disabled="true"] { pointer-events: none; opacity: .5; }
 .integration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; padding: 20px; }
 .integration-card { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
 .integration-card.inactive { opacity: .72; }

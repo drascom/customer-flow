@@ -86,14 +86,12 @@ function applyRoleVisibility() {
   document.querySelectorAll(".management-only").forEach((node) => { node.hidden = !isManagement(); });
   document.querySelectorAll(".admin-only").forEach((node) => { node.hidden = !canMutateAdmin(); });
   document.querySelectorAll(".agent-only").forEach((node) => { node.hidden = state.user.role !== "agent"; });
-  document.querySelectorAll(".intake-access").forEach((node) => { node.hidden = state.user.role === "doctor"; });
   $("caseCards").hidden = isManagement();
   $("managementCaseTable").hidden = !isManagement();
   $("tabs").hidden = !isManagement();
   $("workspaceBar").hidden = !isManagement();
   $("newCaseButton").hidden = state.user.role !== "agent";
   $("refreshButton").hidden = state.user.role === "agent";
-  $("addIntakeFormButton").hidden = !["agent", "admin"].includes(state.user.role);
 }
 
 function showApp() {
@@ -135,7 +133,7 @@ async function loadData({ silent = false } = {}) {
   if (!silent) $("refreshButton").disabled = true;
   try {
     const notificationRequest = api("/notifications?limit=100");
-    const intakeRequest = state.user.role === "doctor" ? Promise.resolve({ forms: [] }) : api("/intake/forms");
+    const intakeRequest = isManagement() ? api("/intake/forms") : Promise.resolve({ forms: [] });
     if (isManagement()) {
       const [users, agencies, cases, intake] = await Promise.all([api("/admin/users"), api("/admin/agencies"), api("/admin/cases"), intakeRequest]);
       state.users = users.users; state.agencies = agencies.agencies; state.cases = cases.cases;
@@ -320,7 +318,6 @@ function filteredCases() {
 
 function renderCurrentView() {
   if (state.view === "cases") renderCases();
-  else if (state.view === "intake") renderIntakeForms();
   else if (state.view === "users") renderUsers();
   else if (state.view === "agencies") renderAgencies();
   else renderClientVersion();
@@ -770,34 +767,12 @@ function renderUsers() {
 }
 function renderAgencies() { const q = $("searchInput").value.trim().toLocaleLowerCase(); const rows = state.agencies.filter((a) => a.name.toLocaleLowerCase().includes(q)); $("agenciesBody").innerHTML = rows.map((a) => `<tr><td><strong>${escapeHTML(a.name)}</strong><br><span class="${a.active ? "active-dot" : "inactive-dot"}">${a.active ? "Active" : "Inactive"}</span></td><td>${a.userCount}</td><td><span class="${a.mcpConfigured ? "active-dot" : "inactive-dot"}">${a.mcpConfigured ? "Connected" : "Not configured"}</span></td><td>${a.mcpRotatedAt ? formatDate(a.mcpRotatedAt) : "—"}</td><td>${canMutateAdmin() ? `<button class="row-action" data-agency-settings="${escapeHTML(a.id)}">Manage</button>` : ""}</td></tr>`).join(""); $("agenciesEmpty").hidden = rows.length > 0; document.querySelectorAll("[data-agency-settings]").forEach((b) => b.onclick = openAgencySettings); }
 
-function renderIntakeForms() {
-  const query = $("searchInput").value.trim().toLocaleLowerCase();
-  const rows = state.intakeForms.filter((item) => `${item.label} ${item.agencyName}`.toLocaleLowerCase().includes(query));
-  $("intakeFormCards").innerHTML = rows.map((item) => `<article class="integration-card ${item.active ? "" : "inactive"}">
-    <header><div><span class="eyebrow">${escapeHTML(item.agencyName)}</span><h3>${escapeHTML(item.label)}</h3></div><span class="${item.active ? "active-dot" : "inactive-dot"}">${item.active ? "Active" : "Paused"}</span></header>
-    <label>Direct link<div class="copy-field"><input value="${escapeHTML(item.directURL)}" readonly><button class="quiet compact" type="button" data-copy-intake="directURL" data-form-id="${escapeHTML(item.id)}">Copy</button></div></label>
-    <label>Iframe code<div class="copy-field"><textarea rows="3" readonly>${escapeHTML(item.iframeCode)}</textarea><button class="quiet compact" type="button" data-copy-intake="iframeCode" data-form-id="${escapeHTML(item.id)}">Copy</button></div></label>
-    <label>JavaScript embed<div class="copy-field"><textarea rows="3" readonly>${escapeHTML(item.javascriptCode)}</textarea><button class="quiet compact" type="button" data-copy-intake="javascriptCode" data-form-id="${escapeHTML(item.id)}">Copy</button></div></label>
-    <footer><a class="quiet compact" href="${escapeHTML(item.directURL)}" target="_blank" rel="noreferrer">Preview ↗</a>${["agent", "admin"].includes(state.user.role) ? `<button class="quiet compact" type="button" data-toggle-intake="${escapeHTML(item.id)}">${item.active ? "Pause form" : "Activate form"}</button>` : ""}</footer>
-  </article>`).join("");
-  $("intakeFormsEmpty").hidden = rows.length > 0;
-  document.querySelectorAll("[data-copy-intake]").forEach((button) => { button.onclick = copyIntakeValue; });
-  document.querySelectorAll("[data-toggle-intake]").forEach((button) => { button.onclick = toggleIntakeForm; });
-}
-
-async function copyIntakeValue(event) {
-  const button = event.currentTarget;
-  const item = state.intakeForms.find((form) => form.id === button.dataset.formId);
-  if (!item) return;
-  await navigator.clipboard.writeText(item[button.dataset.copyIntake]);
-  toast("Copied to clipboard.");
-}
-
-async function toggleIntakeForm(event) {
-  const item = state.intakeForms.find((form) => form.id === event.currentTarget.dataset.toggleIntake);
+async function toggleAgencyIntakeForm() {
+  const item = state.intakeForms.find((form) => form.id === $("agencyDialog").dataset.intakeFormID);
   if (!item) return;
   await api(`/intake/forms/${item.id}`, { method: "PATCH", body: { active: !item.active } });
   await loadData({ silent: true });
+  updateAgencyIntakeDialog(item.agencyID);
   toast(item.active ? "Application form paused." : "Application form activated.");
 }
 
@@ -840,11 +815,50 @@ async function resetUserPassword(event) { const id = event.currentTarget.dataset
 function renderAgencyOptions() { if (!$("newAgency")) return; $("newAgency").innerHTML = `<option value="">Select agency</option>${state.agencies.filter((a) => a.active).map((a) => `<option value="${escapeHTML(a.id)}">${escapeHTML(a.name)}</option>`).join("")}<option value="__new__">+ Add new agency…</option>`; updateAgencyFields(); }
 function updateAgencyFields() { const agent = $("newRole").value === "agent", adding = agent && $("newAgency").value === "__new__"; $("agencyField").hidden = !agent; $("newAgency").required = agent; $("newAgencyField").hidden = !adding; $("newAgencyName").required = adding; $("newAgencyWebsiteField").hidden = !adding; }
 function agencyDefaultIntakeForm(agencyID) { return state.intakeForms.find((item) => item.agencyID === agencyID && item.label === "Hair transplant assessment") || state.intakeForms.find((item) => item.agencyID === agencyID); }
-function updateAgencyIntakeDialog(agencyID) { const form = agencyDefaultIntakeForm(agencyID); $("agencyDialog").dataset.intakeFormID = form?.id || ""; $("agencyWebsiteOrigins").value = (form?.allowedOrigins || []).join("\n"); $("agencyIntakeDirectURL").value = form?.directURL || "Created when you save"; $("agencyIntakeEmbed").value = form?.javascriptCode || "Created when you save"; }
+function updateAgencyIntakeDialog(agencyID) {
+  const form = agencyDefaultIntakeForm(agencyID);
+  $("agencyDialog").dataset.intakeFormID = form?.id || "";
+  $("agencyWebsiteOrigins").value = (form?.allowedOrigins || []).join("\n");
+  $("agencyIntakeDirectURL").value = form?.directURL || "Created when you save";
+  $("agencyIntakeIframe").value = form?.iframeCode || "Created when you save";
+  $("agencyIntakeEmbed").value = form?.javascriptCode || "Created when you save";
+  $("previewAgencyIntake").href = form?.active ? form.directURL : "#";
+  $("previewAgencyIntake").setAttribute("aria-disabled", String(!form || !form.active));
+  $("toggleAgencyIntake").disabled = !form;
+  $("toggleAgencyIntake").textContent = form?.active === false ? "Activate form" : "Pause form";
+}
 async function openAgencySettings(event) { const agency = state.agencies.find((a) => a.id === event.currentTarget.dataset.agencySettings); $("agencyDialog").dataset.agencyID = agency.id; $("editAgencyName").value = agency.name; $("agencyFormError").textContent = ""; $("mcpTokenBox").hidden = true; updateAgencyIntakeDialog(agency.id); $("agencyDialog").showModal(); try { updateMCPDialog((await api(`/admin/agencies/${agency.id}/mcp`)).connection); } catch (error) { $("agencyFormError").textContent = error.message; } }
 function updateMCPDialog(c) { $("mcpStatus").textContent = c.configured ? `Active${c.rotatedAt ? ` · rotated ${formatDate(c.rotatedAt)}` : ""}` : "Not configured"; $("mcpEndpoint").value = c.endpointURL || ""; $("rotateMCPToken").textContent = c.configured ? "Rotate access token" : "Generate access token"; }
 
-function switchView(view) { if ((view === "client-version" && !canMutateAdmin()) || (view === "intake" && state.user?.role === "doctor")) view = "cases"; state.view = view; document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view)); $("casesView").hidden = view !== "cases"; $("intakeView").hidden = view !== "intake"; $("usersView").hidden = view !== "users"; $("agenciesView").hidden = view !== "agencies"; $("clientVersionView").hidden = view !== "client-version"; $("addUserButton").hidden = view !== "users" || !canMutateAdmin(); $("searchInput").value = ""; $("searchInput").disabled = view === "client-version"; $("searchInput").placeholder = view === "intake" ? "Search application forms" : view === "users" ? "Search users" : view === "agencies" ? "Search agencies" : view === "client-version" ? "Version settings" : "Search patients or cases"; renderCurrentView(); if (view === "client-version") loadClientVersion(); }
+async function exportAgencyIntegrationGuide() {
+  const agencyID = $("agencyDialog").dataset.agencyID;
+  const agency = state.agencies.find((item) => item.id === agencyID);
+  if (!agency) return;
+  const button = $("exportAgencyGuide");
+  const accessToken = $("mcpTokenBox").hidden ? null : $("mcpToken").textContent.trim();
+  button.disabled = true;
+  button.textContent = "Preparing PDF…";
+  $("agencyFormError").textContent = "";
+  try {
+    const response = await api(`/admin/agencies/${agencyID}/integration-guide`, {
+      method: "POST", body: { accessToken }, raw: true
+    });
+    const blobURL = URL.createObjectURL(await response.blob());
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || "customer-flow-integration.pdf";
+    const link = document.createElement("a");
+    link.href = blobURL; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobURL), 1000);
+    toast(accessToken ? "Integration PDF exported with the visible one-time token." : "Integration PDF exported without an MCP token.");
+  } catch (error) {
+    $("agencyFormError").textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Export integration PDF";
+  }
+}
+
+function switchView(view) { if (view === "client-version" && !canMutateAdmin()) view = "cases"; state.view = view; document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view)); $("casesView").hidden = view !== "cases"; $("usersView").hidden = view !== "users"; $("agenciesView").hidden = view !== "agencies"; $("clientVersionView").hidden = view !== "client-version"; $("addUserButton").hidden = view !== "users" || !canMutateAdmin(); $("searchInput").value = ""; $("searchInput").disabled = view === "client-version"; $("searchInput").placeholder = view === "users" ? "Search users" : view === "agencies" ? "Search agencies" : view === "client-version" ? "Version settings" : "Search patients or cases"; renderCurrentView(); if (view === "client-version") loadClientVersion(); }
 let toastTimer; function toast(message) { clearTimeout(toastTimer); $("toast").textContent = message; $("toast").hidden = false; toastTimer = setTimeout(() => $("toast").hidden = true, 3200); }
 
 // Authentication and global navigation.
@@ -879,33 +893,6 @@ $("profileForm").onsubmit = async (event) => { event.preventDefault(); try { sta
 $("changePassword").onclick = async () => { const newPassword = $("newProfilePassword").value; $("profileError").textContent = ""; if (!validPermanentPassword(newPassword)) return $("profileError").textContent = "Use at least 6 characters with at least one number and one symbol."; try { await api("/auth/change-password", { method: "POST", body: { currentPassword: $("currentPassword").value, newPassword } }); $("currentPassword").value = $("newProfilePassword").value = ""; $("profileDialog").close(); await signOut(true); showLogin("Password changed. Sign in with your new password."); } catch (error) { $("profileError").textContent = error.message; } };
 
 // Admin users and agencies.
-$("addIntakeFormButton").onclick = () => {
-  $("intakeFormForm").reset();
-  $("intakeFormLabel").value = "Hair transplant assessment";
-  $("intakeFormError").textContent = "";
-  const isAdmin = state.user.role === "admin";
-  $("intakeAgencyField").hidden = !isAdmin;
-  $("intakeAgencyID").required = isAdmin;
-  $("intakeAgencyID").innerHTML = `<option value="">Select agency</option>${state.agencies.filter((agency) => agency.active).map((agency) => `<option value="${escapeHTML(agency.id)}">${escapeHTML(agency.name)}</option>`).join("")}`;
-  $("intakeFormDialog").showModal();
-};
-$("closeIntakeFormDialog").onclick = $("cancelIntakeForm").onclick = () => $("intakeFormDialog").close();
-$("intakeFormForm").onsubmit = async (event) => {
-  event.preventDefault();
-  const submit = event.currentTarget.querySelector("button[type=submit]");
-  submit.disabled = true; $("intakeFormError").textContent = "";
-  try {
-    const allowedOrigins = $("intakeAllowedOrigins").value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
-    await api("/intake/forms", { method: "POST", body: {
-      label: $("intakeFormLabel").value.trim(),
-      agencyID: state.user.role === "admin" ? $("intakeAgencyID").value : undefined,
-      allowedOrigins,
-    } });
-    $("intakeFormDialog").close(); await loadData({ silent: true }); switchView("intake"); toast("Application form created.");
-  } catch (error) { $("intakeFormError").textContent = error.message; }
-  finally { submit.disabled = false; }
-};
-
 $("addUserButton").onclick = () => { $("userForm").reset(); renderAgencyOptions(); $("userDialog").showModal(); }; $("closeDialog").onclick = $("cancelUser").onclick = () => $("userDialog").close(); $("newRole").onchange = updateAgencyFields; $("newAgency").onchange = updateAgencyFields;
 $("userForm").onsubmit = async (event) => { event.preventDefault(); const submit = event.currentTarget.querySelector("button[type=submit]"); submit.disabled = true; try { let agencyID = $("newRole").value === "agent" ? $("newAgency").value : null; if (agencyID === "__new__") { const result = await api("/admin/agencies", { method: "POST", body: { name: $("newAgencyName").value.trim(), websiteURL: $("newAgencyWebsite").value.trim() } }); agencyID = result.agency.id; } await api("/admin/users", { method: "POST", body: { displayName: $("newDisplayName").value.trim(), username: $("newUsername").value.trim(), role: $("newRole").value, agencyID, password: $("newPassword").value } }); $("userDialog").close(); await loadData(); toast("User and ready-made patient form created."); } catch (error) { $("userFormError").textContent = error.message; } finally { submit.disabled = false; } };
 $("addAgencyButton").onclick = () => { $("newAgencyForm").reset(); $("newAgencyFormError").textContent = ""; $("newAgencyDialog").showModal(); };
@@ -913,7 +900,10 @@ $("closeNewAgencyDialog").onclick = $("cancelNewAgency").onclick = () => $("newA
 $("newAgencyForm").onsubmit = async (event) => { event.preventDefault(); const submit = event.currentTarget.querySelector("button[type=submit]"); submit.disabled = true; $("newAgencyFormError").textContent = ""; try { await api("/admin/agencies", { method: "POST", body: { name: $("standaloneAgencyName").value.trim(), websiteURL: $("standaloneAgencyWebsite").value.trim() } }); $("newAgencyDialog").close(); await loadData({ silent: true }); switchView("agencies"); toast("Agency and ready-made patient form created."); } catch (error) { $("newAgencyFormError").textContent = error.message; } finally { submit.disabled = false; } };
 $("closeAgencyDialog").onclick = $("cancelAgency").onclick = () => $("agencyDialog").close(); $("copyMCPToken").onclick = async () => { await navigator.clipboard.writeText($("mcpToken").textContent); toast("MCP token copied."); };
 $("copyAgencyIntakeLink").onclick = async () => { await navigator.clipboard.writeText($("agencyIntakeDirectURL").value); toast("Patient form link copied."); };
+$("copyAgencyIntakeIframe").onclick = async () => { await navigator.clipboard.writeText($("agencyIntakeIframe").value); toast("Iframe code copied."); };
 $("copyAgencyIntakeEmbed").onclick = async () => { await navigator.clipboard.writeText($("agencyIntakeEmbed").value); toast("Website embed copied."); };
+$("toggleAgencyIntake").onclick = toggleAgencyIntakeForm;
+$("exportAgencyGuide").onclick = exportAgencyIntegrationGuide;
 $("rotateMCPToken").onclick = async () => { const id = $("agencyDialog").dataset.agencyID, agency = state.agencies.find((a) => a.id === id); if (!confirm(agency.mcpConfigured ? "Rotate this token? The current token will stop working immediately." : "Generate an MCP token for this agency?")) return; try { const result = await api(`/admin/agencies/${id}/mcp/rotate`, { method: "POST", body: {} }); updateMCPDialog(result.connection); $("mcpToken").textContent = result.connection.accessToken; $("mcpTokenBox").hidden = false; await loadData({ silent: true }); } catch (error) { $("agencyFormError").textContent = error.message; } };
 $("deleteAgency").onclick = async () => {
   const agencyID = $("agencyDialog").dataset.agencyID;

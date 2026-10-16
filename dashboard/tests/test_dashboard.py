@@ -78,6 +78,9 @@ class DashboardTestCase(unittest.TestCase):
         self.assertIn(b'$("deleteAgency").onclick', javascript)
         self.assertIn(b"agency-ownership-summary", javascript)
         self.assertIn(b"openAgencyTransferDialog", javascript)
+        self.assertIn(b"exportAgencyIntegrationGuide", javascript)
+        self.assertIn(b'id="exportAgencyGuide"', self.request("GET", "/"))
+        self.assertNotIn(b'data-view="intake"', self.request("GET", "/"))
         self.assertIn(b'id="transferAgencyDialog"', self.request("GET", "/"))
 
     def test_dashboard_health_reports_deployed_commit(self):

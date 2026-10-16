@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0b7772">
   <title>Customer Flow by NatChatt</title>
-  <link rel="stylesheet" href="/admin/admin.css?v=20261016-compact-agency-transfer">
-  <script src="/admin/admin.js?v=20261016-compact-agency-transfer" defer></script>
+  <link rel="stylesheet" href="/admin/admin.css?v=20261016-agency-integration-pdf">
+  <script src="/admin/admin.js?v=20261016-agency-integration-pdf" defer></script>
 </head>
 <body>
   <main id="loginView" class="login-shell">
@@ -69,7 +69,6 @@
       <div id="workspaceBar" class="workspace-bar">
         <nav id="tabs" class="tabs" aria-label="Workspace sections">
           <button class="tab active" data-view="cases">Cases</button>
-          <button class="tab intake-access" data-view="intake">Application forms</button>
           <button class="tab management-only" data-view="users">Users</button>
           <button class="tab management-only" data-view="agencies">Agencies</button>
           <button class="tab admin-only" data-view="client-version" hidden>App version</button>
@@ -101,12 +100,6 @@
           </table>
         </div>
         <p id="casesEmpty" class="empty" hidden>No matching cases.</p>
-      </section>
-
-      <section id="intakeView" class="panel intake-access" hidden>
-        <div class="panel-heading"><div><h2>Patient application forms</h2><p>Share a direct link or add the secure form to an agency website.</p></div><button id="addIntakeFormButton" class="primary compact" type="button">+ New form</button></div>
-        <div id="intakeFormCards" class="integration-grid"></div>
-        <p id="intakeFormsEmpty" class="empty" hidden>No application forms yet.</p>
       </section>
 
       <section id="usersView" class="panel management-only" hidden>
@@ -195,9 +188,7 @@
 
   <dialog id="newAgencyDialog"><form id="newAgencyForm" class="dialog-card"><div class="dialog-heading"><div><h2>Add agency</h2><p>Create the agency and its ready-made patient application form together.</p></div><button id="closeNewAgencyDialog" class="icon-button" type="button">×</button></div><label>Agency name<input id="standaloneAgencyName" autocomplete="organization" required></label><label>Agency website<input id="standaloneAgencyWebsite" inputmode="url" autocomplete="url" placeholder="https://agency.example"><small>Optional. You can add more allowed websites from Agency settings.</small></label><p id="newAgencyFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelNewAgency" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create agency and form</button></div></form></dialog>
 
-  <dialog id="agencyDialog"><form id="agencyForm" class="dialog-card"><div class="dialog-heading"><div><h2>Agency settings</h2><p>Manage the agency, patient form and LLM/MCP connection.</p></div><button id="closeAgencyDialog" class="icon-button" type="button">×</button></div><label>Agency name<input id="editAgencyName" autocomplete="organization" required></label><div class="mcp-settings"><div><strong>Patient application form</strong><p>Every agency has a ready-made link and website embed.</p></div><label>Allowed website origins<textarea id="agencyWebsiteOrigins" rows="2" placeholder="https://agency.example"></textarea><small>One website per line. Leave empty to allow embedding on any website.</small></label><label>Direct link<div class="copy-field"><input id="agencyIntakeDirectURL" readonly><button id="copyAgencyIntakeLink" class="quiet compact" type="button">Copy</button></div></label><label>JavaScript embed<div class="copy-field"><textarea id="agencyIntakeEmbed" rows="3" readonly></textarea><button id="copyAgencyIntakeEmbed" class="quiet compact" type="button">Copy</button></div></label></div><div class="mcp-settings"><div><strong>MCP connection</strong><p id="mcpStatus">Loading…</p></div><label>Endpoint<input id="mcpEndpoint" readonly></label><div id="mcpTokenBox" class="one-time-token" hidden><strong>Copy this token now. It will not be shown again.</strong><code id="mcpToken"></code><button id="copyMCPToken" class="quiet" type="button">Copy token</button></div><button id="rotateMCPToken" class="primary" type="button">Generate access token</button><small>Rotating immediately invalidates the previous token. Give the endpoint and token only to the agency's approved system administrator.</small></div><p id="agencyFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="deleteAgency" class="quiet danger" type="button">Delete agency</button><button id="cancelAgency" class="quiet" type="button">Close</button><button id="saveAgency" class="primary" type="submit">Save agency and form</button></div></form></dialog>
-
-  <dialog id="intakeFormDialog"><form id="intakeFormForm" class="dialog-card"><div class="dialog-heading"><div><h2>Create application form</h2><p>Generate a direct link, iframe and JavaScript embed for an agency.</p></div><button id="closeIntakeFormDialog" class="icon-button" type="button" aria-label="Close">×</button></div><label>Form name<input id="intakeFormLabel" value="Hair transplant assessment" maxlength="120" required></label><label id="intakeAgencyField">Agency<select id="intakeAgencyID" required></select></label><label>Allowed website origins<textarea id="intakeAllowedOrigins" rows="3" placeholder="https://agency.example"></textarea><small>One origin per line. Leave empty to allow embedding on any website.</small></label><p id="intakeFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelIntakeForm" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create form</button></div></form></dialog>
+  <dialog id="agencyDialog"><form id="agencyForm" class="dialog-card"><div class="dialog-heading"><div><h2>Agency settings</h2><p>Manage the agency, patient form and LLM/MCP connection.</p></div><button id="closeAgencyDialog" class="icon-button" type="button">×</button></div><label>Agency name<input id="editAgencyName" autocomplete="organization" required></label><div class="mcp-settings"><div><strong>Patient application form</strong><p>Every agency has one ready-made link and website embed.</p></div><label>Allowed website origins<textarea id="agencyWebsiteOrigins" rows="2" placeholder="https://agency.example"></textarea><small>One website per line. Leave empty to allow embedding on any website.</small></label><label>Direct link<div class="copy-field"><input id="agencyIntakeDirectURL" readonly><button id="copyAgencyIntakeLink" class="quiet compact" type="button">Copy</button></div></label><label>Iframe code<div class="copy-field"><textarea id="agencyIntakeIframe" rows="3" readonly></textarea><button id="copyAgencyIntakeIframe" class="quiet compact" type="button">Copy</button></div></label><label>JavaScript embed<div class="copy-field"><textarea id="agencyIntakeEmbed" rows="3" readonly></textarea><button id="copyAgencyIntakeEmbed" class="quiet compact" type="button">Copy</button></div></label><div class="integration-actions"><a id="previewAgencyIntake" class="quiet compact" target="_blank" rel="noreferrer">Preview ↗</a><button id="toggleAgencyIntake" class="quiet compact" type="button">Pause form</button></div></div><div class="mcp-settings"><div><strong>MCP connection</strong><p id="mcpStatus">Loading…</p></div><label>Endpoint<input id="mcpEndpoint" readonly></label><div id="mcpTokenBox" class="one-time-token" hidden><strong>Copy this token now. It will not be shown again.</strong><code id="mcpToken"></code><button id="copyMCPToken" class="quiet" type="button">Copy token</button></div><button id="rotateMCPToken" class="primary" type="button">Generate access token</button><small>Rotating immediately invalidates the previous token. Give the endpoint and token only to the agency's approved system administrator.</small><button id="exportAgencyGuide" class="quiet" type="button">Export integration PDF</button><small>The PDF includes website and LLM/MCP setup instructions. A token is included only while its one-time value is visible above.</small></div><p id="agencyFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="deleteAgency" class="quiet danger" type="button">Delete agency</button><button id="cancelAgency" class="quiet" type="button">Close</button><button id="saveAgency" class="primary" type="submit">Save agency and form</button></div></form></dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
 </body>

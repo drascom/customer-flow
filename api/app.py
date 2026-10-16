@@ -27,6 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
@@ -323,6 +324,124 @@ def public_base_url() -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
         raise RuntimeError("CF_PUBLIC_BASE_URL must be an absolute HTTP(S) URL without a query or fragment.")
     return base_url
+
+
+def build_agency_integration_pdf(
+    agency_name: str,
+    intake_form: dict,
+    mcp_connection: dict,
+    access_token: str | None = None,
+) -> bytes:
+    """Build a concise, LLM-readable agency integration handoff document."""
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate
+    except ImportError as exc:
+        raise APIError(503, "pdf_unavailable", "PDF export is temporarily unavailable.") from exc
+
+    def safe(value: object) -> str:
+        text = str(value or "")
+        return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    buffer = BytesIO()
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        name="GuideTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=22, leading=27, textColor=colors.HexColor("#0B7772"), spaceAfter=8,
+    ))
+    styles.add(ParagraphStyle(
+        name="GuideSubtitle", parent=styles["Normal"], fontSize=10, leading=15,
+        textColor=colors.HexColor("#5E625F"), spaceAfter=18,
+    ))
+    styles.add(ParagraphStyle(
+        name="GuideHeading", parent=styles["Heading2"], fontName="Helvetica-Bold",
+        fontSize=14, leading=18, textColor=colors.HexColor("#183B3A"), spaceBefore=10, spaceAfter=7,
+    ))
+    styles.add(ParagraphStyle(
+        name="GuideBody", parent=styles["BodyText"], fontSize=9.5, leading=14,
+        textColor=colors.HexColor("#252A28"), spaceAfter=6,
+    ))
+    styles.add(ParagraphStyle(
+        name="GuideCode", parent=styles["Code"], fontName="Courier", fontSize=7.5,
+        leading=10, textColor=colors.HexColor("#17201E"), backColor=colors.HexColor("#EEF4F2"),
+        borderPadding=7, spaceBefore=3, spaceAfter=8, splitLongWords=True,
+    ))
+    styles.add(ParagraphStyle(
+        name="GuideNote", parent=styles["BodyText"], fontSize=8.5, leading=13,
+        textColor=colors.HexColor("#6A3F08"), backColor=colors.HexColor("#FFF4DE"),
+        borderPadding=8, spaceAfter=10,
+    ))
+    document = SimpleDocTemplate(
+        buffer, pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm,
+        topMargin=17 * mm, bottomMargin=17 * mm,
+        title=f"{agency_name} Customer Flow Integration Guide",
+        author="Customer Flow by NatChatt",
+    )
+    body = styles["GuideBody"]
+    heading = styles["GuideHeading"]
+    story = [
+        Paragraph("Customer Flow Integration Guide", styles["GuideTitle"]),
+        Paragraph(f"Agency: <b>{safe(agency_name)}</b><br/>Generated: {utc_now().strftime('%d %B %Y, %H:%M UTC')}", styles["GuideSubtitle"]),
+        Paragraph("Confidential integration handoff", heading),
+        Paragraph(
+            "Share this document only with the agency's approved technical team. Patient data and MCP credentials must be handled as confidential information. Never place an MCP token in browser code, a public webpage, analytics, chat logs or a source repository.",
+            styles["GuideNote"],
+        ),
+        Paragraph("1. Patient application form", heading),
+        Paragraph(
+            "Use the direct link in email or messaging, or embed the same form on the agency website. Every successful submission is recorded in Customer Flow under this agency. The patient must provide at least an email address or phone number and can upload hair-transplant photographs and consultation notes.",
+            body,
+        ),
+        Paragraph("Direct link", body),
+        Paragraph(safe(intake_form.get("directURL")), styles["GuideCode"]),
+        Paragraph("Iframe embed", body),
+        Paragraph(safe(intake_form.get("iframeCode")), styles["GuideCode"]),
+        Paragraph("JavaScript embed", body),
+        Paragraph(safe(intake_form.get("javascriptCode")), styles["GuideCode"]),
+        Paragraph("Allowed website origins", body),
+        Paragraph(safe(", ".join(intake_form.get("allowedOrigins") or []) or "Any website (no origin restriction configured)"), styles["GuideCode"]),
+        Paragraph("Website integration checklist", heading),
+        Paragraph("1. Choose either the iframe or JavaScript embed. Do not install both on the same page.<br/>2. Add the exact production website origin in Agency settings before testing.<br/>3. Publish the page over HTTPS and test a complete submission with photos.<br/>4. Confirm the new case appears under the correct agency in Customer Flow.<br/>5. Keep the direct link as a fallback for email, SMS or WhatsApp.", body),
+        PageBreak(),
+        Paragraph("2. LLM / MCP connection", heading),
+        Paragraph(
+            "Connect an MCP-compatible LLM client using Streamable HTTP. Configure the URL and bearer token as secrets in the client or server environment. The credential is scoped to this agency.",
+            body,
+        ),
+        Paragraph("MCP endpoint", body),
+        Paragraph(safe(mcp_connection.get("endpointURL")), styles["GuideCode"]),
+        Paragraph("Authentication", body),
+        Paragraph("Authorization: Bearer &lt;agency-access-token&gt;", styles["GuideCode"]),
+        Paragraph("Agency access token", body),
+        Paragraph(safe(access_token or "NOT INCLUDED - generate or rotate the token in Agency settings and transfer it through a separate secure channel."), styles["GuideCode"]),
+        Paragraph("Instructions for the connected LLM", heading),
+        Paragraph(
+            "Use <b>who_am_i</b> first to verify the agency identity and enabled capabilities. Use <b>list_cases</b> before creating a patient to check for possible matches, then use <b>get_case</b> with the stable HT case reference. If write tools are enabled, use a unique 8-128 character idempotency key for each intended write and reuse that key only when retrying the exact same request. A newly created case is incomplete until at least one photograph has been uploaded.",
+            body,
+        ),
+        Paragraph("Available read tools", body),
+        Paragraph("who_am_i, list_cases, get_case", styles["GuideCode"]),
+        Paragraph("Optional write tools (only when enabled by the server)", body),
+        Paragraph("create_case, update_case, add_case_message, upload_case_photo", styles["GuideCode"]),
+        Paragraph("Recommended verification", heading),
+        Paragraph("1. Connect to the MCP endpoint with the bearer token.<br/>2. Call who_am_i and verify the returned agency name.<br/>3. Call list_cases with a small limit.<br/>4. If writes are enabled, create a test case with a unique idempotency key and upload at least one test photograph.<br/>5. Store the returned HT case reference for future updates.<br/>6. Revoke or rotate the token immediately if it is exposed.", body),
+    ]
+
+    def footer(canvas, doc) -> None:
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#D7E3E0"))
+        canvas.line(18 * mm, 13 * mm, 192 * mm, 13 * mm)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.setFillColor(colors.HexColor("#6B7471"))
+        canvas.drawString(18 * mm, 8.5 * mm, "Customer Flow by NatChatt - Confidential")
+        canvas.drawRightString(192 * mm, 8.5 * mm, f"Page {doc.page}")
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()
 
 
 def normalize_email(value: object) -> str:
@@ -3596,6 +3715,49 @@ class Database:
             ).fetchone()
             return self._mcp_connection_json(agency, credential)
 
+    def admin_agency_integration_guide(
+        self, agency_id: str, payload: dict, user: sqlite3.Row
+    ) -> tuple[bytes, str]:
+        """Export an agency-specific website and MCP integration guide."""
+        self._require_role(user, "admin")
+        supplied_token = str(payload.get("accessToken") or "").strip() or None
+        with self.connect() as conn:
+            agency = conn.execute("SELECT * FROM agencies WHERE id=?", (agency_id,)).fetchone()
+            if not agency:
+                raise APIError(404, "agency_not_found", "The agency could not be found.")
+            form_row = conn.execute(
+                "SELECT f.*,ag.name agency_name,d.display_name doctor_name FROM intake_forms f "
+                "JOIN agencies ag ON ag.id=f.agency_id LEFT JOIN users d ON d.id=f.doctor_id "
+                "WHERE f.agency_id=? ORDER BY f.active DESC,f.created_at LIMIT 1",
+                (agency_id,),
+            ).fetchone()
+            if not form_row:
+                raise APIError(409, "intake_form_missing", "Create the agency patient form before exporting the guide.")
+            credential = conn.execute(
+                "SELECT * FROM agency_mcp_credentials WHERE agency_id=?", (agency_id,)
+            ).fetchone()
+            if supplied_token and (
+                not credential or not hmac.compare_digest(
+                    mcp_token_hash(supplied_token), credential["token_hash"]
+                )
+            ):
+                raise APIError(
+                    422, "invalid_mcp_token",
+                    "The visible MCP token is no longer current. Generate a new token before including it.",
+                )
+            intake_form = self._intake_form_json(form_row, include_embed=True)
+            connection = self._mcp_connection_json(agency, credential)
+        pdf = build_agency_integration_pdf(
+            agency["name"], intake_form, connection, supplied_token
+        )
+        with self.connect() as conn:
+            self._audit(
+                conn, user["id"], "agency.integration_guide_exported", "agency", agency_id,
+                {"includedAccessToken": bool(supplied_token)},
+            )
+        filename_base = re.sub(r"[^a-z0-9]+", "-", agency["name"].casefold()).strip("-")
+        return pdf, f"{filename_base or 'agency'}-customer-flow-integration.pdf"
+
     def admin_rotate_mcp_token(self, agency_id: str, user: sqlite3.Row) -> dict:
         """Create or replace an agency token; plaintext exists only in this response."""
         self._require_role(user, "admin")
@@ -4261,6 +4423,13 @@ class APIHandler(BaseHTTPRequestHandler):
                 policy = self.server.database.admin_update_client_version(self._read_json(), user)
                 return self._changed(200, {"policy": policy}, "client_version.updated", "ios", user)
             admin_parts = path.removeprefix(f"{API_PREFIX}/admin/").split("/")
+            if (path.startswith(f"{API_PREFIX}/admin/") and method == "POST" and
+                    len(admin_parts) == 3 and admin_parts[0] == "agencies" and
+                    admin_parts[2] == "integration-guide"):
+                pdf, filename = self.server.database.admin_agency_integration_guide(
+                    admin_parts[1], self._read_json(), user
+                )
+                return self._download(200, pdf, "application/pdf", filename)
             if (path.startswith(f"{API_PREFIX}/admin/") and method == "GET" and
                     len(admin_parts) == 3 and admin_parts[0] == "agencies" and admin_parts[2] == "mcp"):
                 return self._json(
@@ -4736,6 +4905,17 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header("ETag", etag)
         self.send_header("Cache-Control", "private, max-age=3600, must-revalidate")
         self.send_header("Vary", "Authorization")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _download(self, status: int, body: bytes, content_type: str, filename: str) -> None:
+        safe_filename = re.sub(r'[^A-Za-z0-9._-]+', '-', filename).strip('-') or "download.bin"
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
+        self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
