@@ -2,6 +2,7 @@ import base64
 import io
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -103,6 +104,13 @@ class APITestCase(unittest.TestCase):
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
         self.assertFalse(result["user"]["mustChangePassword"])
+
+    def test_database_connection_context_releases_file_handle(self):
+        with self.server.database.connect() as conn:
+            self.assertEqual(1, conn.execute("SELECT 1").fetchone()[0])
+
+        with self.assertRaises(sqlite3.ProgrammingError):
+            conn.execute("SELECT 1")
 
     def test_public_intake_creates_case_uploads_photo_and_preserves_first_agency(self):
         admin = self.login("admin", "demo123")

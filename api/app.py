@@ -358,6 +358,16 @@ class APIError(Exception):
         self.details = details
 
 
+class ClosingSQLiteConnection(sqlite3.Connection):
+    """Preserve sqlite's transaction context while always releasing its file handle."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class IdempotentReplay(dict):
     """Marks a stored mutation response so the HTTP layer does not publish it again."""
 
@@ -689,7 +699,12 @@ class Database:
         self._init_lock = threading.Lock()
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=15, isolation_level=None)
+        conn = sqlite3.connect(
+            self.path,
+            timeout=15,
+            isolation_level=None,
+            factory=ClosingSQLiteConnection,
+        )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
