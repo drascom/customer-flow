@@ -23,6 +23,7 @@ class APITestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.environ["CF_PASSWORD_RESET_TEST_CODE"] = "123456"
+        os.environ["CF_PATIENT_ACCESS_TEST_CODE"] = "654321"
         cls.temp = tempfile.TemporaryDirectory()
         root = Path(cls.temp.name)
         cls.server = create_server("127.0.0.1", 0, root / "test.sqlite3", root / "media", seed=True)
@@ -36,6 +37,7 @@ class APITestCase(unittest.TestCase):
         cls.server.server_close()
         cls.temp.cleanup()
         os.environ.pop("CF_PASSWORD_RESET_TEST_CODE", None)
+        os.environ.pop("CF_PATIENT_ACCESS_TEST_CODE", None)
 
     def request(self, method, path, payload=None, token=None, expected=200, extra_headers=None):
         body = None if payload is None else json.dumps(payload).encode()
@@ -101,6 +103,184 @@ class APITestCase(unittest.TestCase):
         result = self.request("POST", "/auth/login", {"username": "doctor1", "password": "demo123"})
         self.assertEqual("doctor", result["user"]["role"])
         self.assertFalse(result["user"]["mustChangePassword"])
+
+    def test_public_intake_creates_case_uploads_photo_and_preserves_first_agency(self):
+        admin = self.login("admin", "demo123")
+        agencies = self.request("GET", "/admin/agencies", token=admin)["agencies"]
+        first_agency = agencies[0]
+        second_agency = agencies[1]
+        first_form = self.request("POST", "/intake/forms", {
+            "agencyID": first_agency["id"], "label": "Online hair assessment",
+            "allowedOrigins": ["https://partner.example"],
+        }, token=admin, expected=201)["form"]
+        self.assertIn("/apply/", first_form["directURL"])
+        self.assertIn("<iframe", first_form["iframeCode"])
+        self.assertIn("embed.js", first_form["javascriptCode"])
+        root = self.base.removesuffix("/api/v1")
+        with urlopen(root + f"/apply/{first_form['publicKey']}") as response:
+            self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+            self.assertIn(b"Hair transplant assessment", response.read())
+        with urlopen(root + f"/embed/{first_form['publicKey']}") as response:
+            self.assertIn("frame-ancestors https://partner.example", response.headers["Content-Security-Policy"])
+        with urlopen(root + "/embed.js") as response:
+            self.assertIn(b"data-customer-flow-form", response.read())
+
+        email = f"intake-{uuid.uuid4().hex[:10]}@example.com"
+        submission = self.request("POST", f"/public/forms/{first_form['publicKey']}/submissions", {
+            "patientName": "Public Intake Patient", "email": email, "phone": "",
+            "note": "I would like a hair transplant assessment.", "consentAccepted": True,
+        }, expected=201)["submission"]
+        self.assertFalse(submission["matchedExistingPatient"])
+        photo_body = b"\x89PNG\r\n\x1a\n" + b"public-intake-photo"
+        photo, _ = self.raw_request(
+            "POST", f"/public/submissions/{submission['caseID']}/photos",
+            body=photo_body, content_type="image/png", expected=201,
+            extra_headers={"Authorization": f"Bearer {submission['uploadToken']}"},
+        )
+        uploaded = json.loads(photo)["case"]
+        self.assertEqual(1, uploaded["photoCount"])
+
+        second_form = self.request("POST", "/intake/forms", {
+            "agencyID": second_agency["id"], "label": "Second partner assessment",
+        }, token=admin, expected=201)["form"]
+        duplicate = self.request("POST", f"/public/forms/{second_form['publicKey']}/submissions", {
+            "patientName": "Public Intake Patient", "email": email, "phone": "",
+            "note": "I am also requesting a second quotation.", "consentAccepted": True,
+        }, expected=201)["submission"]
+        self.assertTrue(duplicate["matchedExistingPatient"])
+        with self.server.database.connect() as conn:
+            first = conn.execute(
+                "SELECT c.patient_id,s.owner_agency_id,s.ownership_status FROM intake_submissions s "
+                "JOIN cases c ON c.id=s.case_id WHERE c.id=?", (submission["caseID"],)
+            ).fetchone()
+            second = conn.execute(
+                "SELECT c.patient_id,s.owner_agency_id,s.source_agency_id,s.ownership_status "
+                "FROM intake_submissions s JOIN cases c ON c.id=s.case_id WHERE c.id=?",
+                (duplicate["caseID"],),
+            ).fetchone()
+        self.assertEqual(first["patient_id"], second["patient_id"])
+        self.assertEqual(first_agency["id"], second["owner_agency_id"])
+        self.assertEqual(second_agency["id"], second["source_agency_id"])
+        self.assertEqual("duplicate_source", second["ownership_status"])
+
+        transfer = self.request(
+            "POST", f"/admin/patients/{first['patient_id']}/transfer-agency",
+            {"agencyID": second_agency["id"], "reason": "Second agency converted the patient."},
+            token=admin,
+        )["transfer"]
+        self.assertEqual(first_agency["id"], transfer["fromAgencyID"])
+        self.assertEqual(second_agency["id"], transfer["toAgencyID"])
+        with self.server.database.connect() as conn:
+            owners = conn.execute(
+                "SELECT DISTINCT owner_agency_id,ownership_status FROM intake_submissions s "
+                "JOIN cases c ON c.id=s.case_id WHERE c.patient_id=?", (first["patient_id"],)
+            ).fetchall()
+            case_agencies = conn.execute(
+                "SELECT DISTINCT u.agency_id FROM cases c JOIN users u ON u.id=c.agent_id "
+                "WHERE c.patient_id=? AND c.deleted_at IS NULL", (first["patient_id"],)
+            ).fetchall()
+            history_count = conn.execute(
+                "SELECT COUNT(*) FROM intake_ownership_transfers WHERE patient_id=?",
+                (first["patient_id"],),
+            ).fetchone()[0]
+        self.assertEqual([(second_agency["id"], "transferred")], [tuple(row) for row in owners])
+        self.assertEqual([second_agency["id"]], [row["agency_id"] for row in case_agencies])
+        self.assertEqual(1, history_count)
+
+    def test_patient_portal_activation_is_private_and_accepts_updates_and_photos(self):
+        admin = self.login("admin", "demo123")
+        agency = self.request("GET", "/admin/agencies", token=admin)["agencies"][0]
+        form = self.request("POST", "/intake/forms", {
+            "agencyID": agency["id"], "label": "Patient portal test",
+        }, token=admin, expected=201)["form"]
+        email = f"portal-{uuid.uuid4().hex[:10]}@example.com"
+        submission = self.request("POST", f"/public/forms/{form['publicKey']}/submissions", {
+            "patientName": "Portal Patient", "email": email,
+            "note": "Please assess my hair transplant options.", "consentAccepted": True,
+        }, expected=201)["submission"]
+        self.assertTrue(submission["patientPortalInvitationSent"])
+        self.request("POST", "/patient/auth/login", {
+            "email": email, "password": "Patient1!",
+        }, expected=401)
+        self.request("POST", "/patient/auth/access/confirm", {
+            "email": email, "code": "654321", "password": "Patient1!",
+        })
+        shared_login = self.request("POST", "/auth/login", {
+            "username": email, "password": "Patient1!",
+        })
+        self.assertEqual("patient", shared_login["user"]["role"])
+        token = shared_login["token"]
+        self.assertTrue(token.startswith("cfpat_"))
+        self.request("GET", "/cases", token=token, expected=401)
+
+        cases = self.request("GET", "/patient/cases", token=token)["cases"]
+        patient_case = next(item for item in cases if item["id"] == submission["caseID"])
+        self.assertNotIn("agentNote", patient_case)
+        self.assertNotIn("messages", patient_case)
+        updated = self.request(
+            "POST", f"/patient/cases/{submission['caseID']}/updates",
+            {"text": "My hairline preference is conservative and natural."}, token=token, expected=201,
+        )["case"]
+        self.assertEqual("My hairline preference is conservative and natural.", updated["updates"][-1]["text"])
+
+        photo_body = b"\x89PNG\r\n\x1a\n" + b"patient-portal-photo"
+        uploaded_body, _ = self.raw_request(
+            "POST", f"/patient/cases/{submission['caseID']}/photos",
+            body=photo_body, content_type="image/png", token=token, expected=201,
+        )
+        uploaded = json.loads(uploaded_body)["case"]
+        photo_id = uploaded["photoIDs"][-1]
+        downloaded, _ = self.raw_request(
+            "GET", f"/patient/photos/{photo_id}", token=token, expected=200,
+        )
+        self.assertEqual(photo_body, downloaded)
+
+        other_email = f"portal-other-{uuid.uuid4().hex[:10]}@example.com"
+        self.request("POST", f"/public/forms/{form['publicKey']}/submissions", {
+            "patientName": "Other Portal Patient", "email": other_email,
+            "note": "This is a separate patient consultation.", "consentAccepted": True,
+        }, expected=201)
+        self.request("POST", "/patient/auth/access/confirm", {
+            "email": other_email, "code": "654321", "password": "Patient2!",
+        })
+        other_token = self.request("POST", "/patient/auth/login", {
+            "email": other_email, "password": "Patient2!",
+        })["token"]
+        self.request(
+            "POST", f"/patient/cases/{submission['caseID']}/updates",
+            {"text": "I should not be able to add this."}, token=other_token, expected=404,
+        )
+        self.raw_request("GET", f"/patient/photos/{photo_id}", token=other_token, expected=404)
+
+        staff_case = next(
+            item for item in self.request("GET", "/admin/cases", token=admin)["cases"]
+            if item["id"] == submission["caseID"]
+        )
+        self.assertTrue(any(
+            message["role"] == "patient" and "hairline preference" in message["text"]
+            for message in staff_case["messages"]
+        ))
+        root = self.base.removesuffix("/api/v1")
+        with urlopen(root + "/patient") as response:
+            self.assertIn(b"Secure patient portal", response.read())
+            self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+
+    def test_public_intake_requires_contact_consent_and_valid_photo(self):
+        admin = self.login("admin", "demo123")
+        agency = self.request("GET", "/admin/agencies", token=admin)["agencies"][0]
+        form = self.request("POST", "/intake/forms", {
+            "agencyID": agency["id"], "label": "Validation form",
+        }, token=admin, expected=201)["form"]
+        missing_contact = self.request("POST", f"/public/forms/{form['publicKey']}/submissions", {
+            "patientName": "No Contact Patient", "note": "Please assess my hair loss.",
+            "consentAccepted": True,
+        }, expected=422)
+        self.assertEqual("contact_required", missing_contact["error"]["code"])
+        missing_consent = self.request("POST", f"/public/forms/{form['publicKey']}/submissions", {
+            "patientName": "No Consent Patient", "email": "patient@example.com",
+            "note": "Please assess my hair loss.", "consentAccepted": False,
+        }, expected=422)
+        self.assertEqual("consent_required", missing_consent["error"]["code"])
 
     def test_temporary_password_requires_secure_replacement_before_access(self):
         admin = self.login("admin", "demo123")
@@ -873,8 +1053,8 @@ class APITestCase(unittest.TestCase):
             self.assertIn(b"Welcome back", body)
             self.assertIn(b'id="loginForm"', body)
             self.assertIn(b"caseStatusChips", body)
-            self.assertIn(b"caseAssignmentChips", body)
-            self.assertIn(b"userRoleChips", body)
+            self.assertIn(b"caseAssignmentFilter", body)
+            self.assertIn(b"userRoleFilter", body)
 
     def test_role_filtered_cases_and_patient_matching(self):
         doctor = self.login("doctor1", "demo123")

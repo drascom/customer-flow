@@ -168,6 +168,18 @@ export CF_SMTP_FROM='Customer Flow <no-reply@example.com>'
 
 Implicit TLS is used by default. Set `CF_SMTP_SSL=0` to use STARTTLS. Firebase is not used.
 
+The same SMTP settings deliver patient portal access codes. A patient who
+submits an agency form with an email address receives a six-digit code and can
+create a password at `/patient`. Patient sessions are separate from staff
+sessions and can read or change only cases linked to that patient record.
+Internal staff messages, graft estimates and prices are not returned by the
+patient API.
+
+For automated tests only, `CF_PATIENT_ACCESS_TEST_CODE` may set a fixed access
+code and suppress email delivery. Do not set this variable in production.
+`CF_PUBLIC_BASE_URL` must be the public HTTPS origin because it is included in
+the access email and generated agency form/embed links.
+
 ## Production notes
 
 - Put the service behind an HTTPS reverse proxy.

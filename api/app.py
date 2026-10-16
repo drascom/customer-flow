@@ -67,6 +67,7 @@ APP_STORE_CACHE_SECONDS = 15 * 60
 AGENT_OWNED_CLOSURE_MIGRATION = "2026-09-11-agent-owned-case-closure"
 PHOTO_THUMBNAIL_SIZE = (640, 640)
 PHOTO_THUMBNAIL_QUALITY = 80
+PUBLIC_UPLOAD_TOKEN_TTL = timedelta(hours=2)
 
 
 def thumbnail_path(file_path: Path) -> Path:
@@ -316,6 +317,38 @@ def public_mcp_url() -> str:
     return f"{base_url}/mcp"
 
 
+def public_base_url() -> str:
+    base_url = os.getenv("CF_PUBLIC_BASE_URL", "https://customer-flow.example.com").strip().rstrip("/")
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
+        raise RuntimeError("CF_PUBLIC_BASE_URL must be an absolute HTTP(S) URL without a query or fragment.")
+    return base_url
+
+
+def normalize_email(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
+def normalize_phone(value: object) -> str:
+    raw = str(value or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if raw.startswith("+") and digits:
+        return f"+{digits}"
+    return digits
+
+
+def valid_image_signature(body: bytes, content_type: str) -> bool:
+    if content_type == "image/jpeg":
+        return body.startswith(b"\xff\xd8\xff")
+    if content_type == "image/png":
+        return body.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/heic":
+        return len(body) >= 12 and body[4:8] == b"ftyp" and body[8:12] in {
+            b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1",
+        }
+    return False
+
+
 class APIError(Exception):
     def __init__(self, status: int, code: str, message: str, details: object | None = None):
         super().__init__(message)
@@ -426,6 +459,52 @@ CREATE TABLE IF NOT EXISTS patients (
   last_updated TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_patients_normalized_name ON patients(normalized_name);
+CREATE TABLE IF NOT EXISTS patient_accounts (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL UNIQUE REFERENCES patients(id) ON DELETE CASCADE,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_salt TEXT,
+  password_hash TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  email_verified_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS patient_sessions (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES patient_accounts(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS patient_access_codes (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES patient_accounts(id) ON DELETE CASCADE,
+  code_salt TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_patient_access_codes_account
+  ON patient_access_codes(account_id, created_at);
+CREATE TABLE IF NOT EXISTS intake_forms (
+  id TEXT PRIMARY KEY,
+  public_key TEXT NOT NULL UNIQUE,
+  agency_id TEXT NOT NULL REFERENCES agencies(id),
+  doctor_id TEXT REFERENCES users(id),
+  label TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  allowed_origins_json TEXT NOT NULL DEFAULT '[]',
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_intake_forms_agency ON intake_forms(agency_id, active);
+CREATE TABLE IF NOT EXISTS agency_intake_service_users (
+  agency_id TEXT PRIMARY KEY REFERENCES agencies(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL UNIQUE REFERENCES users(id)
+);
 CREATE TABLE IF NOT EXISTS cases (
   id TEXT PRIMARY KEY,
   reference TEXT NOT NULL UNIQUE,
@@ -453,6 +532,45 @@ CREATE TABLE IF NOT EXISTS cases (
 );
 CREATE INDEX IF NOT EXISTS idx_cases_doctor_status ON cases(assigned_doctor_id, status);
 CREATE INDEX IF NOT EXISTS idx_cases_agent ON cases(agent_id, uploaded_at);
+CREATE TABLE IF NOT EXISTS patient_case_updates (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  account_id TEXT NOT NULL REFERENCES patient_accounts(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_patient_case_updates_case
+  ON patient_case_updates(case_id, created_at);
+CREATE TABLE IF NOT EXISTS intake_submissions (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL UNIQUE REFERENCES cases(id) ON DELETE CASCADE,
+  form_id TEXT NOT NULL REFERENCES intake_forms(id),
+  source_agency_id TEXT NOT NULL REFERENCES agencies(id),
+  owner_agency_id TEXT NOT NULL REFERENCES agencies(id),
+  ownership_status TEXT NOT NULL CHECK(ownership_status IN ('first_source','duplicate_source','transferred')),
+  matched_patient INTEGER NOT NULL DEFAULT 0,
+  contact_match_basis TEXT,
+  consented_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_intake_submissions_owner ON intake_submissions(owner_agency_id, created_at);
+CREATE TABLE IF NOT EXISTS intake_ownership_transfers (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL REFERENCES patients(id),
+  from_agency_id TEXT NOT NULL REFERENCES agencies(id),
+  to_agency_id TEXT NOT NULL REFERENCES agencies(id),
+  reason TEXT NOT NULL,
+  transferred_by TEXT NOT NULL REFERENCES users(id),
+  transferred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_intake_transfers_patient ON intake_ownership_transfers(patient_id, transferred_at);
+CREATE TABLE IF NOT EXISTS intake_upload_tokens (
+  token_hash TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
@@ -1275,6 +1393,8 @@ class Database:
         with self.connect() as conn:
             user = conn.execute("SELECT * FROM users WHERE username=? AND active=1", (username.strip(),)).fetchone()
             if not user:
+                if "@" in username:
+                    return self.patient_login(username, password)
                 raise APIError(401, "invalid_credentials", "Username or password is incorrect.")
             _, candidate = hash_password(password, bytes.fromhex(user["password_salt"]))
             if not hmac.compare_digest(candidate, user["password_hash"]):
@@ -1469,6 +1589,337 @@ class Database:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
+
+    @staticmethod
+    def _send_patient_access_email(address: str, display_name: str, code: str) -> None:
+        host = os.getenv("CF_SMTP_HOST", "").strip()
+        if os.getenv("CF_PATIENT_ACCESS_TEST_CODE", "").strip():
+            return
+        if not host:
+            raise APIError(
+                503,
+                "patient_access_delivery_unavailable",
+                "Patient email delivery is not configured. Contact the clinic.",
+            )
+        use_ssl = os.getenv("CF_SMTP_SSL", "1") != "0"
+        port = int(os.getenv("CF_SMTP_PORT", "465" if use_ssl else "587"))
+        username = os.getenv("CF_SMTP_USERNAME", "").strip()
+        password = os.getenv("CF_SMTP_PASSWORD", "")
+        sender = os.getenv("CF_SMTP_FROM", username or "no-reply@customerflow.local")
+        message = EmailMessage()
+        message["Subject"] = "Your Customer Flow patient access code"
+        message["From"] = sender
+        message["To"] = address
+        message.set_content(
+            f"Hello {display_name},\n\nYour Customer Flow patient access code is: {code}\n\n"
+            f"Open {public_base_url()}/patient to create or reset your password. "
+            "This code expires in 10 minutes. If you did not request it, you can ignore this message.\n"
+        )
+        smtp_class = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+        with smtp_class(host, port, timeout=15) as smtp:
+            if not use_ssl and os.getenv("CF_SMTP_STARTTLS", "1") != "0":
+                smtp.starttls()
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(message)
+
+    def _create_patient_access_code(
+        self, conn: sqlite3.Connection, account: sqlite3.Row, display_name: str
+    ) -> bool:
+        test_code = os.getenv("CF_PATIENT_ACCESS_TEST_CODE", "").strip()
+        host = os.getenv("CF_SMTP_HOST", "").strip()
+        if not test_code and not host:
+            return False
+        recent = conn.execute(
+            "SELECT COUNT(*) FROM patient_access_codes WHERE account_id=? AND created_at>?",
+            (account["id"], iso(utc_now() - timedelta(hours=1))),
+        ).fetchone()[0]
+        if recent >= 5:
+            return False
+        code = test_code or f"{secrets.randbelow(1_000_000):06d}"
+        salt, digest = hash_password(code)
+        created = utc_now()
+        try:
+            self._send_patient_access_email(account["email"], display_name, code)
+        except (OSError, smtplib.SMTPException, APIError):
+            return False
+        conn.execute(
+            "INSERT INTO patient_access_codes(id,account_id,code_salt,code_hash,created_at,expires_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (str(uuid.uuid4()), account["id"], salt, digest, iso(created),
+             iso(created + timedelta(minutes=10))),
+        )
+        return True
+
+    def _ensure_patient_account(
+        self, conn: sqlite3.Connection, patient_id: str, email: str, display_name: str
+    ) -> bool:
+        email = normalize_email(email)
+        if not email:
+            return False
+        if conn.execute(
+            "SELECT 1 FROM users WHERE email=? COLLATE NOCASE AND active=1", (email,)
+        ).fetchone():
+            return False
+        existing = conn.execute(
+            "SELECT * FROM patient_accounts WHERE patient_id=?", (patient_id,)
+        ).fetchone()
+        if existing:
+            if normalize_email(existing["email"]) != email or existing["password_hash"]:
+                return False
+            return self._create_patient_access_code(conn, existing, display_name)
+        email_owner = conn.execute(
+            "SELECT id FROM patient_accounts WHERE email=? COLLATE NOCASE", (email,)
+        ).fetchone()
+        if email_owner:
+            return False
+        account_id = str(uuid.uuid4())
+        now = iso(utc_now())
+        conn.execute(
+            "INSERT INTO patient_accounts(id,patient_id,email,created_at,updated_at) VALUES (?,?,?,?,?)",
+            (account_id, patient_id, email, now, now),
+        )
+        account = conn.execute("SELECT * FROM patient_accounts WHERE id=?", (account_id,)).fetchone()
+        return self._create_patient_access_code(conn, account, display_name)
+
+    def request_patient_access(self, payload: dict) -> dict:
+        email = normalize_email(payload.get("email"))
+        generic = {"ok": True, "message": "If this email is registered, an access code has been sent."}
+        if PATIENT_EMAIL_PATTERN.fullmatch(email) is None:
+            return generic
+        if not os.getenv("CF_SMTP_HOST", "").strip() and not os.getenv(
+            "CF_PATIENT_ACCESS_TEST_CODE", ""
+        ).strip():
+            raise APIError(
+                503,
+                "patient_access_delivery_unavailable",
+                "Patient email delivery is not configured. Contact the clinic.",
+            )
+        with self.connect() as conn:
+            account = conn.execute(
+                "SELECT a.*,p.name patient_name FROM patient_accounts a JOIN patients p ON p.id=a.patient_id "
+                "WHERE a.email=? COLLATE NOCASE AND a.active=1",
+                (email,),
+            ).fetchone()
+            if not account:
+                return generic
+            recent = conn.execute(
+                "SELECT COUNT(*) FROM patient_access_codes WHERE account_id=? AND created_at>?",
+                (account["id"], iso(utc_now() - timedelta(hours=1))),
+            ).fetchone()[0]
+            if recent >= 5:
+                raise APIError(429, "too_many_access_requests", "Too many access requests. Try again later.")
+            if not self._create_patient_access_code(conn, account, account["patient_name"]):
+                raise APIError(503, "patient_access_delivery_unavailable", "The access code could not be sent.")
+        return generic
+
+    def confirm_patient_access(self, payload: dict) -> dict:
+        email = normalize_email(payload.get("email"))
+        code = str(payload.get("code", "")).strip()
+        password = str(payload.get("password", ""))
+        validate_permanent_password(password)
+        if len(code) != 6 or not code.isdigit():
+            raise APIError(422, "invalid_access_code", "The access code is invalid or has expired.")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                account = conn.execute(
+                    "SELECT * FROM patient_accounts WHERE email=? COLLATE NOCASE AND active=1", (email,)
+                ).fetchone()
+                access = None if not account else conn.execute(
+                    "SELECT * FROM patient_access_codes WHERE account_id=? AND consumed_at IS NULL "
+                    "AND expires_at>? ORDER BY created_at DESC LIMIT 1",
+                    (account["id"], iso(utc_now())),
+                ).fetchone()
+                if not account or not access or access["attempts"] >= 5:
+                    raise APIError(422, "invalid_access_code", "The access code is invalid or has expired.")
+                _, candidate = hash_password(code, bytes.fromhex(access["code_salt"]))
+                if not hmac.compare_digest(candidate, access["code_hash"]):
+                    conn.execute(
+                        "UPDATE patient_access_codes SET attempts=attempts+1 WHERE id=?", (access["id"],)
+                    )
+                    conn.execute("COMMIT")
+                    raise APIError(422, "invalid_access_code", "The access code is invalid or has expired.")
+                salt, digest = hash_password(password)
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE patient_accounts SET password_salt=?,password_hash=?,email_verified_at=?,updated_at=? "
+                    "WHERE id=?",
+                    (salt, digest, now, now, account["id"]),
+                )
+                conn.execute("UPDATE patient_access_codes SET consumed_at=? WHERE id=?", (now, access["id"]))
+                conn.execute("DELETE FROM patient_sessions WHERE account_id=?", (account["id"],))
+                self._audit(conn, account["id"], "patient_account.activated", "patient", account["patient_id"], {})
+                conn.execute("COMMIT")
+                return {"ok": True}
+            except APIError:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    @staticmethod
+    def _public_patient_account(row: sqlite3.Row) -> dict:
+        return {
+            "id": row["id"], "patientID": row["patient_id"], "email": row["email"],
+            "displayName": row["patient_name"], "role": "patient",
+        }
+
+    def patient_login(self, email: str, password: str) -> dict:
+        with self.connect() as conn:
+            account = conn.execute(
+                "SELECT a.*,p.name patient_name FROM patient_accounts a JOIN patients p ON p.id=a.patient_id "
+                "WHERE a.email=? COLLATE NOCASE AND a.active=1",
+                (normalize_email(email),),
+            ).fetchone()
+            if not account or not account["password_salt"] or not account["password_hash"]:
+                raise APIError(401, "invalid_credentials", "Email or password is incorrect.")
+            _, candidate = hash_password(password, bytes.fromhex(account["password_salt"]))
+            if not hmac.compare_digest(candidate, account["password_hash"]):
+                raise APIError(401, "invalid_credentials", "Email or password is incorrect.")
+            token = "cfpat_" + secrets.token_urlsafe(32)
+            expires = utc_now() + timedelta(days=7)
+            conn.execute(
+                "INSERT INTO patient_sessions(token_hash,account_id,created_at,expires_at) VALUES (?,?,?,?)",
+                (hashlib.sha256(token.encode()).hexdigest(), account["id"], iso(utc_now()), iso(expires)),
+            )
+            return {
+                "token": token, "expiresAt": iso(expires),
+                "user": self._public_patient_account(account),
+            }
+
+    def authenticate_patient(self, token: str) -> sqlite3.Row:
+        if not token.startswith("cfpat_"):
+            raise APIError(401, "invalid_session", "Your session is invalid or has expired.")
+        with self.connect() as conn:
+            account = conn.execute(
+                "SELECT a.*,p.name patient_name FROM patient_sessions s "
+                "JOIN patient_accounts a ON a.id=s.account_id JOIN patients p ON p.id=a.patient_id "
+                "WHERE s.token_hash=? AND s.expires_at>? AND a.active=1",
+                (hashlib.sha256(token.encode()).hexdigest(), iso(utc_now())),
+            ).fetchone()
+            if not account:
+                raise APIError(401, "invalid_session", "Your session is invalid or has expired.")
+            return account
+
+    def patient_logout(self, token: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "DELETE FROM patient_sessions WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),)
+            )
+
+    @staticmethod
+    def _patient_case_json(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
+        updates = conn.execute(
+            "SELECT id,text,created_at FROM patient_case_updates WHERE case_id=? ORDER BY created_at,rowid",
+            (row["id"],),
+        ).fetchall()
+        photos = conn.execute(
+            "SELECT id FROM photos WHERE case_id=? AND file_path IS NOT NULL AND deleted_at IS NULL ORDER BY position",
+            (row["id"],),
+        ).fetchall()
+        return {
+            "id": row["id"], "reference": row["reference"], "status": row["status"],
+            "uploadedAt": row["uploaded_at"], "agencyName": row["agency_name"],
+            "doctorName": row["doctor_name"], "photoIDs": [item["id"] for item in photos],
+            "updates": [{"id": item["id"], "text": item["text"], "createdAt": item["created_at"]}
+                        for item in updates],
+        }
+
+    def patient_cases(self, account: sqlite3.Row) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT c.*,ag.name agency_name,d.display_name doctor_name FROM cases c "
+                "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies ag ON ag.id=u.agency_id "
+                "LEFT JOIN users d ON d.id=c.assigned_doctor_id "
+                "WHERE c.patient_id=? AND c.deleted_at IS NULL ORDER BY c.uploaded_at DESC",
+                (account["patient_id"],),
+            ).fetchall()
+            return [self._patient_case_json(conn, row) for row in rows]
+
+    def add_patient_update(
+        self, case_id: str, payload: dict, account: sqlite3.Row
+    ) -> tuple[dict, sqlite3.Row]:
+        text = str(payload.get("text", "")).strip()
+        if not 2 <= len(text) <= 4000:
+            raise APIError(422, "invalid_update", "Your message must be between 2 and 4,000 characters.")
+        with self.connect() as conn:
+            case = conn.execute(
+                "SELECT c.*,ag.name agency_name,d.display_name doctor_name FROM cases c "
+                "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies ag ON ag.id=u.agency_id "
+                "LEFT JOIN users d ON d.id=c.assigned_doctor_id "
+                "WHERE c.id=? AND c.patient_id=? AND c.deleted_at IS NULL",
+                (case_id, account["patient_id"]),
+            ).fetchone()
+            if not case:
+                raise APIError(404, "case_not_found", "The consultation could not be found.")
+            actor = conn.execute("SELECT * FROM users WHERE id=? AND active=1", (case["agent_id"],)).fetchone()
+            if not actor:
+                raise APIError(409, "case_unavailable", "This consultation cannot accept updates right now.")
+            now = iso(utc_now())
+            update_id = str(uuid.uuid4())
+            conn.execute(
+                "INSERT INTO patient_case_updates(id,case_id,account_id,text,created_at) VALUES (?,?,?,?,?)",
+                (update_id, case_id, account["id"], text, now),
+            )
+            conn.execute("UPDATE cases SET status='waiting',version=version+1 WHERE id=?", (case_id,))
+            self._audit(conn, account["id"], "patient.update_added", "case", case_id, {"updateID": update_id})
+            updated = conn.execute(
+                "SELECT c.*,ag.name agency_name,d.display_name doctor_name FROM cases c "
+                "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies ag ON ag.id=u.agency_id "
+                "LEFT JOIN users d ON d.id=c.assigned_doctor_id WHERE c.id=?", (case_id,),
+            ).fetchone()
+            return self._patient_case_json(conn, updated), actor
+
+    def add_patient_photo(
+        self, case_id: str, body: bytes, content_type: str, account: sqlite3.Row
+    ) -> tuple[dict, sqlite3.Row]:
+        if not valid_image_signature(body, content_type):
+            raise APIError(415, "unsupported_photo", "Use a valid JPEG, PNG or HEIC photo.")
+        with self.connect() as conn:
+            case = conn.execute(
+                "SELECT * FROM cases WHERE id=? AND patient_id=? AND deleted_at IS NULL",
+                (case_id, account["patient_id"]),
+            ).fetchone()
+            if not case:
+                raise APIError(404, "case_not_found", "The consultation could not be found.")
+            count = conn.execute(
+                "SELECT COUNT(*) FROM photos WHERE case_id=? AND deleted_at IS NULL", (case_id,)
+            ).fetchone()[0]
+            if count >= 12:
+                raise APIError(422, "photo_limit_reached", "A maximum of 12 photos can be uploaded.")
+            actor = conn.execute("SELECT * FROM users WHERE id=? AND active=1", (case["agent_id"],)).fetchone()
+            if not actor:
+                raise APIError(409, "case_unavailable", "This consultation cannot accept photos right now.")
+        self.add_photo(case_id, body, content_type, actor)
+        with self.connect() as conn:
+            self._audit(conn, account["id"], "patient.photo_added", "case", case_id, {})
+            row = conn.execute(
+                "SELECT c.*,ag.name agency_name,d.display_name doctor_name FROM cases c "
+                "JOIN users u ON u.id=c.agent_id LEFT JOIN agencies ag ON ag.id=u.agency_id "
+                "LEFT JOIN users d ON d.id=c.assigned_doctor_id WHERE c.id=?", (case_id,),
+            ).fetchone()
+            return self._patient_case_json(conn, row), actor
+
+    def get_patient_photo(
+        self, photo_id: str, account: sqlite3.Row, thumbnail: bool = False
+    ) -> tuple[bytes, str]:
+        with self.connect() as conn:
+            photo = conn.execute(
+                "SELECT p.* FROM photos p JOIN cases c ON c.id=p.case_id "
+                "WHERE p.id=? AND c.patient_id=? AND c.deleted_at IS NULL AND p.deleted_at IS NULL",
+                (photo_id, account["patient_id"]),
+            ).fetchone()
+            if not photo or not photo["file_path"]:
+                raise APIError(404, "photo_not_found", "The photo could not be found.")
+            path = self.media_root / photo["file_path"]
+            if thumbnail:
+                path = ensure_thumbnail(path) or path
+            if not path.is_file():
+                raise APIError(404, "photo_not_found", "The photo could not be found.")
+            return path.read_bytes(), "image/jpeg" if thumbnail and path.suffix == ".jpg" else photo["content_type"]
 
     def fetch_cases(self, user: sqlite3.Row) -> list[dict]:
         where, params = "WHERE c.deleted_at IS NULL", []
@@ -2330,6 +2781,332 @@ class Database:
                     return preview_path.read_bytes(), "image/jpeg"
             return file_path.read_bytes(), message["attachment_content_type"]
 
+    @staticmethod
+    def _validate_allowed_origins(value: object) -> list[str]:
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list) or len(value) > 20:
+            raise APIError(422, "invalid_allowed_origins", "Allowed origins must be a list of up to 20 websites.")
+        result = []
+        for item in value:
+            origin = str(item).strip().rstrip("/")
+            parsed = urlparse(origin)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+                raise APIError(422, "invalid_allowed_origin", "Each allowed origin must be a website origin such as https://example.com.")
+            normalized = f"{parsed.scheme}://{parsed.netloc.lower()}"
+            if normalized not in result:
+                result.append(normalized)
+        return result
+
+    @staticmethod
+    def _intake_form_json(row: sqlite3.Row, include_embed: bool = False) -> dict:
+        result = {
+            "id": row["id"], "label": row["label"], "active": bool(row["active"]),
+            "agencyID": row["agency_id"], "agencyName": row["agency_name"],
+            "doctorID": row["doctor_id"], "doctorName": row["doctor_name"],
+            "allowedOrigins": json.loads(row["allowed_origins_json"] or "[]"),
+            "createdAt": row["created_at"], "updatedAt": row["updated_at"],
+        }
+        if include_embed:
+            base = public_base_url()
+            key = row["public_key"]
+            direct_url = f"{base}/apply/{key}"
+            embed_url = f"{base}/embed/{key}"
+            result.update({
+                "publicKey": key,
+                "directURL": direct_url,
+                "iframeCode": f'<iframe src="{embed_url}" width="100%" height="850" frameborder="0" allow="camera" loading="lazy"></iframe>',
+                "javascriptCode": f'<div data-customer-flow-form="{key}"></div><script async src="{base}/embed.js"></script>',
+            })
+        return result
+
+    @staticmethod
+    def _intake_form_row(conn: sqlite3.Connection, public_key: str) -> sqlite3.Row:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{24,96}", public_key):
+            raise APIError(404, "form_not_found", "This application form is unavailable.")
+        row = conn.execute(
+            "SELECT f.*,ag.name agency_name,d.display_name doctor_name FROM intake_forms f "
+            "JOIN agencies ag ON ag.id=f.agency_id LEFT JOIN users d ON d.id=f.doctor_id "
+            "WHERE f.public_key=? AND f.active=1 AND ag.active=1",
+            (public_key,),
+        ).fetchone()
+        if not row:
+            raise APIError(404, "form_not_found", "This application form is unavailable.")
+        return row
+
+    def _intake_service_user(self, conn: sqlite3.Connection, agency_id: str) -> sqlite3.Row:
+        row = conn.execute(
+            "SELECT u.* FROM agency_intake_service_users s JOIN users u ON u.id=s.user_id "
+            "WHERE s.agency_id=? AND u.active=1", (agency_id,),
+        ).fetchone()
+        if row:
+            return row
+        agency = conn.execute("SELECT * FROM agencies WHERE id=? AND active=1", (agency_id,)).fetchone()
+        if not agency:
+            raise APIError(404, "agency_not_found", "The agency could not be found.")
+        user_id = "intake-" + uuid.uuid4().hex
+        username = "intake." + uuid.uuid4().hex
+        salt, password_hash = hash_password(secrets.token_urlsafe(32))
+        now = iso(utc_now())
+        conn.execute(
+            "INSERT INTO users(id,username,display_name,role,password_salt,password_hash,agency_id,"
+            "must_change_password,password_change_exempt,active,created_at) VALUES (?,?,?,?,?,?,?,0,1,1,?)",
+            (user_id, username, f"Patient intake · {agency['name']}", "agent", salt, password_hash, agency_id, now),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO agency_intake_service_users(agency_id,user_id) VALUES (?,?)",
+            (agency_id, user_id),
+        )
+        return conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
+    def intake_forms(self, user: sqlite3.Row) -> list[dict]:
+        self._require_any_role(user, "agent", "admin", "manager")
+        where = "WHERE f.agency_id=?" if user["role"] == "agent" else ""
+        params = (user["agency_id"],) if user["role"] == "agent" else ()
+        if user["role"] == "agent" and not user["agency_id"]:
+            return []
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT f.*,ag.name agency_name,d.display_name doctor_name FROM intake_forms f "
+                "JOIN agencies ag ON ag.id=f.agency_id LEFT JOIN users d ON d.id=f.doctor_id "
+                f"{where} ORDER BY f.active DESC,f.created_at DESC", params,
+            ).fetchall()
+            return [self._intake_form_json(row, include_embed=True) for row in rows]
+
+    def create_intake_form(self, payload: dict, user: sqlite3.Row) -> dict:
+        self._require_any_role(user, "agent", "admin")
+        agency_id = user["agency_id"] if user["role"] == "agent" else str(payload.get("agencyID", "")).strip()
+        if not agency_id:
+            raise APIError(422, "agency_required", "Choose an agency for this form.")
+        label = str(payload.get("label", "Patient application form")).strip()
+        if not 2 <= len(label) <= 120:
+            raise APIError(422, "invalid_label", "The form label must be between 2 and 120 characters.")
+        doctor_id = str(payload.get("doctorID") or "").strip() or None
+        origins = self._validate_allowed_origins(payload.get("allowedOrigins"))
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                agency = conn.execute("SELECT id FROM agencies WHERE id=? AND active=1", (agency_id,)).fetchone()
+                if not agency:
+                    raise APIError(404, "agency_not_found", "The agency could not be found.")
+                if doctor_id:
+                    doctor = conn.execute(
+                        "SELECT id FROM users WHERE id=? AND role='doctor' AND active=1", (doctor_id,)
+                    ).fetchone()
+                    if not doctor:
+                        raise APIError(422, "invalid_doctor", "Choose an active doctor.")
+                self._intake_service_user(conn, agency_id)
+                form_id = str(uuid.uuid4())
+                public_key = secrets.token_urlsafe(32)
+                now = iso(utc_now())
+                conn.execute(
+                    "INSERT INTO intake_forms(id,public_key,agency_id,doctor_id,label,active,allowed_origins_json,"
+                    "created_by,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?,?,?)",
+                    (form_id, public_key, agency_id, doctor_id, label,
+                     json.dumps(origins, separators=(",", ":")), user["id"], now, now),
+                )
+                self._audit(conn, user["id"], "intake_form.created", "intake_form", form_id,
+                            {"agencyID": agency_id, "doctorID": doctor_id})
+                row = conn.execute(
+                    "SELECT f.*,ag.name agency_name,d.display_name doctor_name FROM intake_forms f "
+                    "JOIN agencies ag ON ag.id=f.agency_id LEFT JOIN users d ON d.id=f.doctor_id WHERE f.id=?",
+                    (form_id,),
+                ).fetchone()
+                conn.execute("COMMIT")
+                return self._intake_form_json(row, include_embed=True)
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def update_intake_form(self, form_id: str, payload: dict, user: sqlite3.Row) -> dict:
+        self._require_any_role(user, "agent", "admin")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                form = conn.execute("SELECT * FROM intake_forms WHERE id=?", (form_id,)).fetchone()
+                if not form or (user["role"] == "agent" and form["agency_id"] != user["agency_id"]):
+                    raise APIError(404, "form_not_found", "The application form could not be found.")
+                label = str(payload.get("label", form["label"])).strip()
+                if not 2 <= len(label) <= 120:
+                    raise APIError(422, "invalid_label", "The form label must be between 2 and 120 characters.")
+                doctor_id = payload.get("doctorID", form["doctor_id"])
+                doctor_id = str(doctor_id).strip() if doctor_id else None
+                if doctor_id and not conn.execute(
+                    "SELECT id FROM users WHERE id=? AND role='doctor' AND active=1", (doctor_id,)
+                ).fetchone():
+                    raise APIError(422, "invalid_doctor", "Choose an active doctor.")
+                origins = self._validate_allowed_origins(
+                    payload.get("allowedOrigins", json.loads(form["allowed_origins_json"] or "[]"))
+                )
+                active = int(bool(payload.get("active", form["active"])))
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE intake_forms SET label=?,doctor_id=?,active=?,allowed_origins_json=?,updated_at=? WHERE id=?",
+                    (label, doctor_id, active, json.dumps(origins, separators=(",", ":")), now, form_id),
+                )
+                self._audit(conn, user["id"], "intake_form.updated", "intake_form", form_id,
+                            {"active": bool(active), "doctorID": doctor_id})
+                row = conn.execute(
+                    "SELECT f.*,ag.name agency_name,d.display_name doctor_name FROM intake_forms f "
+                    "JOIN agencies ag ON ag.id=f.agency_id LEFT JOIN users d ON d.id=f.doctor_id WHERE f.id=?",
+                    (form_id,),
+                ).fetchone()
+                conn.execute("COMMIT")
+                return self._intake_form_json(row, include_embed=True)
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def public_intake_form(self, public_key: str) -> dict:
+        with self.connect() as conn:
+            row = self._intake_form_row(conn, public_key)
+            return {
+                "label": row["label"], "agencyName": row["agency_name"],
+                "doctorName": row["doctor_name"],
+                "contactRule": "email_or_phone", "maxPhotos": 12,
+                "acceptedPhotoTypes": ["image/jpeg", "image/png", "image/heic"],
+            }
+
+    def submit_public_intake(self, public_key: str, payload: dict) -> tuple[dict, sqlite3.Row, str]:
+        name = str(payload.get("patientName", "")).strip()
+        normalized_name, name_tokens = normalize_name(name)
+        if len(name_tokens) < 2:
+            raise APIError(422, "full_name_required", "Enter the patient's first and last name.")
+        email = normalize_email(payload.get("email"))
+        phone = normalize_phone(payload.get("phone"))
+        if not email and not phone:
+            raise APIError(422, "contact_required", "Enter an email address or phone number.")
+        if email and not PATIENT_EMAIL_PATTERN.fullmatch(email):
+            raise APIError(422, "invalid_email", "Enter a valid email address.")
+        if phone and len(phone.lstrip("+")) < 7:
+            raise APIError(422, "invalid_phone", "Enter a valid phone number.")
+        note = str(payload.get("note", "")).strip()
+        if not 5 <= len(note) <= 4000:
+            raise APIError(422, "invalid_note", "Tell us what you would like help with (5-4,000 characters).")
+        if payload.get("consentAccepted") is not True:
+            raise APIError(422, "consent_required", "Consent is required before submitting the application.")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                form = self._intake_form_row(conn, public_key)
+                actor = self._intake_service_user(conn, form["agency_id"])
+                matches = []
+                for patient in conn.execute("SELECT * FROM patients ORDER BY last_updated").fetchall():
+                    bases = []
+                    if email and normalize_email(patient["email"]) == email:
+                        bases.append("email")
+                    if phone and normalize_phone(patient["phone"]) == phone:
+                        bases.append("phone")
+                    if bases:
+                        matches.append((patient, "+".join(bases)))
+                matched = len({item[0]["id"] for item in matches}) == 1
+                if matched:
+                    patient, match_basis = matches[0]
+                    patient_id = patient["id"]
+                    conn.execute(
+                        "UPDATE patients SET phone=COALESCE(phone,NULLIF(?,'')),"
+                        "email=COALESCE(email,NULLIF(?,'')),last_updated=? WHERE id=?",
+                        (phone, email, iso(utc_now()), patient_id),
+                    )
+                else:
+                    patient_id = self._next_reference(conn, "patient_reference", "PT-")
+                    match_basis = "ambiguous" if matches else None
+                    conn.execute(
+                        "INSERT INTO patients(id,name,normalized_name,assigned_doctor_id,phone,email,profile_note,last_updated) "
+                        "VALUES (?,?,?,?,?,?,?,?)",
+                        (patient_id, name, normalized_name, form["doctor_id"], phone or None,
+                         email or None, note, iso(utc_now())),
+                    )
+                owner = conn.execute(
+                    "SELECT s.owner_agency_id FROM intake_submissions s JOIN cases c ON c.id=s.case_id "
+                    "WHERE c.patient_id=? ORDER BY s.created_at LIMIT 1", (patient_id,),
+                ).fetchone()
+                if not owner:
+                    owner = conn.execute(
+                        "SELECT u.agency_id owner_agency_id FROM cases c JOIN users u ON u.id=c.agent_id "
+                        "WHERE c.patient_id=? AND u.agency_id IS NOT NULL AND c.deleted_at IS NULL "
+                        "ORDER BY c.uploaded_at LIMIT 1", (patient_id,),
+                    ).fetchone()
+                owner_agency_id = owner["owner_agency_id"] if owner else form["agency_id"]
+                ownership_status = "first_source" if owner_agency_id == form["agency_id"] else "duplicate_source"
+                now = iso(utc_now())
+                case_id = str(uuid.uuid4())
+                reference = self._next_reference(conn, "case_reference", "HT-")
+                conn.execute(
+                    "INSERT INTO cases(id,reference,patient_id,agent_id,assigned_doctor_id,uploaded_at,status,"
+                    "photo_count,agent_note,agent_grafts,currency,agent_price,version) "
+                    "VALUES (?,?,?,?,?,?,?,0,?,?,?,?,1)",
+                    (case_id, reference, patient_id, actor["id"], form["doctor_id"], now, "waiting",
+                     note, "Pending assessment", "GBP", "Pending assessment"),
+                )
+                conn.execute(
+                    "INSERT INTO messages(id,case_id,author_id,author_name,role,created_at,text) VALUES (?,?,?,?,?,?,?)",
+                    (str(uuid.uuid4()), case_id, actor["id"], actor["display_name"], "agent", now,
+                     "Patient submitted the consultation form directly."),
+                )
+                submission_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO intake_submissions(id,case_id,form_id,source_agency_id,owner_agency_id,"
+                    "ownership_status,matched_patient,contact_match_basis,consented_at,created_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (submission_id, case_id, form["id"], form["agency_id"], owner_agency_id,
+                     ownership_status, int(matched), match_basis, now, now),
+                )
+                upload_token = secrets.token_urlsafe(32)
+                conn.execute(
+                    "INSERT INTO intake_upload_tokens(token_hash,case_id,user_id,created_at,expires_at) VALUES (?,?,?,?,?)",
+                    (hashlib.sha256(upload_token.encode()).hexdigest(), case_id, actor["id"], now,
+                     iso(utc_now() + PUBLIC_UPLOAD_TOKEN_TTL)),
+                )
+                account_email_matches = (
+                    not matched or not normalize_email(patient["email"])
+                    or normalize_email(patient["email"]) == email
+                )
+                patient_invitation_sent = account_email_matches and self._ensure_patient_account(
+                    conn, patient_id, email, patient["name"] if matched else name
+                )
+                self._audit(conn, actor["id"], "public_intake.submitted", "case", case_id,
+                            {"formID": form["id"], "sourceAgencyID": form["agency_id"],
+                             "ownerAgencyID": owner_agency_id, "matchedPatient": matched,
+                             "contactMatchBasis": match_basis})
+                conn.execute("COMMIT")
+                response = {
+                    "submissionID": submission_id, "caseID": case_id, "reference": reference,
+                    "uploadToken": upload_token, "uploadExpiresAt": iso(utc_now() + PUBLIC_UPLOAD_TOKEN_TTL),
+                    "matchedExistingPatient": matched,
+                    "patientPortalInvitationSent": patient_invitation_sent,
+                    "patientPortalURL": f"{public_base_url()}/patient",
+                }
+                return response, actor, case_id
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
+    def add_public_intake_photo(
+        self, case_id: str, upload_token: str, body: bytes, content_type: str
+    ) -> tuple[dict, sqlite3.Row]:
+        if not upload_token:
+            raise APIError(401, "upload_token_required", "The upload session is missing.")
+        if not valid_image_signature(body, content_type):
+            raise APIError(415, "unsupported_photo", "Use a valid JPEG, PNG or HEIC photo.")
+        token_hash = hashlib.sha256(upload_token.encode()).hexdigest()
+        with self.connect() as conn:
+            token = conn.execute(
+                "SELECT * FROM intake_upload_tokens WHERE token_hash=? AND case_id=?",
+                (token_hash, case_id),
+            ).fetchone()
+            if not token or parse_iso_datetime(token["expires_at"]) <= utc_now():
+                raise APIError(401, "upload_session_expired", "The photo upload session has expired.")
+            photo_count = conn.execute(
+                "SELECT COUNT(*) FROM photos WHERE case_id=? AND deleted_at IS NULL", (case_id,)
+            ).fetchone()[0]
+            if photo_count >= 12:
+                raise APIError(422, "photo_limit_reached", "A maximum of 12 photos can be uploaded.")
+            actor = conn.execute("SELECT * FROM users WHERE id=? AND active=1", (token["user_id"],)).fetchone()
+            if not actor:
+                raise APIError(401, "upload_session_expired", "The photo upload session has expired.")
+        return self.add_photo(case_id, body, content_type, actor), actor
+
     def admin_users(self, user: sqlite3.Row) -> list[dict]:
         self._require_any_role(user, "admin", "manager")
         with self.connect() as conn:
@@ -2339,6 +3116,7 @@ class Database:
                 "(SELECT COUNT(*) FROM patients p WHERE p.assigned_doctor_id=u.id) doctor_patient_count "
                 "FROM users u LEFT JOIN agencies ag ON ag.id=u.agency_id "
                 "WHERE NOT EXISTS (SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id) "
+                "AND NOT EXISTS (SELECT 1 FROM agency_intake_service_users isu WHERE isu.user_id=u.id) "
                 "ORDER BY u.active DESC, u.role, u.display_name"
             ).fetchall()
             return [{
@@ -2593,7 +3371,8 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT ag.*, (SELECT COUNT(*) FROM users u WHERE u.agency_id=ag.id AND NOT EXISTS "
-                "(SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id)) user_count, "
+                "(SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id) AND NOT EXISTS "
+                "(SELECT 1 FROM agency_intake_service_users isu WHERE isu.user_id=u.id)) user_count, "
                 "mc.rotated_at mcp_rotated_at "
                 "FROM agencies ag LEFT JOIN agency_mcp_credentials mc ON mc.agency_id=ag.id "
                 "ORDER BY ag.active DESC, ag.name"
@@ -2639,7 +3418,8 @@ class Database:
                             {"from": agency["name"], "to": name})
                 user_count = conn.execute(
                     "SELECT COUNT(*) FROM users u WHERE u.agency_id=? AND NOT EXISTS "
-                    "(SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id)",
+                    "(SELECT 1 FROM agency_mcp_credentials mc WHERE mc.service_user_id=u.id) AND NOT EXISTS "
+                    "(SELECT 1 FROM agency_intake_service_users isu WHERE isu.user_id=u.id)",
                     (agency_id,),
                 ).fetchone()[0]
                 conn.execute("COMMIT")
@@ -2778,8 +3558,15 @@ class Database:
                 "c.final_grafts,c.final_price,c.finalized_at,c.appointment_at,c.completed_at,c.completed_by,c.completed_by_role,"
                 "p.id patient_id,p.name patient_name,p.assigned_doctor_id,p.date_of_birth,p.stated_age,p.gender,p.phone,p.email,"
                 "p.address,p.city,p.region,p.occupation,p.profile_note,"
-                "a.display_name agent_name,ag.name agency_name,d.display_name doctor_name,"
+                "a.display_name agent_name,ag.id agency_id,ag.name agency_name,d.display_name doctor_name,"
                 "cb.display_name completed_by_name,"
+                "EXISTS(SELECT 1 FROM intake_submissions ins JOIN cases ic ON ic.id=ins.case_id "
+                "WHERE ic.patient_id=p.id) intake_patient,"
+                "(SELECT ins.owner_agency_id FROM intake_submissions ins JOIN cases ic ON ic.id=ins.case_id "
+                "WHERE ic.patient_id=p.id ORDER BY ins.created_at LIMIT 1) owner_agency_id,"
+                "(SELECT oag.name FROM intake_submissions ins JOIN cases ic ON ic.id=ins.case_id "
+                "JOIN agencies oag ON oag.id=ins.owner_agency_id WHERE ic.patient_id=p.id "
+                "ORDER BY ins.created_at LIMIT 1) owner_agency_name,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NULL) message_count,"
                 "(SELECT COUNT(*) FROM messages m WHERE m.case_id=c.id AND m.deleted_at IS NOT NULL) deleted_message_count "
                 "FROM cases c JOIN patients p ON p.id=c.patient_id "
@@ -2802,12 +3589,32 @@ class Database:
                     "LEFT JOIN users u ON u.id=m.deleted_by WHERE m.case_id=? ORDER BY m.created_at,m.rowid",
                     (row["id"],),
                 ).fetchall()
-                latest_message = conn.execute(
-                    "SELECT author_name,text,created_at,attachment_path FROM messages "
-                    "WHERE case_id=? AND role <> 'system' AND deleted_at IS NULL "
-                    "ORDER BY created_at DESC,rowid DESC LIMIT 1",
+                patient_updates = conn.execute(
+                    "SELECT u.*,a.patient_id,p.name patient_name FROM patient_case_updates u "
+                    "JOIN patient_accounts a ON a.id=u.account_id JOIN patients p ON p.id=a.patient_id "
+                    "WHERE u.case_id=? ORDER BY u.created_at,u.rowid",
                     (row["id"],),
-                ).fetchone()
+                ).fetchall()
+                message_items = [{
+                    "id": message["id"], "author": message["author_name"], "role": message["role"],
+                    "createdAt": message["created_at"], "text": message["text"],
+                    "approximateGrafts": message["approximate_grafts"],
+                    "recommendedPrice": message["recommended_price"],
+                    "attachmentPhotoID": message["id"] if message["attachment_path"] else None,
+                    "deletedAt": message["deleted_at"], "deletedByName": message["deleted_by_name"],
+                } for message in messages]
+                message_items.extend({
+                    "id": update["id"], "author": update["patient_name"], "role": "patient",
+                    "createdAt": update["created_at"], "text": update["text"],
+                    "approximateGrafts": None, "recommendedPrice": None, "attachmentPhotoID": None,
+                    "deletedAt": None, "deletedByName": None,
+                } for update in patient_updates)
+                if patient_updates:
+                    message_items.sort(key=lambda item: item["createdAt"])
+                visible_messages = [
+                    item for item in message_items if not item["deletedAt"] and item["role"] != "system"
+                ]
+                latest_message = visible_messages[-1] if visible_messages else None
                 result.append({
                     "id": row["id"], "reference": row["reference"], "patientID": row["patient_id"],
                     "patientName": row["patient_name"], "agentName": row["agent_name"],
@@ -2817,7 +3624,9 @@ class Database:
                     "patientAddress": row["address"], "city": row["city"], "region": row["region"],
                     "occupation": row["occupation"],
                     "profileNote": row["profile_note"],
-                    "agencyName": row["agency_name"],
+                    "agencyID": row["agency_id"], "agencyName": row["agency_name"],
+                    "intakePatient": bool(row["intake_patient"]),
+                    "ownerAgencyID": row["owner_agency_id"], "ownerAgencyName": row["owner_agency_name"],
                     "doctorID": row["assigned_doctor_id"], "doctorName": row["doctor_name"],
                     "uploadedAt": row["uploaded_at"], "status": row["status"],
                     "agentNote": row["agent_note"],
@@ -2828,20 +3637,13 @@ class Database:
                         "available": bool(photo["file_path"]), "deleted": bool(photo["deleted_at"]),
                         "deletedAt": photo["deleted_at"], "deletedByName": photo["deleted_by_name"],
                     } for photo in photos],
-                    "messages": [{
-                        "id": message["id"], "author": message["author_name"], "role": message["role"],
-                        "createdAt": message["created_at"], "text": message["text"],
-                        "approximateGrafts": message["approximate_grafts"],
-                        "recommendedPrice": message["recommended_price"],
-                        "attachmentPhotoID": message["id"] if message["attachment_path"] else None,
-                        "deletedAt": message["deleted_at"], "deletedByName": message["deleted_by_name"],
-                    } for message in messages],
-                    "messageCount": row["message_count"],
+                    "messages": message_items,
+                    "messageCount": row["message_count"] + len(patient_updates),
                     "deletedMessageCount": row["deleted_message_count"],
-                    "latestMessageAuthor": latest_message["author_name"] if latest_message else None,
+                    "latestMessageAuthor": latest_message["author"] if latest_message else None,
                     "latestMessageText": latest_message["text"] if latest_message else None,
-                    "latestMessageAt": latest_message["created_at"] if latest_message else None,
-                    "latestMessageHasPhoto": bool(latest_message["attachment_path"]) if latest_message else False,
+                    "latestMessageAt": latest_message["createdAt"] if latest_message else None,
+                    "latestMessageHasPhoto": bool(latest_message["attachmentPhotoID"]) if latest_message else False,
                     "grafts": row["agent_grafts"], "currency": row["currency"], "price": row["agent_price"],
                     "finalGrafts": row["final_grafts"], "finalPrice": row["final_price"],
                     "finalizedAt": row["finalized_at"], "appointmentAt": row["appointment_at"],
@@ -2850,6 +3652,62 @@ class Database:
                     "completedByRole": row["completed_by_role"],
                 })
             return result
+
+    def admin_transfer_patient_agency(self, patient_id: str, payload: dict, user: sqlite3.Row) -> dict:
+        self._require_role(user, "admin")
+        agency_id = str(payload.get("agencyID", "")).strip()
+        reason = str(payload.get("reason", "")).strip()
+        if len(reason) < 5 or len(reason) > 1000:
+            raise APIError(422, "transfer_reason_required", "Enter a transfer reason between 5 and 1,000 characters.")
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                patient = conn.execute("SELECT * FROM patients WHERE id=?", (patient_id,)).fetchone()
+                if not patient:
+                    raise APIError(404, "patient_not_found", "The patient could not be found.")
+                target = conn.execute("SELECT * FROM agencies WHERE id=? AND active=1", (agency_id,)).fetchone()
+                if not target:
+                    raise APIError(422, "invalid_agency", "Choose an active agency.")
+                owners = conn.execute(
+                    "SELECT DISTINCT owner_agency_id FROM intake_submissions s JOIN cases c ON c.id=s.case_id "
+                    "WHERE c.patient_id=?", (patient_id,),
+                ).fetchall()
+                if not owners:
+                    raise APIError(409, "not_intake_patient", "This patient was not created through an application form.")
+                if len(owners) != 1:
+                    raise APIError(409, "ownership_conflict", "The patient's agency ownership must be reviewed before transfer.")
+                from_agency_id = owners[0]["owner_agency_id"]
+                if from_agency_id == agency_id:
+                    raise APIError(409, "already_owned", "This agency already owns the patient relationship.")
+                new_actor = self._intake_service_user(conn, agency_id)
+                now = iso(utc_now())
+                conn.execute(
+                    "UPDATE intake_submissions SET owner_agency_id=?,ownership_status='transferred' "
+                    "WHERE case_id IN (SELECT id FROM cases WHERE patient_id=?)",
+                    (agency_id, patient_id),
+                )
+                conn.execute(
+                    "UPDATE cases SET agent_id=?,version=version+1 WHERE patient_id=? AND deleted_at IS NULL",
+                    (new_actor["id"], patient_id),
+                )
+                transfer_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO intake_ownership_transfers(id,patient_id,from_agency_id,to_agency_id,reason,"
+                    "transferred_by,transferred_at) VALUES (?,?,?,?,?,?,?)",
+                    (transfer_id, patient_id, from_agency_id, agency_id, reason, user["id"], now),
+                )
+                self._audit(conn, user["id"], "patient.agency_transferred", "patient", patient_id,
+                            {"fromAgencyID": from_agency_id, "toAgencyID": agency_id,
+                             "reason": reason, "transferID": transfer_id})
+                conn.execute("COMMIT")
+                return {
+                    "id": transfer_id, "patientID": patient_id,
+                    "fromAgencyID": from_agency_id, "toAgencyID": agency_id,
+                    "toAgencyName": target["name"], "reason": reason, "transferredAt": now,
+                }
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
 
     def admin_assign_doctor(self, patient_id: str, payload: dict, user: sqlite3.Row) -> dict:
         self._require_role(user, "admin")
@@ -2996,6 +3854,27 @@ class Database:
             "AND deleted_at IS NULL ORDER BY position",
             (row["id"],),
         ).fetchall()
+        patient_updates = conn.execute(
+            "SELECT u.*,a.patient_id,p.name patient_name FROM patient_case_updates u "
+            "JOIN patient_accounts a ON a.id=u.account_id JOIN patients p ON p.id=a.patient_id "
+            "WHERE u.case_id=? ORDER BY u.created_at,u.rowid",
+            (row["id"],),
+        ).fetchall()
+        message_items = [{
+            "id": m["id"], "authorID": m["author_id"], "author": m["author_name"],
+            "role": m["role"], "createdAt": m["created_at"], "text": m["text"],
+            "approximateGrafts": m["approximate_grafts"],
+            "recommendedPrice": m["recommended_price"],
+            "attachmentPhotoID": m["id"] if m["attachment_path"] else None,
+        } for m in messages]
+        message_items.extend({
+            "id": update["id"], "authorID": update["patient_id"],
+            "author": update["patient_name"], "role": "patient",
+            "createdAt": update["created_at"], "text": update["text"],
+            "approximateGrafts": None, "recommendedPrice": None, "attachmentPhotoID": None,
+        } for update in patient_updates)
+        if patient_updates:
+            message_items.sort(key=lambda item: item["createdAt"])
         return {
             "id": row["id"], "reference": row["reference"],
             "patient": {"id": row["patient_id"], "name": row["patient_name"],
@@ -3016,12 +3895,7 @@ class Database:
             "completedAt": row["completed_at"], "completedBy": row["completed_by"],
             "completedByName": row["completed_by_name"],
             "completedByRole": row["completed_by_role"],
-            "messages": [{"id": m["id"], "authorID": m["author_id"],
-                          "author": m["author_name"], "role": m["role"],
-                          "createdAt": m["created_at"], "text": m["text"],
-                          "approximateGrafts": m["approximate_grafts"], "recommendedPrice": m["recommended_price"],
-                          "attachmentPhotoID": m["id"] if m["attachment_path"] else None}
-                         for m in messages],
+            "messages": message_items,
             "photoIDs": [p["id"] for p in photos],
         }
 
@@ -3066,13 +3940,103 @@ class APIHandler(BaseHTTPRequestHandler):
             if path == "/mcp":
                 return self._proxy_mcp(method, parsed.query)
             self._enforce_mcp_route_scope(method, path)
+            if method == "GET" and path in {"/embed.js", "/intake.css", "/intake.js"}:
+                return self._serve_intake_asset(path)
+            if method == "GET" and (path.startswith("/apply/") or path.startswith("/embed/")):
+                public_key = path.split("/", 2)[2] if len(path.split("/", 2)) == 3 else ""
+                form = self.server.database.public_intake_form(public_key)
+                return self._serve_intake_page(path, public_key, form)
+            if method == "GET" and (path == "/patient" or path.startswith("/patient/")):
+                return self._serve_patient_portal(path)
+            public_form_prefix = f"{API_PREFIX}/public/forms/"
+            if path.startswith(public_form_prefix):
+                public_parts = path.removeprefix(public_form_prefix).split("/")
+                public_key = public_parts[0]
+                if method == "GET" and len(public_parts) == 1:
+                    return self._json(200, {"form": self.server.database.public_intake_form(public_key)})
+                if method == "POST" and public_parts[1:] == ["submissions"]:
+                    submitted, actor, case_id = self.server.database.submit_public_intake(
+                        public_key, self._read_json()
+                    )
+                    return self._changed(201, {"submission": submitted}, "case.created", case_id, actor)
+            public_submission_prefix = f"{API_PREFIX}/public/submissions/"
+            if method == "POST" and path.startswith(public_submission_prefix):
+                public_parts = path.removeprefix(public_submission_prefix).split("/")
+                if len(public_parts) == 2 and public_parts[0] and public_parts[1] == "photos":
+                    upload_header = self.headers.get("Authorization", "")
+                    upload_token = upload_header.removeprefix("Bearer ").strip() if upload_header.startswith("Bearer ") else ""
+                    content_length = self._content_length()
+                    if content_length > 20 * 1024 * 1024:
+                        raise APIError(413, "body_too_large", "Photos must be 20 MB or smaller.")
+                    body = self.rfile.read(content_length)
+                    content_type = self.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
+                    updated, actor = self.server.database.add_public_intake_photo(
+                        public_parts[0].lower(), upload_token, body, content_type
+                    )
+                    return self._changed(201, {"case": updated}, "photo.created", public_parts[0], actor)
+            if method == "POST" and path == f"{API_PREFIX}/patient/auth/access/request":
+                return self._json(200, self.server.database.request_patient_access(self._read_json()))
+            if method == "POST" and path == f"{API_PREFIX}/patient/auth/access/confirm":
+                return self._json(200, self.server.database.confirm_patient_access(self._read_json()))
+            if path == f"{API_PREFIX}/patient/auth/login" and method == "POST":
+                payload = self._read_json()
+                return self._json(200, self.server.database.patient_login(
+                    str(payload.get("email", "")), str(payload.get("password", ""))
+                ))
+            if path.startswith(f"{API_PREFIX}/patient/"):
+                patient_token, patient_account = self._authenticated_patient()
+                if method == "GET" and path == f"{API_PREFIX}/patient/auth/me":
+                    return self._json(200, {
+                        "user": self.server.database._public_patient_account(patient_account)
+                    })
+                if method == "POST" and path == f"{API_PREFIX}/patient/auth/logout":
+                    self._read_json()
+                    self.server.database.patient_logout(patient_token)
+                    return self._json(200, {"ok": True})
+                if method == "GET" and path == f"{API_PREFIX}/patient/cases":
+                    return self._json(200, {"cases": self.server.database.patient_cases(patient_account)})
+                if method == "GET" and path.startswith(f"{API_PREFIX}/patient/photos/"):
+                    photo_parts = path.removeprefix(f"{API_PREFIX}/patient/photos/").split("/")
+                    if not photo_parts[0] or len(photo_parts) > 2 or (
+                        len(photo_parts) == 2 and photo_parts[1] != "thumbnail"
+                    ):
+                        raise APIError(404, "photo_not_found", "The photo could not be found.")
+                    body, content_type = self.server.database.get_patient_photo(
+                        photo_parts[0], patient_account, thumbnail=len(photo_parts) == 2
+                    )
+                    return self._binary(200, body, content_type)
+                patient_parts = path.removeprefix(f"{API_PREFIX}/patient/cases/").split("/")
+                if path.startswith(f"{API_PREFIX}/patient/cases/") and len(patient_parts) == 2:
+                    patient_case_id, patient_action = patient_parts
+                    if method == "POST" and patient_action == "updates":
+                        updated, actor = self.server.database.add_patient_update(
+                            patient_case_id.lower(), self._read_json(), patient_account
+                        )
+                        return self._changed(
+                            201, {"case": updated}, "patient.update_created", patient_case_id, actor
+                        )
+                    if method == "POST" and patient_action == "photos":
+                        content_length = self._content_length()
+                        if content_length > 20 * 1024 * 1024:
+                            raise APIError(413, "body_too_large", "Photos must be 20 MB or smaller.")
+                        body = self.rfile.read(content_length)
+                        content_type = self.headers.get(
+                            "Content-Type", "application/octet-stream"
+                        ).split(";", 1)[0]
+                        updated, actor = self.server.database.add_patient_photo(
+                            patient_case_id.lower(), body, content_type, patient_account
+                        )
+                        return self._changed(
+                            201, {"case": updated}, "patient.photo_created", patient_case_id, actor
+                        )
+                raise APIError(404, "not_found", "Endpoint not found.")
             if method == "GET" and path in {"/", f"{API_PREFIX}/admin"}:
                 return self._redirect("/admin")
             if method == "GET" and (path == "/admin" or path.startswith("/admin/")):
                 return self._serve_admin(path)
             if method == "GET" and path == f"{API_PREFIX}/health":
                 return self._json(200, {"status": "ok", "apiVersion": "v1", "service": "Customer Flow", "commit": DEPLOYMENT_COMMIT,
-                                        "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-thumbnails", "photo-messages", "role-auth", "profile", "password-reset", "mandatory-password-change", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp"]})
+                                        "capabilities": ["cases", "case-completion", "client-version-policy", "patient-matching", "patient-profile", "photos", "photo-thumbnails", "photo-messages", "role-auth", "profile", "password-reset", "mandatory-password-change", "live-updates", "notifications", "notification-devices", "agency-scoping", "idempotent-writes", "agency-mcp", "public-intake", "embeddable-intake", "patient-portal"]})
             if method == "GET" and path == f"{API_PREFIX}/client-version/ios":
                 return self._json(200, {"policy": self.server.database.client_version_policy()})
             if method == "POST" and path == f"{API_PREFIX}/auth/login":
@@ -3137,6 +4101,16 @@ class APIHandler(BaseHTTPRequestHandler):
             if method == "POST" and path == f"{API_PREFIX}/admin/agencies":
                 created = self.server.database.admin_create_agency(self._read_json(), user)
                 return self._changed(201, {"agency": created}, "agency.created", created["id"], user)
+            if method == "GET" and path == f"{API_PREFIX}/intake/forms":
+                return self._json(200, {"forms": self.server.database.intake_forms(user)})
+            if method == "POST" and path == f"{API_PREFIX}/intake/forms":
+                created = self.server.database.create_intake_form(self._read_json(), user)
+                return self._changed(201, {"form": created}, "intake_form.created", created["id"], user)
+            intake_parts = path.removeprefix(f"{API_PREFIX}/intake/forms/").split("/")
+            if (method == "PATCH" and path.startswith(f"{API_PREFIX}/intake/forms/") and
+                    len(intake_parts) == 1 and intake_parts[0]):
+                updated = self.server.database.update_intake_form(intake_parts[0], self._read_json(), user)
+                return self._changed(200, {"form": updated}, "intake_form.updated", updated["id"], user)
             if method == "GET" and path == f"{API_PREFIX}/admin/cases":
                 return self._json(200, {"cases": self.server.database.admin_cases(user)})
             if method == "GET" and path == f"{API_PREFIX}/admin/client-version/ios":
@@ -3181,6 +4155,15 @@ class APIHandler(BaseHTTPRequestHandler):
                 updated = self.server.database.admin_unconfirm_case(case_id, user)
                 return self._changed(
                     200, {"case": updated}, "case.unconfirmed", case_id, user
+                )
+            if (path.startswith(f"{API_PREFIX}/admin/") and method == "POST" and
+                    len(admin_parts) == 3 and admin_parts[0] == "patients" and
+                    admin_parts[2] == "transfer-agency"):
+                transfer = self.server.database.admin_transfer_patient_agency(
+                    admin_parts[1], self._read_json(), user
+                )
+                return self._changed(
+                    200, {"transfer": transfer}, "patient.agency_transferred", admin_parts[1], user
                 )
             if path.startswith(f"{API_PREFIX}/admin/") and method == "DELETE" and len(admin_parts) == 2 and admin_parts[0] == "users":
                 self._read_json()
@@ -3431,6 +4414,13 @@ class APIHandler(BaseHTTPRequestHandler):
             return token, user
         return token, self.server.database.authenticate(token)
 
+    def _authenticated_patient(self) -> tuple[str, sqlite3.Row]:
+        header = self.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
+            raise APIError(401, "authentication_required", "Sign in to continue.")
+        token = header.removeprefix("Bearer ").strip()
+        return token, self.server.database.authenticate_patient(token)
+
     def _content_length(self) -> int:
         try:
             return max(0, int(self.headers.get("Content-Length", "0")))
@@ -3446,6 +4436,54 @@ class APIHandler(BaseHTTPRequestHandler):
         if not isinstance(value, dict):
             raise APIError(400, "invalid_json", "JSON request body must be an object.")
         return value
+
+    def _serve_intake_page(self, path: str, public_key: str, form: dict) -> None:
+        default_dir = Path(__file__).resolve().parent.parent / "patient-intake"
+        intake_dir = Path(os.getenv("CF_INTAKE_DIR", str(default_dir))).expanduser().resolve()
+        file_path = intake_dir / "index.html"
+        if not file_path.is_file():
+            raise APIError(404, "not_found", "Patient application form is not installed.")
+        body = file_path.read_text().replace("__FORM_KEY__", public_key).encode()
+        is_embed = path.startswith("/embed/")
+        if is_embed:
+            with self.server.database.connect() as conn:
+                row = self.server.database._intake_form_row(conn, public_key)
+                origins = json.loads(row["allowed_origins_json"] or "[]")
+            frame_ancestors = " ".join(origins) if origins else "*"
+        else:
+            frame_ancestors = "'none'"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+            f"img-src 'self' data: blob:; frame-ancestors {frame_ancestors}; base-uri 'none'; form-action 'self'",
+        )
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_intake_asset(self, path: str) -> None:
+        default_dir = Path(__file__).resolve().parent.parent / "patient-intake"
+        intake_dir = Path(os.getenv("CF_INTAKE_DIR", str(default_dir))).expanduser().resolve()
+        filename = {"/embed.js": "embed.js", "/intake.css": "intake.css", "/intake.js": "intake.js"}.get(path)
+        if not filename:
+            raise APIError(404, "not_found", "Patient application asset not found.")
+        file_path = intake_dir / filename
+        if not file_path.is_file():
+            raise APIError(404, "not_found", "Patient application asset not found.")
+        body = file_path.read_bytes()
+        content_type = "text/css; charset=utf-8" if file_path.suffix == ".css" else "text/javascript; charset=utf-8"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=300")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_admin(self, path: str) -> None:
         filename = {
@@ -3468,6 +4506,40 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store" if filename == "index.html" else "no-cache, must-revalidate")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_patient_portal(self, path: str) -> None:
+        filename = {
+            "/patient": "index.html",
+            "/patient/index.html": "index.html",
+            "/patient/patient.css": "patient.css",
+            "/patient/patient.js": "patient.js",
+        }.get(path)
+        if not filename:
+            raise APIError(404, "not_found", "Patient portal asset not found.")
+        default_dir = Path(__file__).resolve().parent.parent / "patient-portal"
+        portal_dir = Path(os.getenv("CF_PATIENT_PORTAL_DIR", str(default_dir))).expanduser().resolve()
+        file_path = portal_dir / filename
+        if not file_path.is_file():
+            raise APIError(404, "not_found", "Patient portal is not installed.")
+        content_type = {
+            ".html": "text/html; charset=utf-8",
+            ".css": "text/css; charset=utf-8",
+            ".js": "text/javascript; charset=utf-8",
+        }[file_path.suffix]
+        body = file_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store" if filename == "index.html" else "no-cache, must-revalidate")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+            "img-src 'self' data: blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        )
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()

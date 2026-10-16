@@ -56,7 +56,7 @@ class DashboardTestCase(unittest.TestCase):
         self.assertIn(b'id="loginForm"', html)
         self.assertNotIn(b"data-direct-admin", html)
         self.assertEqual(2, html.count(b'class="product-footer'))
-        self.assertIn(b"Version 0.4.0", html)
+        self.assertIn(b"Version 0.4.2", html)
         self.assertEqual(2, html.count(b"data-deploy-commit"))
         self.assertIn(b"Developed by Drascom @ 2026", html)
         self.assertIn(b"https://github.com/drascom/customer-flow", html)

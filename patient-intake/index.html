@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hair transplant consultation</title>
+  <link rel="stylesheet" href="/intake.css">
+</head>
+<body data-form-key="__FORM_KEY__">
+  <main class="page-shell">
+    <section class="form-card" aria-labelledby="formTitle">
+      <header>
+        <p class="eyebrow" id="agencyName">Patient consultation</p>
+        <h1 id="formTitle">Hair transplant assessment</h1>
+        <p id="formIntro">Share your details and photos securely. The clinic and your agency will receive them together.</p>
+      </header>
+
+      <form id="intakeForm">
+        <fieldset>
+          <legend>Your details</legend>
+          <label class="full">Full name <span aria-hidden="true">*</span>
+            <input id="patientName" name="patientName" autocomplete="name" maxlength="160" required>
+          </label>
+          <label>Email
+            <input id="email" name="email" type="email" autocomplete="email" maxlength="254">
+          </label>
+          <label>Phone number
+            <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40">
+          </label>
+          <p class="field-note full">Enter at least one contact method so the agency or clinic can reach you.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Your request</legend>
+          <label class="full">What would you like help with? <span aria-hidden="true">*</span>
+            <textarea id="note" name="note" rows="5" minlength="5" maxlength="4000" required placeholder="Tell us about your hair loss, expectations or any questions."></textarea>
+          </label>
+          <label class="full">Photos <span aria-hidden="true">*</span>
+            <input id="photos" name="photos" type="file" accept="image/jpeg,image/png,image/heic,.heic" capture="environment" multiple required>
+          </label>
+          <p class="field-note full">Upload clear front, top, side and donor-area photos when possible. Maximum 12 photos, 20 MB each.</p>
+          <div id="photoList" class="photo-list full" aria-live="polite"></div>
+        </fieldset>
+
+        <label class="consent">
+          <input id="consent" name="consent" type="checkbox" required>
+          <span>I consent to my contact details and medical photographs being shared with the named agency and clinic for this consultation.</span>
+        </label>
+
+        <p id="formError" class="error" role="alert"></p>
+        <button id="submitButton" type="submit">Send application</button>
+        <p class="privacy-note">Your information is used only to assess and manage this hair transplant enquiry.</p>
+      </form>
+
+      <section id="successView" class="success" hidden tabindex="-1">
+        <span class="success-mark" aria-hidden="true">✓</span>
+        <h2>Application received</h2>
+        <p>Your details and photos are now available to the agency and clinic.</p>
+        <p id="portalInvitation" hidden>We sent a 6-digit access code to your email. <a href="/patient" target="_top">Open your patient portal</a> to create a password and add information later.</p>
+        <p class="reference">Reference: <strong id="reference"></strong></p>
+      </section>
+    </section>
+  </main>
+  <script src="/intake.js" defer></script>
+</body>
+</html>

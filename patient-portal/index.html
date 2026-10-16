@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b7772">
+  <title>My consultation · Customer Flow</title>
+  <link rel="stylesheet" href="/patient/patient.css">
+  <script src="/patient/patient.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/patient" aria-label="Customer Flow patient portal"><span>CF</span><strong>Customer Flow</strong></a>
+    <button id="signOutButton" class="quiet" type="button" hidden>Sign out</button>
+  </header>
+
+  <main>
+    <section id="authView" class="auth-card">
+      <p class="eyebrow">Secure patient portal</p>
+      <h1>Your hair consultation</h1>
+      <p>Use the email address from your application to view your consultations and add photos or information.</p>
+      <div class="auth-tabs" role="tablist">
+        <button id="showLogin" class="active" type="button">Sign in</button>
+        <button id="showAccess" type="button">Create or reset password</button>
+      </div>
+
+      <form id="loginForm" class="stack">
+        <label>Email<input id="loginEmail" type="email" autocomplete="email" required></label>
+        <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+        <label class="remember"><input id="rememberSession" type="checkbox"> Keep me signed in on this device</label>
+        <button class="primary" type="submit">Sign in</button>
+        <p id="loginError" class="error" role="alert"></p>
+      </form>
+
+      <div id="accessView" hidden>
+        <form id="requestAccessForm" class="stack">
+          <label>Email<input id="accessEmail" type="email" autocomplete="email" required></label>
+          <button class="primary" type="submit">Send access code</button>
+          <p id="accessMessage" class="status" role="status"></p>
+        </form>
+        <form id="confirmAccessForm" class="stack confirm" hidden>
+          <label>6-digit code<input id="accessCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>
+          <label>New password<input id="accessPassword" type="password" minlength="6" autocomplete="new-password" required></label>
+          <small>Use at least 6 characters with at least one number and one symbol.</small>
+          <button class="primary" type="submit">Save password</button>
+          <p id="confirmError" class="error" role="alert"></p>
+        </form>
+      </div>
+    </section>
+
+    <section id="portalView" hidden>
+      <div class="welcome">
+        <div><p class="eyebrow">Patient portal</p><h1 id="welcomeName">Your consultations</h1></div>
+        <button id="refreshButton" class="quiet" type="button">Refresh</button>
+      </div>
+      <p class="privacy-note">Only information you submit here is shown in this portal. Clinical teams may contact you by phone or email.</p>
+      <div id="caseList" class="case-list"></div>
+      <p id="emptyCases" class="empty" hidden>No consultations are linked to this email yet.</p>
+      <p id="portalError" class="error" role="alert"></p>
+    </section>
+  </main>
+</body>
+</html>

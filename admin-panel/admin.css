@@ -175,6 +175,15 @@ dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px)
 .dialog-actions { justify-content: flex-end; margin-top: 4px; }
 .mcp-settings { display: grid; gap: 12px; padding: 15px; border: 1px solid var(--border); border-radius: 15px; background: var(--inset); }
 .mcp-settings p { margin-top: 3px; font-size: 13px; }
+.integration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; padding: 20px; }
+.integration-card { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.integration-card.inactive { opacity: .72; }
+.integration-card header, .integration-card footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.integration-card h3 { margin: 3px 0 0; }
+.integration-card label { min-width: 0; }
+.copy-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.copy-field textarea { min-height: 70px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.copy-field input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .one-time-token { display: grid; gap: 9px; padding: 12px; border: 1px solid color-mix(in srgb, var(--amber), transparent 48%); border-radius: 12px; background: color-mix(in srgb, var(--amber), transparent 88%); }
 .one-time-token code { overflow-wrap: anywhere; user-select: all; font-size: 12px; }
 .icon-button { width: 34px; height: 34px; padding: 0; color: var(--muted); border: 1px solid var(--border); border-radius: 50%; background: var(--inset); font-size: 22px; }

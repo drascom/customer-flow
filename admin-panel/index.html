@@ -19,13 +19,13 @@
         <p>Sign in to manage consultations, clinical replies and patient communication.</p>
       </div>
       <form id="loginForm" class="stack">
-        <label>Username<input id="loginUsername" autocomplete="username" autocapitalize="none" required></label>
+        <label>Username or patient email<input id="loginUsername" autocomplete="username" autocapitalize="none" required></label>
         <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required></label>
         <label class="remember"><input id="rememberSession" type="checkbox"> Keep me signed in on this device</label>
         <button class="primary login-button" type="submit">Sign in</button>
         <p id="loginError" class="form-error" role="alert"></p>
       </form>
-      <small>Accounts are issued by your Customer Flow administrator. Public registration is disabled.</small>
+      <small>Patients sign in with the email used on their application. Staff use their issued username.</small>
     </section>
     <footer class="product-footer" aria-label="Product information">
       <span>Version 0.4.2 · Commit <span data-deploy-commit>checking…</span></span><span aria-hidden="true">·</span>
@@ -69,6 +69,7 @@
       <div id="workspaceBar" class="workspace-bar">
         <nav id="tabs" class="tabs" aria-label="Workspace sections">
           <button class="tab active" data-view="cases">Cases</button>
+          <button class="tab intake-access" data-view="intake">Application forms</button>
           <button class="tab management-only" data-view="users">Users</button>
           <button class="tab management-only" data-view="agencies">Agencies</button>
           <button class="tab admin-only" data-view="client-version" hidden>App version</button>
@@ -100,6 +101,12 @@
           </table>
         </div>
         <p id="casesEmpty" class="empty" hidden>No matching cases.</p>
+      </section>
+
+      <section id="intakeView" class="panel intake-access" hidden>
+        <div class="panel-heading"><div><h2>Patient application forms</h2><p>Share a direct link or add the secure form to an agency website.</p></div><button id="addIntakeFormButton" class="primary compact" type="button">+ New form</button></div>
+        <div id="intakeFormCards" class="integration-grid"></div>
+        <p id="intakeFormsEmpty" class="empty" hidden>No application forms yet.</p>
       </section>
 
       <section id="usersView" class="panel management-only" hidden>
@@ -185,6 +192,8 @@
   <dialog id="userDialog"><form id="userForm" class="dialog-card"><div class="dialog-heading"><div><h2>Add user</h2><p>Create a server-authorised account.</p></div><button id="closeDialog" class="icon-button" type="button">×</button></div><label>Display name<input id="newDisplayName" autocomplete="off" required></label><label>Username<input id="newUsername" autocomplete="off" autocapitalize="none" required></label><label>Role<select id="newRole" required><option value="agent">Agent</option><option value="doctor">Doctor</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label><label id="agencyField">Agency<select id="newAgency" required></select></label><label id="newAgencyField" hidden>New agency name<input id="newAgencyName" autocomplete="organization"><small>The agency will be added before the user is created.</small></label><label>Temporary password<input id="newPassword" type="password" minlength="6" autocomplete="new-password" required><small>At least 6 characters. The user must replace it after signing in.</small></label><p id="userFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelUser" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create user</button></div></form></dialog>
 
   <dialog id="agencyDialog"><form id="agencyForm" class="dialog-card"><div class="dialog-heading"><div><h2>Agency settings</h2><p>Manage the agency and its LLM/MCP connection.</p></div><button id="closeAgencyDialog" class="icon-button" type="button">×</button></div><label>Agency name<input id="editAgencyName" autocomplete="organization" required></label><button id="saveAgency" class="quiet" type="submit">Save agency name</button><div class="mcp-settings"><div><strong>MCP connection</strong><p id="mcpStatus">Loading…</p></div><label>Endpoint<input id="mcpEndpoint" readonly></label><div id="mcpTokenBox" class="one-time-token" hidden><strong>Copy this token now. It will not be shown again.</strong><code id="mcpToken"></code><button id="copyMCPToken" class="quiet" type="button">Copy token</button></div><button id="rotateMCPToken" class="primary" type="button">Generate access token</button><small>Rotating immediately invalidates the previous token. Give the endpoint and token only to the agency's approved system administrator.</small></div><p id="agencyFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelAgency" class="quiet" type="button">Close</button></div></form></dialog>
+
+  <dialog id="intakeFormDialog"><form id="intakeFormForm" class="dialog-card"><div class="dialog-heading"><div><h2>Create application form</h2><p>Generate a direct link, iframe and JavaScript embed for an agency.</p></div><button id="closeIntakeFormDialog" class="icon-button" type="button" aria-label="Close">×</button></div><label>Form name<input id="intakeFormLabel" value="Hair transplant assessment" maxlength="120" required></label><label id="intakeAgencyField">Agency<select id="intakeAgencyID" required></select></label><label>Allowed website origins<textarea id="intakeAllowedOrigins" rows="3" placeholder="https://agency.example"></textarea><small>One origin per line. Leave empty to allow embedding on any website.</small></label><p id="intakeFormError" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancelIntakeForm" class="quiet" type="button">Cancel</button><button class="primary" type="submit">Create form</button></div></form></dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
