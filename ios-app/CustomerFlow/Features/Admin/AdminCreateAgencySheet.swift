@@ -144,94 +144,13 @@ private struct AdminEditAgencySheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                Text("Agency name")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTheme.ink)
-                TextField("Enter agency name", text: $name)
-                    .textInputAutocapitalization(.words)
-                    .padding(13)
-                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                Button {
-                    Task {
-                        isSaving = true
-                        if await onSave(name.trimmingCharacters(in: .whitespacesAndNewlines)) { dismiss() }
-                        isSaving = false
-                    }
-                } label: {
-                    HStack {
-                        if isSaving { ProgressView() }
-                        Text("Save changes")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || isSaving)
-
-                    Divider()
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("MCP connection")
-                            .font(.headline)
-                        Text("Give this endpoint and token only to the agency's approved system administrator. The token can access this agency's patient data.")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.muted)
-
-                        if isLoadingMCP && connection == nil {
-                            ProgressView("Loading connection…")
-                        } else if let connection {
-                            Label(
-                                connection.configured ? "Active" : "Not configured",
-                                systemImage: connection.configured ? "checkmark.shield.fill" : "shield.slash"
-                            )
-                            .foregroundStyle(connection.configured ? AppTheme.brand : AppTheme.muted)
-                            Text(connection.endpointURL)
-                                .font(.system(.footnote, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 12))
-                        }
-
-                        if let oneTimeToken {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Copy this token now. It will not be shown again.")
-                                    .font(.caption.weight(.semibold))
-                                Text(oneTimeToken)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textSelection(.enabled)
-                                Button("Copy token", systemImage: "doc.on.doc") {
-                                    UIPasteboard.general.string = oneTimeToken
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                            .padding(12)
-                            .background(AppTheme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                        }
-
-                        Button(
-                            connection?.configured == true ? "Rotate access token" : "Generate access token",
-                            systemImage: "arrow.triangle.2.circlepath"
-                        ) {
-                            showsRotateConfirmation = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isLoadingMCP)
-                    }
-                    .padding(.top, 4)
-                }
-            }
-            .padding(18)
-            .background(AppTheme.background.ignoresSafeArea())
-            .navigationTitle("Edit agency")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
+        Group {
+            #if targetEnvironment(macCatalyst)
+            navigationContent
+                .frame(minWidth: 820, idealWidth: 920, maxWidth: 1080, minHeight: 520, idealHeight: 620)
+            #else
+            navigationContent
+            #endif
         }
         .task {
             isLoadingMCP = true
@@ -257,5 +176,122 @@ private struct AdminEditAgencySheet: View {
             Text("Rotating immediately invalidates the previous token. Active agency integrations must be updated with the new token.")
         }
         .presentationDetents([.large])
+    }
+
+    private var navigationContent: some View {
+        NavigationStack {
+            ScrollView {
+                Group {
+                    #if targetEnvironment(macCatalyst)
+                    HStack(alignment: .top, spacing: 18) {
+                        agencyDetails
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        mcpDetails
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    #else
+                    VStack(alignment: .leading, spacing: 18) {
+                        agencyDetails
+                        Divider()
+                        mcpDetails
+                    }
+                    #endif
+                }
+            }
+            .padding(18)
+            .background(AppTheme.background.ignoresSafeArea())
+            .navigationTitle("Edit agency")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var agencyDetails: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Agency details")
+                .font(.headline)
+            Text("Agency name")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppTheme.ink)
+            TextField("Enter agency name", text: $name)
+                .textInputAutocapitalization(.words)
+                .padding(13)
+                .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            Button {
+                Task {
+                    isSaving = true
+                    if await onSave(name.trimmingCharacters(in: .whitespacesAndNewlines)) { dismiss() }
+                    isSaving = false
+                }
+            } label: {
+                HStack {
+                    if isSaving { ProgressView() }
+                    Text("Save changes")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || isSaving)
+        }
+        .padding(16)
+        .background(AppTheme.surfaceStrong.opacity(0.55), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var mcpDetails: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("MCP connection")
+                .font(.headline)
+            Text("Give this endpoint and token only to the agency's approved system administrator. The token can access this agency's patient data.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.muted)
+
+            if isLoadingMCP && connection == nil {
+                ProgressView("Loading connection…")
+            } else if let connection {
+                Label(
+                    connection.configured ? "Active" : "Not configured",
+                    systemImage: connection.configured ? "checkmark.shield.fill" : "shield.slash"
+                )
+                .foregroundStyle(connection.configured ? AppTheme.brand : AppTheme.muted)
+                Text(connection.endpointURL)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 12))
+            }
+
+            if let oneTimeToken {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Copy this token now. It will not be shown again.")
+                        .font(.caption.weight(.semibold))
+                    Text(oneTimeToken)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                    Button("Copy token", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = oneTimeToken
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(12)
+                .background(AppTheme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            }
+
+            Button(
+                connection?.configured == true ? "Rotate access token" : "Generate access token",
+                systemImage: "arrow.triangle.2.circlepath"
+            ) {
+                showsRotateConfirmation = true
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isLoadingMCP)
+        }
+        .padding(16)
+        .background(AppTheme.surfaceStrong.opacity(0.55), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
