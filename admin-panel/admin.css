@@ -167,12 +167,13 @@ tbody tr:hover { background: color-mix(in srgb, var(--surface-strong), transpare
 .version-policy-note { display: grid; gap: 5px; padding: 13px; border-radius: 13px; background: var(--inset); }
 .version-policy-note p { font-size: 12px; }
 
-dialog { width: min(470px, calc(100% - 30px)); padding: 0; color: var(--ink); border: 1px solid var(--border); border-radius: 22px; background: var(--surface-strong); box-shadow: var(--shadow); }
+dialog { width: min(470px, calc(100% - 30px)); max-height: calc(100dvh - 30px); overflow: auto; padding: 0; color: var(--ink); border: 1px solid var(--border); border-radius: 22px; background: var(--surface-strong); box-shadow: var(--shadow); }
 dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px); }
 .dialog-card { padding: 22px; }
 .dialog-heading, .dialog-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .dialog-heading p { margin-top: 3px; font-size: 13px; }
 .dialog-actions { justify-content: flex-end; margin-top: 4px; }
+#agencyDialog .dialog-actions { position: sticky; bottom: -22px; margin: 4px -22px -22px; padding: 14px 22px 22px; border-top: 1px solid var(--border); background: var(--surface-strong); }
 .mcp-settings { display: grid; gap: 12px; padding: 15px; border: 1px solid var(--border); border-radius: 15px; background: var(--inset); }
 .mcp-settings p { margin-top: 3px; font-size: 13px; }
 .integration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; padding: 20px; }

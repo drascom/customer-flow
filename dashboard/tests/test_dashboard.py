@@ -60,6 +60,9 @@ class DashboardTestCase(unittest.TestCase):
         self.assertEqual(2, html.count(b"data-deploy-commit"))
         self.assertIn(b"Developed by Drascom @ 2026", html)
         self.assertIn(b"https://github.com/drascom/customer-flow", html)
+        self.assertIn(b'id="addAgencyButton"', html)
+        self.assertIn(b'id="newAgencyDialog"', html)
+        self.assertIn(b'id="saveAgency"', html)
         for username in ("admin", "manager", "user1", "doctor1"):
             token = self.login(username)
             me = self.request("GET", "/api/v1/auth/me", token=token)
