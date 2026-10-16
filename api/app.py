@@ -20,6 +20,7 @@ import secrets
 import smtplib
 import sqlite3
 import subprocess
+import textwrap
 import threading
 import unicodedata
 import uuid
@@ -27,7 +28,6 @@ from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
@@ -332,116 +332,158 @@ def build_agency_integration_pdf(
     mcp_connection: dict,
     access_token: str | None = None,
 ) -> bytes:
-    """Build a concise, LLM-readable agency integration handoff document."""
-    try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-        from reportlab.lib.units import mm
-        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate
-    except ImportError as exc:
-        raise APIError(503, "pdf_unavailable", "PDF export is temporarily unavailable.") from exc
+    """Build a concise PDF without relying on optional production packages."""
 
-    def safe(value: object) -> str:
-        text = str(value or "")
-        return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    def clean(value: object) -> str:
+        return unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
 
-    buffer = BytesIO()
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(
-        name="GuideTitle", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=22, leading=27, textColor=colors.HexColor("#0B7772"), spaceAfter=8,
-    ))
-    styles.add(ParagraphStyle(
-        name="GuideSubtitle", parent=styles["Normal"], fontSize=10, leading=15,
-        textColor=colors.HexColor("#5E625F"), spaceAfter=18,
-    ))
-    styles.add(ParagraphStyle(
-        name="GuideHeading", parent=styles["Heading2"], fontName="Helvetica-Bold",
-        fontSize=14, leading=18, textColor=colors.HexColor("#183B3A"), spaceBefore=10, spaceAfter=7,
-    ))
-    styles.add(ParagraphStyle(
-        name="GuideBody", parent=styles["BodyText"], fontSize=9.5, leading=14,
-        textColor=colors.HexColor("#252A28"), spaceAfter=6,
-    ))
-    styles.add(ParagraphStyle(
-        name="GuideCode", parent=styles["Code"], fontName="Courier", fontSize=7.5,
-        leading=10, textColor=colors.HexColor("#17201E"), backColor=colors.HexColor("#EEF4F2"),
-        borderPadding=7, spaceBefore=3, spaceAfter=8, splitLongWords=True,
-    ))
-    styles.add(ParagraphStyle(
-        name="GuideNote", parent=styles["BodyText"], fontSize=8.5, leading=13,
-        textColor=colors.HexColor("#6A3F08"), backColor=colors.HexColor("#FFF4DE"),
-        borderPadding=8, spaceAfter=10,
-    ))
-    document = SimpleDocTemplate(
-        buffer, pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm,
-        topMargin=17 * mm, bottomMargin=17 * mm,
-        title=f"{agency_name} Customer Flow Integration Guide",
-        author="Customer Flow by NatChatt",
+    def escape(value: object) -> str:
+        return clean(value).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    def wrapped(value: object, width: int) -> list[str]:
+        lines: list[str] = []
+        for raw_line in clean(value).splitlines() or [""]:
+            lines.extend(textwrap.wrap(
+                raw_line, width=width, replace_whitespace=False,
+                break_long_words=True, break_on_hyphens=False,
+            ) or [""])
+        return lines
+
+    pages: list[list[str]] = []
+    commands: list[str] = []
+    y = 790.0
+
+    def draw_text(text: str, x: float, baseline: float, font: str, size: float, color: str) -> None:
+        commands.append(
+            f"BT /{font} {size:g} Tf {color} rg 1 0 0 1 {x:g} {baseline:g} Tm ({escape(text)}) Tj ET"
+        )
+
+    def add_block(
+        value: object,
+        *,
+        font: str = "F1",
+        size: float = 9.5,
+        leading: float = 13.0,
+        width: int = 91,
+        before: float = 0.0,
+        after: float = 6.0,
+        color: str = "0.145 0.165 0.157",
+        background: str | None = None,
+        padding: float = 0.0,
+    ) -> None:
+        nonlocal y
+        lines = wrapped(value, width)
+        height = len(lines) * leading + (padding * 2)
+        if y - before - height < 60:
+            finish_page()
+        y -= before
+        if background:
+            commands.append(f"{background} rg 48 {y - height:g} 499 {height:g} re f")
+        baseline = y - padding - size
+        for line in lines:
+            draw_text(line, 48 + padding, baseline, font, size, color)
+            baseline -= leading
+        y -= height + after
+
+    def finish_page() -> None:
+        nonlocal commands, y
+        page_number = len(pages) + 1
+        commands.extend([
+            "0.843 0.89 0.878 RG 48 43 m 547 43 l S",
+            f"BT /F1 7.5 Tf 0.42 0.455 0.443 rg 1 0 0 1 48 29 Tm (Customer Flow by NatChatt - Confidential) Tj ET",
+            f"BT /F1 7.5 Tf 0.42 0.455 0.443 rg 1 0 0 1 510 29 Tm (Page {page_number}) Tj ET",
+        ])
+        pages.append(commands)
+        commands = []
+        y = 790.0
+
+    add_block("Customer Flow Integration Guide", font="F2", size=22, leading=27, width=48, after=5, color="0.043 0.467 0.447")
+    add_block(f"Agency: {agency_name}\nGenerated: {utc_now().strftime('%d %B %Y, %H:%M UTC')}", size=10, leading=14, width=84, after=12, color="0.369 0.384 0.373")
+    add_block("Confidential integration handoff", font="F2", size=14, leading=18, width=62, before=3, after=5, color="0.094 0.231 0.227")
+    add_block(
+        "Share this document only with the agency's approved technical team. Patient data and MCP credentials must be handled as confidential information. Never place an MCP token in browser code, a public webpage, analytics, chat logs or a source repository.",
+        size=8.5, leading=12, width=96, after=10, color="0.416 0.247 0.031", background="1 0.957 0.871", padding=8,
     )
-    body = styles["GuideBody"]
-    heading = styles["GuideHeading"]
-    story = [
-        Paragraph("Customer Flow Integration Guide", styles["GuideTitle"]),
-        Paragraph(f"Agency: <b>{safe(agency_name)}</b><br/>Generated: {utc_now().strftime('%d %B %Y, %H:%M UTC')}", styles["GuideSubtitle"]),
-        Paragraph("Confidential integration handoff", heading),
-        Paragraph(
-            "Share this document only with the agency's approved technical team. Patient data and MCP credentials must be handled as confidential information. Never place an MCP token in browser code, a public webpage, analytics, chat logs or a source repository.",
-            styles["GuideNote"],
-        ),
-        Paragraph("1. Patient application form", heading),
-        Paragraph(
-            "Use the direct link in email or messaging, or embed the same form on the agency website. Every successful submission is recorded in Customer Flow under this agency. The patient must provide at least an email address or phone number and can upload hair-transplant photographs and consultation notes.",
-            body,
-        ),
-        Paragraph("Direct link", body),
-        Paragraph(safe(intake_form.get("directURL")), styles["GuideCode"]),
-        Paragraph("Iframe embed", body),
-        Paragraph(safe(intake_form.get("iframeCode")), styles["GuideCode"]),
-        Paragraph("JavaScript embed", body),
-        Paragraph(safe(intake_form.get("javascriptCode")), styles["GuideCode"]),
-        Paragraph("Allowed website origins", body),
-        Paragraph(safe(", ".join(intake_form.get("allowedOrigins") or []) or "Any website (no origin restriction configured)"), styles["GuideCode"]),
-        Paragraph("Website integration checklist", heading),
-        Paragraph("1. Choose either the iframe or JavaScript embed. Do not install both on the same page.<br/>2. Add the exact production website origin in Agency settings before testing.<br/>3. Publish the page over HTTPS and test a complete submission with photos.<br/>4. Confirm the new case appears under the correct agency in Customer Flow.<br/>5. Keep the direct link as a fallback for email, SMS or WhatsApp.", body),
-        PageBreak(),
-        Paragraph("2. LLM / MCP connection", heading),
-        Paragraph(
-            "Connect an MCP-compatible LLM client using Streamable HTTP. Configure the URL and bearer token as secrets in the client or server environment. The credential is scoped to this agency.",
-            body,
-        ),
-        Paragraph("MCP endpoint", body),
-        Paragraph(safe(mcp_connection.get("endpointURL")), styles["GuideCode"]),
-        Paragraph("Authentication", body),
-        Paragraph("Authorization: Bearer &lt;agency-access-token&gt;", styles["GuideCode"]),
-        Paragraph("Agency access token", body),
-        Paragraph(safe(access_token or "NOT INCLUDED - generate or rotate the token in Agency settings and transfer it through a separate secure channel."), styles["GuideCode"]),
-        Paragraph("Instructions for the connected LLM", heading),
-        Paragraph(
-            "Use <b>who_am_i</b> first to verify the agency identity and enabled capabilities. Use <b>list_cases</b> before creating a patient to check for possible matches, then use <b>get_case</b> with the stable HT case reference. If write tools are enabled, use a unique 8-128 character idempotency key for each intended write and reuse that key only when retrying the exact same request. A newly created case is incomplete until at least one photograph has been uploaded.",
-            body,
-        ),
-        Paragraph("Available read tools", body),
-        Paragraph("who_am_i, list_cases, get_case", styles["GuideCode"]),
-        Paragraph("Optional write tools (only when enabled by the server)", body),
-        Paragraph("create_case, update_case, add_case_message, upload_case_photo", styles["GuideCode"]),
-        Paragraph("Recommended verification", heading),
-        Paragraph("1. Connect to the MCP endpoint with the bearer token.<br/>2. Call who_am_i and verify the returned agency name.<br/>3. Call list_cases with a small limit.<br/>4. If writes are enabled, create a test case with a unique idempotency key and upload at least one test photograph.<br/>5. Store the returned HT case reference for future updates.<br/>6. Revoke or rotate the token immediately if it is exposed.", body),
-    ]
+    add_block("1. Patient application form", font="F2", size=14, leading=18, width=62, before=3, after=5, color="0.094 0.231 0.227")
+    add_block(
+        "Use the direct link in email or messaging, or embed the same form on the agency website. Every successful submission is recorded in Customer Flow under this agency. The patient must provide at least an email address or phone number and can upload hair-transplant photographs and consultation notes.",
+    )
+    for label, value in (
+        ("Direct link", intake_form.get("directURL")),
+        ("Iframe embed", intake_form.get("iframeCode")),
+        ("JavaScript embed", intake_form.get("javascriptCode")),
+        ("Allowed website origins", ", ".join(intake_form.get("allowedOrigins") or []) or "Any website (no origin restriction configured)"),
+    ):
+        add_block(label, font="F2", size=9.5, leading=12, width=80, after=2)
+        add_block(value, font="F3", size=7.5, leading=10, width=102, after=7, background="0.933 0.957 0.949", padding=7)
+    add_block("Website integration checklist", font="F2", size=14, leading=18, width=62, before=3, after=5, color="0.094 0.231 0.227")
+    add_block(
+        "1. Choose either the iframe or JavaScript embed. Do not install both on the same page.\n2. Add the exact production website origin in Agency settings before testing.\n3. Publish the page over HTTPS and test a complete submission with photos.\n4. Confirm the new case appears under the correct agency in Customer Flow.\n5. Keep the direct link as a fallback for email, SMS or WhatsApp.",
+        size=9, leading=12, width=94,
+    )
+    finish_page()
 
-    def footer(canvas, doc) -> None:
-        canvas.saveState()
-        canvas.setStrokeColor(colors.HexColor("#D7E3E0"))
-        canvas.line(18 * mm, 13 * mm, 192 * mm, 13 * mm)
-        canvas.setFont("Helvetica", 7.5)
-        canvas.setFillColor(colors.HexColor("#6B7471"))
-        canvas.drawString(18 * mm, 8.5 * mm, "Customer Flow by NatChatt - Confidential")
-        canvas.drawRightString(192 * mm, 8.5 * mm, f"Page {doc.page}")
-        canvas.restoreState()
+    add_block("2. LLM / MCP connection", font="F2", size=18, leading=23, width=58, after=8, color="0.043 0.467 0.447")
+    add_block(
+        "Connect an MCP-compatible LLM client using Streamable HTTP. Configure the URL and bearer token as secrets in the client or server environment. The credential is scoped to this agency.",
+    )
+    for label, value in (
+        ("MCP endpoint", mcp_connection.get("endpointURL")),
+        ("Authentication", "Authorization: Bearer <agency-access-token>"),
+        ("Agency access token", access_token or "NOT INCLUDED - generate or rotate the token in Agency settings and transfer it through a separate secure channel."),
+    ):
+        add_block(label, font="F2", size=9.5, leading=12, width=80, after=2)
+        add_block(value, font="F3", size=7.5, leading=10, width=102, after=8, background="0.933 0.957 0.949", padding=7)
+    add_block("Instructions for the connected LLM", font="F2", size=14, leading=18, width=62, before=3, after=5, color="0.094 0.231 0.227")
+    add_block(
+        "Use who_am_i first to verify the agency identity and enabled capabilities. Use list_cases before creating a patient to check for possible matches, then use get_case with the stable HT case reference. If write tools are enabled, use a unique 8-128 character idempotency key for each intended write and reuse that key only when retrying the exact same request. A newly created case is incomplete until at least one photograph has been uploaded.",
+    )
+    add_block("Available read tools", font="F2", size=9.5, leading=12, width=80, after=2)
+    add_block("who_am_i, list_cases, get_case", font="F3", size=7.5, leading=10, width=102, after=8, background="0.933 0.957 0.949", padding=7)
+    add_block("Optional write tools (only when enabled by the server)", font="F2", size=9.5, leading=12, width=80, after=2)
+    add_block("create_case, update_case, add_case_message, upload_case_photo", font="F3", size=7.5, leading=10, width=102, after=9, background="0.933 0.957 0.949", padding=7)
+    add_block("Recommended verification", font="F2", size=14, leading=18, width=62, before=3, after=5, color="0.094 0.231 0.227")
+    add_block(
+        "1. Connect to the MCP endpoint with the bearer token.\n2. Call who_am_i and verify the returned agency name.\n3. Call list_cases with a small limit.\n4. If writes are enabled, create a test case with a unique idempotency key and upload at least one test photograph.\n5. Store the returned HT case reference for future updates.\n6. Revoke or rotate the token immediately if it is exposed.",
+        size=9, leading=12, width=94,
+    )
+    finish_page()
 
-    document.build(story, onFirstPage=footer, onLaterPages=footer)
-    return buffer.getvalue()
+    objects: list[bytes] = [b""] * (5 + (len(pages) * 2))
+    page_object_numbers = [6 + (index * 2) for index in range(len(pages))]
+    objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    kids = " ".join(f"{number} 0 R" for number in page_object_numbers)
+    objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode("ascii")
+    objects[2] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    objects[3] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
+    objects[4] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>"
+    for index, page_commands in enumerate(pages):
+        page_number = page_object_numbers[index]
+        content_number = page_number + 1
+        stream = ("\n".join(page_commands) + "\n").encode("ascii")
+        objects[page_number - 1] = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+            f"/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> "
+            f"/Contents {content_number} 0 R >>"
+        ).encode("ascii")
+        objects[content_number - 1] = f"<< /Length {len(stream)} >>\nstream\n".encode("ascii") + stream + b"endstream"
+
+    result = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for number, obj in enumerate(objects, start=1):
+        offsets.append(len(result))
+        result.extend(f"{number} 0 obj\n".encode("ascii"))
+        result.extend(obj)
+        result.extend(b"\nendobj\n")
+    xref_offset = len(result)
+    result.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    result.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        result.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    result.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+    )
+    return bytes(result)
 
 
 def normalize_email(value: object) -> str:
