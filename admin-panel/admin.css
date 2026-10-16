@@ -170,6 +170,13 @@ tbody tr:hover { background: color-mix(in srgb, var(--surface-strong), transpare
 dialog { width: min(470px, calc(100% - 30px)); max-height: calc(100dvh - 30px); overflow: auto; padding: 0; color: var(--ink); border: 1px solid var(--border); border-radius: 22px; background: var(--surface-strong); box-shadow: var(--shadow); }
 dialog::backdrop { background: rgba(14, 12, 10, .58); backdrop-filter: blur(5px); }
 .dialog-card { padding: 22px; }
+#agencyDialog { width: min(1060px, calc(100% - 30px)); }
+#agencyForm { grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr); align-items: start; }
+#agencyForm > .dialog-heading,
+#agencyForm > label,
+#agencyForm > .form-error,
+#agencyForm > .dialog-actions { grid-column: 1 / -1; }
+#agencyForm > .mcp-settings { min-width: 0; align-content: start; }
 .dialog-heading, .dialog-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .dialog-heading p { margin-top: 3px; font-size: 13px; }
 .dialog-actions { justify-content: flex-end; margin-top: 4px; }
@@ -377,6 +384,8 @@ hr { width: 100%; border: 0; border-top: 1px solid var(--border); }
 .loading { display: grid; place-items: center; min-height: 180px; color: var(--muted); }
 
 @media (max-width: 800px) {
+  #agencyDialog { width: min(470px, calc(100% - 30px)); }
+  #agencyForm { grid-template-columns: 1fr; }
   .photo-toolbar { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; }
   .photo-zoom-controls { justify-self: center; }
   #resetPhotoZoom { display: none; }
