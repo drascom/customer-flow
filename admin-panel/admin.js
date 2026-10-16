@@ -893,7 +893,39 @@ $("closeAgencyDialog").onclick = $("cancelAgency").onclick = () => $("agencyDial
 $("copyAgencyIntakeLink").onclick = async () => { await navigator.clipboard.writeText($("agencyIntakeDirectURL").value); toast("Patient form link copied."); };
 $("copyAgencyIntakeEmbed").onclick = async () => { await navigator.clipboard.writeText($("agencyIntakeEmbed").value); toast("Website embed copied."); };
 $("rotateMCPToken").onclick = async () => { const id = $("agencyDialog").dataset.agencyID, agency = state.agencies.find((a) => a.id === id); if (!confirm(agency.mcpConfigured ? "Rotate this token? The current token will stop working immediately." : "Generate an MCP token for this agency?")) return; try { const result = await api(`/admin/agencies/${id}/mcp/rotate`, { method: "POST", body: {} }); updateMCPDialog(result.connection); $("mcpToken").textContent = result.connection.accessToken; $("mcpTokenBox").hidden = false; await loadData({ silent: true }); } catch (error) { $("agencyFormError").textContent = error.message; } };
-$("agencyForm").onsubmit = async (event) => { event.preventDefault(); const agencyID = $("agencyDialog").dataset.agencyID; const allowedOrigins = $("agencyWebsiteOrigins").value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean); try { await api(`/admin/agencies/${agencyID}`, { method: "PATCH", body: { name: $("editAgencyName").value.trim() } }); const formID = $("agencyDialog").dataset.intakeFormID; if (formID) await api(`/intake/forms/${formID}`, { method: "PATCH", body: { allowedOrigins } }); else await api("/intake/forms", { method: "POST", body: { agencyID, label: "Hair transplant assessment", allowedOrigins } }); await loadData({ silent: true }); updateAgencyIntakeDialog(agencyID); toast("Agency and patient form updated."); } catch (error) { $("agencyFormError").textContent = error.message; } };
+$("agencyForm").onsubmit = async (event) => {
+  event.preventDefault();
+  const submit = $("saveAgency");
+  const originalLabel = submit.textContent;
+  const agencyID = $("agencyDialog").dataset.agencyID;
+  const allowedOrigins = $("agencyWebsiteOrigins").value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+  submit.disabled = true;
+  submit.textContent = "Saving…";
+  $("agencyFormError").textContent = "";
+  try {
+    await api(`/admin/agencies/${agencyID}`, {
+      method: "PATCH",
+      body: { name: $("editAgencyName").value.trim() },
+    });
+    const formID = $("agencyDialog").dataset.intakeFormID;
+    if (formID) {
+      await api(`/intake/forms/${formID}`, { method: "PATCH", body: { allowedOrigins } });
+    } else {
+      await api("/intake/forms", {
+        method: "POST",
+        body: { agencyID, label: "Hair transplant assessment", allowedOrigins },
+      });
+    }
+    await loadData({ silent: true });
+    $("agencyDialog").close();
+    toast("Agency and patient form updated.");
+  } catch (error) {
+    $("agencyFormError").textContent = error.message;
+  } finally {
+    submit.disabled = false;
+    submit.textContent = originalLabel;
+  }
+};
 
 $("refreshClientVersion").onclick = loadClientVersion;
 $("clientVersionForm").onsubmit = async (event) => {

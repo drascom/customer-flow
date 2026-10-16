@@ -73,6 +73,8 @@ class DashboardTestCase(unittest.TestCase):
         javascript = self.request("GET", "/admin/admin.js?v=card-grid")
         self.assertIn(b".case-card .case-metrics", css)
         self.assertIn(b"function caseCardHTML", javascript)
+        self.assertIn(b'submit.textContent = "Saving', javascript)
+        self.assertIn(b'$("agencyDialog").close();', javascript)
 
     def test_dashboard_health_reports_deployed_commit(self):
         health = self.request("GET", "/dashboard/health")
