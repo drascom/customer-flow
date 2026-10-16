@@ -97,10 +97,22 @@ struct AdminDashboardView: View {
         .sheet(isPresented: $showsAgencyManagement) {
             AdminAgencyManagementSheet(
                 agencies: model.agencies,
-                onCreate: { name in await model.createAgency(name: name) },
-                onUpdate: { agency, name in await model.updateAgency(agency, name: name) },
+                intakeForms: model.intakeForms,
+                onCreate: { name, websiteURL in
+                    await model.createAgency(name: name, websiteURL: websiteURL)
+                },
+                onSave: { agency, name, form, origins in
+                    await model.saveAgency(agency, name: name, form: form, allowedOrigins: origins)
+                },
+                onSetFormActive: { form, active in
+                    await model.setIntakeFormActive(form, active: active)
+                },
+                onDelete: { agency in await model.deleteAgency(agency) },
                 onFetchMCP: { agency in await model.fetchMCPConnection(for: agency) },
-                onRotateMCP: { agency in await model.rotateMCPToken(for: agency) }
+                onRotateMCP: { agency in await model.rotateMCPToken(for: agency) },
+                onExportGuide: { agency, token in
+                    await model.exportIntegrationGuide(for: agency, accessToken: token)
+                }
             )
         }
         .sheet(item: $editingUser) { user in
@@ -559,10 +571,14 @@ struct AdminDashboardView: View {
         AdminCaseCard(
             item: item,
             doctors: model.activeDoctors,
+            agencies: model.agencies.filter(\.active),
             isReadOnly: isReadOnly,
             isExpanded: isExpanded,
             onToggle: onToggle,
             onAssign: { requestAssignment(for: item, doctorID: $0) },
+            onTransferAgency: { agencyID, reason in
+                await model.transferPatientAgency(item, agencyID: agencyID, reason: reason)
+            },
             onUndoConfirmation: { Task { await model.unconfirmCase(item) } },
             onDelete: {
                 Task {

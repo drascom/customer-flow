@@ -38,7 +38,11 @@ struct AdminCase: Identifiable, Decodable, Sendable {
     let occupation: String?
     let profileNote: String?
     let agentName: String
+    let agencyID: String?
     var agencyName: String?
+    let intakePatient: Bool
+    var ownerAgencyID: String?
+    var ownerAgencyName: String?
     var doctorID: String?
     var doctorName: String?
     let uploadedAt: Date

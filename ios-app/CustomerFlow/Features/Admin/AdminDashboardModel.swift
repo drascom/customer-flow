@@ -11,6 +11,7 @@ final class AdminDashboardModel {
     var users: [AdminUser] = []
     var cases: [AdminCase] = []
     var agencies: [AdminAgency] = []
+    var intakeForms: [AdminIntakeForm] = []
     var searchText = ""
     var selectedSection: AdminDashboardSection = .cases
     var caseStatus = ""
@@ -92,7 +93,10 @@ final class AdminDashboardModel {
                 async let usersRequest = repository.fetchUsers()
                 async let casesRequest = repository.fetchCases()
                 async let agenciesRequest = repository.fetchAgencies()
-                (users, cases, agencies) = try await (usersRequest, casesRequest, agenciesRequest)
+                async let intakeFormsRequest = repository.fetchIntakeForms()
+                (users, cases, agencies, intakeForms) = try await (
+                    usersRequest, casesRequest, agenciesRequest, intakeFormsRequest
+                )
             } catch {
                 guard !Self.isCancellation(error) else { return }
                 errorMessage = error.localizedDescription
@@ -136,10 +140,28 @@ final class AdminDashboardModel {
         }
     }
 
-    func createAgency(name: String) async -> Bool {
+    func createAgency(name: String, websiteURL: String?) async -> Bool {
         do {
-            agencies.append(try await repository.createAgency(name: name))
+            agencies.append(try await repository.createAgency(name: name, websiteURL: websiteURL))
             agencies.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            intakeForms = try await repository.fetchIntakeForms()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func saveAgency(_ agency: AdminAgency, name: String, form: AdminIntakeForm?, allowedOrigins: [String]) async -> Bool {
+        do {
+            let updated = try await repository.updateAgency(id: agency.id, name: name)
+            if let form {
+                replaceIntakeForm(try await repository.updateIntakeForm(
+                    id: form.id,
+                    allowedOrigins: allowedOrigins
+                ))
+            }
+            applyAgencyUpdate(original: agency, updated: updated)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -150,32 +172,94 @@ final class AdminDashboardModel {
     func updateAgency(_ agency: AdminAgency, name: String) async -> Bool {
         do {
             let updated = try await repository.updateAgency(id: agency.id, name: name)
-            guard let index = agencies.firstIndex(where: { $0.id == agency.id }) else { return true }
-            agencies[index] = updated
-            agencies.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            for caseIndex in cases.indices where cases[caseIndex].agencyName == agency.name {
-                cases[caseIndex].agencyName = updated.name
-            }
-            for userIndex in users.indices where users[userIndex].agencyID == agency.id {
-                users[userIndex] = AdminUser(
-                    id: users[userIndex].id,
-                    username: users[userIndex].username,
-                    displayName: users[userIndex].displayName,
-                    role: users[userIndex].role,
-                    agencyID: users[userIndex].agencyID,
-                    agencyName: updated.name,
-                    email: users[userIndex].email,
-                    phone: users[userIndex].phone,
-                    active: users[userIndex].active,
-                    createdAt: users[userIndex].createdAt,
-                    caseCount: users[userIndex].caseCount,
-                    patientCount: users[userIndex].patientCount
-                )
-            }
+            applyAgencyUpdate(original: agency, updated: updated)
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
+        }
+    }
+
+    func setIntakeFormActive(_ form: AdminIntakeForm, active: Bool) async -> AdminIntakeForm? {
+        do {
+            let updated = try await repository.setIntakeFormActive(id: form.id, active: active)
+            replaceIntakeForm(updated)
+            return updated
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func deleteAgency(_ agency: AdminAgency) async -> String? {
+        do {
+            let mode = try await repository.deleteAgency(id: agency.id)
+            agencies = try await repository.fetchAgencies()
+            intakeForms = try await repository.fetchIntakeForms()
+            return mode
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func exportIntegrationGuide(for agency: AdminAgency, accessToken: String?) async -> Data? {
+        do {
+            return try await repository.exportAgencyIntegrationGuide(
+                agencyID: agency.id,
+                accessToken: accessToken
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func transferPatientAgency(_ item: AdminCase, agencyID: String, reason: String) async -> Bool {
+        do {
+            try await repository.transferPatientAgency(
+                patientID: item.patientID,
+                agencyID: agencyID,
+                reason: reason
+            )
+            cases = try await repository.fetchCases()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func replaceIntakeForm(_ updated: AdminIntakeForm) {
+        if let index = intakeForms.firstIndex(where: { $0.id == updated.id }) {
+            intakeForms[index] = updated
+        } else {
+            intakeForms.append(updated)
+        }
+    }
+
+    private func applyAgencyUpdate(original: AdminAgency, updated: AdminAgency) {
+        guard let index = agencies.firstIndex(where: { $0.id == original.id }) else { return }
+        agencies[index] = updated
+        agencies.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        for caseIndex in cases.indices where cases[caseIndex].agencyName == original.name {
+            cases[caseIndex].agencyName = updated.name
+        }
+        for userIndex in users.indices where users[userIndex].agencyID == original.id {
+            users[userIndex] = AdminUser(
+                id: users[userIndex].id,
+                username: users[userIndex].username,
+                displayName: users[userIndex].displayName,
+                role: users[userIndex].role,
+                agencyID: users[userIndex].agencyID,
+                agencyName: updated.name,
+                email: users[userIndex].email,
+                phone: users[userIndex].phone,
+                active: users[userIndex].active,
+                createdAt: users[userIndex].createdAt,
+                caseCount: users[userIndex].caseCount,
+                patientCount: users[userIndex].patientCount
+            )
         }
     }
 

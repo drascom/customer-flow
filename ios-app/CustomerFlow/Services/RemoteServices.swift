@@ -240,13 +240,35 @@ actor RemoteAPIClient {
     }
 
     func download(_ path: String) async throws -> Data {
+        try await download(method: "GET", path: path, body: nil, accept: "image/*")
+    }
+
+    func download<Body: Encodable & Sendable>(
+        _ method: String,
+        path: String,
+        body: Body,
+        accept: String
+    ) async throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try await download(
+            method: method,
+            path: path,
+            body: try encoder.encode(body),
+            accept: accept
+        )
+    }
+
+    private func download(method: String, path: String, body: Data?, accept: String) async throws -> Data {
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw RemoteServiceError.invalidServerAddress
         }
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
+        request.httpBody = body
         request.timeoutInterval = 20
-        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
+        if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
 
         let (data, response) = try await imageSession.data(for: request)

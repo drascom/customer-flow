@@ -25,6 +25,12 @@ actor RemoteAdminRepository: AdminRepository {
         return response.agencies
     }
 
+    func fetchIntakeForms() async throws -> [AdminIntakeForm] {
+        struct Envelope: Decodable, Sendable { let forms: [AdminIntakeForm] }
+        let response: Envelope = try await client.get("intake/forms")
+        return response.forms
+    }
+
     func createUser(
         username: String,
         displayName: String,
@@ -90,10 +96,12 @@ actor RemoteAdminRepository: AdminRepository {
         let _: Envelope = try await client.send("DELETE", path: "admin/users/\(id)", body: Empty())
     }
 
-    func createAgency(name: String) async throws -> AdminAgency {
-        struct Body: Encodable, Sendable { let name: String }
+    func createAgency(name: String, websiteURL: String?) async throws -> AdminAgency {
+        struct Body: Encodable, Sendable { let name: String; let websiteURL: String? }
         struct Envelope: Decodable, Sendable { let agency: AdminAgency }
-        let response: Envelope = try await client.send("POST", path: "admin/agencies", body: Body(name: name))
+        let response: Envelope = try await client.send(
+            "POST", path: "admin/agencies", body: Body(name: name, websiteURL: websiteURL)
+        )
         return response.agency
     }
 
@@ -102,6 +110,34 @@ actor RemoteAdminRepository: AdminRepository {
         struct Envelope: Decodable, Sendable { let agency: AdminAgency }
         let response: Envelope = try await client.send("PATCH", path: "admin/agencies/\(id)", body: Body(name: name))
         return response.agency
+    }
+
+    func updateIntakeForm(id: String, allowedOrigins: [String]) async throws -> AdminIntakeForm {
+        struct Body: Encodable, Sendable { let allowedOrigins: [String] }
+        struct Envelope: Decodable, Sendable { let form: AdminIntakeForm }
+        let response: Envelope = try await client.send(
+            "PATCH", path: "intake/forms/\(id)", body: Body(allowedOrigins: allowedOrigins)
+        )
+        return response.form
+    }
+
+    func setIntakeFormActive(id: String, active: Bool) async throws -> AdminIntakeForm {
+        struct Body: Encodable, Sendable { let active: Bool }
+        struct Envelope: Decodable, Sendable { let form: AdminIntakeForm }
+        let response: Envelope = try await client.send(
+            "PATCH", path: "intake/forms/\(id)", body: Body(active: active)
+        )
+        return response.form
+    }
+
+    func deleteAgency(id: String) async throws -> String {
+        struct Empty: Encodable, Sendable {}
+        struct Mutation: Decodable, Sendable { let mode: String }
+        struct Envelope: Decodable, Sendable { let agency: Mutation }
+        let response: Envelope = try await client.send(
+            "DELETE", path: "admin/agencies/\(id)", body: Empty()
+        )
+        return response.agency.mode
     }
 
     func fetchMCPConnection(agencyID: String) async throws -> AdminMCPConnection {
@@ -117,6 +153,27 @@ actor RemoteAdminRepository: AdminRepository {
             "POST", path: "admin/agencies/\(agencyID)/mcp/rotate", body: Empty()
         )
         return response.connection
+    }
+
+    func exportAgencyIntegrationGuide(agencyID: String, accessToken: String?) async throws -> Data {
+        struct Body: Encodable, Sendable { let accessToken: String? }
+        return try await client.download(
+            "POST",
+            path: "admin/agencies/\(agencyID)/integration-guide",
+            body: Body(accessToken: accessToken),
+            accept: "application/pdf"
+        )
+    }
+
+    func transferPatientAgency(patientID: String, agencyID: String, reason: String) async throws {
+        struct Body: Encodable, Sendable { let agencyID: String; let reason: String }
+        struct Mutation: Decodable, Sendable { let id: String }
+        struct Envelope: Decodable, Sendable { let transfer: Mutation }
+        let _: Envelope = try await client.send(
+            "POST",
+            path: "admin/patients/\(patientID)/transfer-agency",
+            body: Body(agencyID: agencyID, reason: reason)
+        )
     }
 
     func assignDoctor(patientID: String, doctorID: String?, reason: String) async throws {

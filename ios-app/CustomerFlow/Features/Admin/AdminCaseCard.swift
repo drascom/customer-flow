@@ -5,10 +5,12 @@ struct AdminCaseCard: View {
 
     let item: AdminCase
     let doctors: [AdminUser]
+    let agencies: [AdminAgency]
     let isReadOnly: Bool
     let isExpanded: Bool
     let onToggle: () -> Void
     let onAssign: (String?) -> Void
+    let onTransferAgency: (String, String) async -> Bool
     let onUndoConfirmation: () -> Void
     let onDelete: () -> Void
     let onPurgePhoto: (String) -> Void
@@ -19,6 +21,7 @@ struct AdminCaseCard: View {
     @State private var showsConversation = false
     @State private var showsUndoConfirmation = false
     @State private var showsDeleteConfirmation = false
+    @State private var showsAgencyTransfer = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -89,6 +92,29 @@ struct AdminCaseCard: View {
                 if hasPatientDetails {
                     adminPatientDetails
                         .padding(.top, 10)
+                }
+
+                if item.intakePatient, let owner = item.ownerAgencyName ?? item.agencyName {
+                    HStack(spacing: 10) {
+                        Image(systemName: "building.2")
+                            .foregroundStyle(AppTheme.brand)
+                        Text("Agency:")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.muted)
+                        Text(owner)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(AppTheme.ink)
+                            .lineLimit(1)
+                        Spacer()
+                        if !isReadOnly {
+                            Button("Change") { showsAgencyTransfer = true }
+                                .buttonStyle(.bordered)
+                                .disabled(transferTargets.isEmpty)
+                        }
+                    }
+                    .padding(11)
+                    .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 10)
                 }
 
                 if let finalGrafts = item.finalGrafts,
@@ -186,6 +212,13 @@ struct AdminCaseCard: View {
                 .presentationCornerRadius(28)
                 .presentationContentInteraction(.scrolls)
         }
+        .sheet(isPresented: $showsAgencyTransfer) {
+            AdminAgencyTransferSheet(
+                currentAgencyName: item.ownerAgencyName ?? item.agencyName ?? "Unknown",
+                agencies: transferTargets,
+                onTransfer: onTransferAgency
+            )
+        }
         .confirmationDialog(
             "Undo this confirmation?",
             isPresented: $showsUndoConfirmation,
@@ -235,6 +268,10 @@ struct AdminCaseCard: View {
 
     private var unreadNotificationCount: Int {
         caseID.map(state.unreadNotificationCount(for:)) ?? 0
+    }
+
+    private var transferTargets: [AdminAgency] {
+        agencies.filter { $0.id != item.ownerAgencyID }
     }
 
     private var assignmentLabel: some View {
@@ -463,6 +500,90 @@ struct AdminCaseCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(9)
         .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct AdminAgencyTransferSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var agencyID = ""
+    @State private var reason = ""
+    @State private var isSaving = false
+    @State private var showsError = false
+
+    let currentAgencyName: String
+    let agencies: [AdminAgency]
+    let onTransfer: (String, String) async -> Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 6) {
+                    Text("Agency:").foregroundStyle(AppTheme.muted)
+                    Text(currentAgencyName).fontWeight(.semibold).foregroundStyle(AppTheme.ink)
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Transfer to").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+                    Picker("Select agency", selection: $agencyID) {
+                        Text("Select agency").tag("")
+                        ForEach(agencies) { agency in Text(agency.name).tag(agency.id) }
+                    }
+                    .pickerStyle(.menu)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13))
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Reason").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+                    TextEditor(text: $reason)
+                        .frame(minHeight: 100)
+                        .padding(8)
+                        .scrollContentBackground(.hidden)
+                        .background(AppTheme.surfaceStrong, in: RoundedRectangle(cornerRadius: 13))
+                    Text("Explain why ownership is moving to another agency.")
+                        .font(.caption2).foregroundStyle(AppTheme.muted)
+                }
+
+                Button {
+                    Task {
+                        isSaving = true
+                        if await onTransfer(agencyID, trimmedReason) {
+                            dismiss()
+                        } else {
+                            showsError = true
+                        }
+                        isSaving = false
+                    }
+                } label: {
+                    HStack {
+                        if isSaving { ProgressView() }
+                        Text("Transfer patient")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(agencyID.isEmpty || trimmedReason.count < 5 || isSaving)
+                Spacer()
+            }
+            .padding(18)
+            .background(AppTheme.background.ignoresSafeArea())
+            .navigationTitle("Change agency")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .alert("Transfer failed", isPresented: $showsError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The patient could not be transferred. Review the selection and reason, then try again.")
+        }
+    }
+
+    private var trimmedReason: String {
+        reason.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
